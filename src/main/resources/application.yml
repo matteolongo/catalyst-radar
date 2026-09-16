@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: catalyst-radar
+
+server:
+  port: 8080
