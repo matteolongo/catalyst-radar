@@ -17,7 +17,9 @@ services:
       timeout: 3s
       retries: 10
     volumes:
-      - catalyst_pgdata:/var/lib/postgresql/data
+      # PG18+ images expect a single mount at /var/lib/postgresql
+      # (data lives in a versioned subdirectory for pg_upgrade).
+      - catalyst_pgdata:/var/lib/postgresql
 
 volumes:
   catalyst_pgdata:
