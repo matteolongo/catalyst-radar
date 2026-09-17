@@ -1,0 +1,7 @@
+# Local development profile.
+# Run with: SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+# (PowerShell: $env:SPRING_PROFILES_ACTIVE="local"; ./gradlew bootRun)
+logging:
+  level:
+    com.catalystradar: DEBUG
+    org.springframework.web: INFO
