@@ -42,3 +42,6 @@ out/
 ### Local environment ###
 .env
 .env.local
+
+### Runtime logs ###
+*.log
