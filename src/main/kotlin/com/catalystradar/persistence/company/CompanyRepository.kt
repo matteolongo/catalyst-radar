@@ -5,4 +5,6 @@ import java.util.UUID
 
 interface CompanyRepository : ListCrudRepository<CompanyRow, UUID> {
     fun findByTicker(ticker: String): CompanyRow?
+
+    fun findByActiveTrue(): List<CompanyRow>
 }

@@ -8,6 +8,9 @@ import java.time.Instant
  * and map failures into the [ProviderError] hierarchy.
  */
 interface NewsProvider {
+    /** Stable provider name used for orchestration and provenance. */
+    val name: String
+
     suspend fun fetch(request: NewsFetchRequest): NewsFetchResult
 }
 

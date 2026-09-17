@@ -31,6 +31,8 @@ class PolygonNewsProvider(
 
     private val client = builder.baseUrl(properties.baseUrl).build()
 
+    override val name: String = "polygon"
+
     override suspend fun fetch(request: NewsFetchRequest): NewsFetchResult =
         withContext(Dispatchers.IO) {
             try {
