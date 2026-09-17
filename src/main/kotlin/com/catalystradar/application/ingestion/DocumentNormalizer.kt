@@ -1,9 +1,11 @@
 package com.catalystradar.application.ingestion
 
+import com.catalystradar.domain.event.SourceDocument
 import com.catalystradar.ports.RawArticle
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.HexFormat
+import java.util.UUID
 
 /**
  * Normalized provider article ready for dedup checks and persistence.
@@ -19,6 +21,18 @@ data class NormalizedDocument(
     val publishedAt: Instant?,
     val discoveredAt: Instant,
     val contentHash: String,
+)
+
+fun NormalizedDocument.toDocument() = SourceDocument(
+    id = UUID.randomUUID(),
+    provider = provider,
+    providerDocumentId = providerDocumentId,
+    canonicalUrl = url,
+    title = title,
+    body = body,
+    publishedAt = publishedAt,
+    discoveredAt = discoveredAt,
+    contentHash = contentHash,
 )
 
 fun normalizeArticle(article: RawArticle, discoveredAt: Instant): NormalizedDocument {
