@@ -20,3 +20,9 @@ info:
   app:
     name: catalyst-radar
     version: 0.0.1-SNAPSHOT
+
+catalyst:
+  polygon:
+    base-url: https://api.polygon.io
+    # Never commit a real key: export POLYGON_API_KEY in the environment.
+    api-key: ${POLYGON_API_KEY:}
