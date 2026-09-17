@@ -26,3 +26,7 @@ catalyst:
     base-url: https://api.polygon.io
     # Never commit a real key: export POLYGON_API_KEY in the environment.
     api-key: ${POLYGON_API_KEY:}
+  finnhub:
+    base-url: https://finnhub.io
+    # Never commit a real key: export FINNHUB_API_KEY in the environment.
+    api-key: ${FINNHUB_API_KEY:}
