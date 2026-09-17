@@ -1,0 +1,4138 @@
+﻿[
+    {
+        "ticker":  "A",
+        "name":  "Agilent Technologies Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Biotechnology: Laboratory Analytical Instruments",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AAPL",
+        "name":  "Apple Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Manufacturing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ABBV",
+        "name":  "AbbVie Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Pharmaceutical Preparations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ABNB",
+        "name":  "Airbnb Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Diversified Commercial Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ABT",
+        "name":  "Abbott Laboratories",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Pharmaceutical Preparations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ACGL",
+        "name":  "Arch Capital Group Ltd.",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Property-Casualty Insurers",
+        "country":  "BM"
+    },
+    {
+        "ticker":  "ACN",
+        "name":  "Accenture plc Class A Ordinary Shares (Ireland)",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "IE"
+    },
+    {
+        "ticker":  "ADBE",
+        "name":  "Adobe Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ADI",
+        "name":  "Analog Devices Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ADM",
+        "name":  "Archer-Daniels-Midland Company",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Packaged Foods",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ADP",
+        "name":  "Automatic Data Processing Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "EDP Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ADSK",
+        "name":  "Autodesk Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AEE",
+        "name":  "Ameren Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Power Generation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AEP",
+        "name":  "American Electric Power Company Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AES",
+        "name":  "The AES Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AFL",
+        "name":  "AFLAC Incorporated",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Accident \u0026Health Insurance",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AIG",
+        "name":  "American International Group Inc. New",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Property-Casualty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AIZ",
+        "name":  "Assurant Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Property-Casualty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AJG",
+        "name":  "Arthur J. Gallagher \u0026 Co.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Specialty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AKAM",
+        "name":  "Akamai Technologies Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ALAB",
+        "name":  "Astera Labs Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ALB",
+        "name":  "Albemarle Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Major Chemicals",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ALGN",
+        "name":  "Align Technology Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Industrial Specialties",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ALL",
+        "name":  "Allstate Corporation (The)",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Property-Casualty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ALLE",
+        "name":  "Allegion plc",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Diversified Commercial Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ALNY",
+        "name":  "Alnylam Pharmaceuticals Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Pharmaceutical Preparations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AMAT",
+        "name":  "Applied Materials Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AMCR",
+        "name":  "Amcor plc",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Miscellaneous manufacturing industries",
+        "country":  "GB"
+    },
+    {
+        "ticker":  "AMD",
+        "name":  "Advanced Micro Devices Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AME",
+        "name":  "AMETEK Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AMGN",
+        "name":  "Amgen Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Biological Products (No Diagnostic Substances)",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AMP",
+        "name":  "Ameriprise Financial Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Investment Managers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AMT",
+        "name":  "American Tower Corporation (REIT)",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AMZN",
+        "name":  "Amazon.com Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Catalog/Specialty Distribution",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ANET",
+        "name":  "Arista Networks Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Telecommunications",
+        "industry":  "Computer Communications Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AON",
+        "name":  "Aon plc Class A Ordinary Shares (Ireland)",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Specialty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AOS",
+        "name":  "A.O. Smith Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Consumer Electronics/Appliances",
+        "country":  "US"
+    },
+    {
+        "ticker":  "APA",
+        "name":  "APA Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Energy",
+        "industry":  "Oil \u0026 Gas Production",
+        "country":  "US"
+    },
+    {
+        "ticker":  "APD",
+        "name":  "Air Products and Chemicals Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Basic Materials",
+        "industry":  "Major Chemicals",
+        "country":  "US"
+    },
+    {
+        "ticker":  "APH",
+        "name":  "Amphenol Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Electrical Products",
+        "country":  "US"
+    },
+    {
+        "ticker":  "APO",
+        "name":  "Apollo Global Management Inc. (New)",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Investment Managers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "APP",
+        "name":  "Applovin Corporation Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Programming Data Processing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "APTV",
+        "name":  "Aptiv PLC",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Auto Parts:O.E.M.",
+        "country":  "GB"
+    },
+    {
+        "ticker":  "ARE",
+        "name":  "Alexandria Real Estate Equities Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ARES",
+        "name":  "Ares Management Corporation Class A",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Investment Managers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ARM",
+        "name":  "Arm Holdings plc",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "GB"
+    },
+    {
+        "ticker":  "ASML",
+        "name":  "ASML Holding N.V. New York Registry Shares",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "NL"
+    },
+    {
+        "ticker":  "ATO",
+        "name":  "Atmos Energy Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Oil/Gas Transmission",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AVGO",
+        "name":  "Broadcom Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AVY",
+        "name":  "Avery Dennison Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Containers/Packaging",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AWK",
+        "name":  "American Water Works Company Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Water Supply",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AXON",
+        "name":  "Axon Enterprise Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Ordnance And Accessories",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AXP",
+        "name":  "American Express Company",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Finance: Consumer Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "AZO",
+        "name":  "AutoZone Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Auto \u0026 Home Supply Stores",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BA",
+        "name":  "Boeing Company (The)",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Aerospace",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BAC",
+        "name":  "Bank of America Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BALL",
+        "name":  "Ball Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Containers/Packaging",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BAX",
+        "name":  "Baxter International Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical/Dental Instruments",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BBY",
+        "name":  "Best Buy Co. Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Consumer Electronics/Video Chains",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BDX",
+        "name":  "Becton Dickinson and Company",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical/Dental Instruments",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BEN",
+        "name":  "Franklin Templeton Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Investment Managers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BF.B",
+        "name":  "Brown Forman Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Distillers \u0026 Vintners",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BG",
+        "name":  "Bunge Limited Common Shares",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Packaged Foods",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BIIB",
+        "name":  "Biogen Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Biological Products (No Diagnostic Substances)",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BKNG",
+        "name":  "Booking Holdings Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Transportation Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BKR",
+        "name":  "Baker Hughes Company Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Oil and Gas Field Machinery",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BLDR",
+        "name":  "Builders FirstSource Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "RETAIL: Building Materials",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BLK",
+        "name":  "BlackRock Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Investment Bankers/Brokers/Service",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BMY",
+        "name":  "Bristol-Myers Squibb Company",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Pharmaceutical Preparations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BNY",
+        "name":  "The Bank of New York Mellon Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BR",
+        "name":  "Broadridge Financial Solutions Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BRK.B",
+        "name":  "Berkshire Hathaway Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Financials",
+        "industry":  "Multi-Sector Holdings",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BRO",
+        "name":  "Brown \u0026 Brown Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Specialty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BSX",
+        "name":  "Boston Scientific Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical/Dental Instruments",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BX",
+        "name":  "Blackstone Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Investment Managers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "BXP",
+        "name":  "BXP Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "C",
+        "name":  "Citigroup Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CAH",
+        "name":  "Cardinal Health Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Other Pharmaceuticals",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CARR",
+        "name":  "Carrier Global Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CASY",
+        "name":  "Casey\u0027s General Stores Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Retail-Auto Dealers and Gas Stations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CAT",
+        "name":  "Caterpillar Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Construction/Ag Equipment/Trucks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CB",
+        "name":  "Chubb Limited ",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Property-Casualty Insurers",
+        "country":  "CH"
+    },
+    {
+        "ticker":  "CBOE",
+        "name":  "Cboe Global Markets",
+        "exchange":  "Cboe",
+        "sector":  "Financials",
+        "industry":  "Financial Exchanges \u0026 Data",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CBRE",
+        "name":  "CBRE Group Inc Common Stock Class A",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Real Estate",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CCEP",
+        "name":  "Coca-Cola Europacific Partners plc",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Staples",
+        "industry":  "Beverages (Production/Distribution)",
+        "country":  "GB"
+    },
+    {
+        "ticker":  "CCI",
+        "name":  "Crown Castle Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CCL",
+        "name":  "Carnival Corporation Ltd. Common Shares",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Marine Transportation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CDNS",
+        "name":  "Cadence Design Systems Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CDW",
+        "name":  "CDW Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Catalog/Specialty Distribution",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CEG",
+        "name":  "Constellation Energy Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CF",
+        "name":  "CF Industries Holdings Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Agricultural Chemicals",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CFG",
+        "name":  "Citizens Financial Group Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CHD",
+        "name":  "Church \u0026 Dwight Company Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Package Goods/Cosmetics",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CHRW",
+        "name":  "C.H. Robinson Worldwide Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Integrated Freight \u0026 Logistics",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CHTR",
+        "name":  "Charter Communications Inc. Class A Common Stock New",
+        "exchange":  "Nasdaq",
+        "sector":  "Telecommunications",
+        "industry":  "Cable \u0026 Other Pay Television Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CI",
+        "name":  "The Cigna Group",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical Specialities",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CIEN",
+        "name":  "Ciena Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Telecommunications Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CINF",
+        "name":  "Cincinnati Financial Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Property-Casualty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CL",
+        "name":  "Colgate-Palmolive Company",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Package Goods/Cosmetics",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CLX",
+        "name":  "Clorox Company (The)",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Specialty Chemicals",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CMCSA",
+        "name":  "Comcast Corporation Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Telecommunications",
+        "industry":  "Cable \u0026 Other Pay Television Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CME",
+        "name":  "CME Group Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Investment Bankers/Brokers/Service",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CMG",
+        "name":  "Chipotle Mexican Grill Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Restaurants",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CMI",
+        "name":  "Cummins Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CMS",
+        "name":  "CMS Energy Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Power Generation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CNC",
+        "name":  "Centene Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical Specialities",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CNP",
+        "name":  "CenterPoint Energy Inc (Holding Co)",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "COF",
+        "name":  "Capital One Financial Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "COHR",
+        "name":  "Coherent Corp.",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Electronic Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "COIN",
+        "name":  "Coinbase Global Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Finance: Consumer Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "COO",
+        "name":  "The Cooper Companies Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Ophthalmic Goods",
+        "country":  "US"
+    },
+    {
+        "ticker":  "COP",
+        "name":  "ConocoPhillips",
+        "exchange":  "NYSE",
+        "sector":  "Energy",
+        "industry":  "Integrated oil Companies",
+        "country":  "US"
+    },
+    {
+        "ticker":  "COR",
+        "name":  "Cencora Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Other Pharmaceuticals",
+        "country":  "US"
+    },
+    {
+        "ticker":  "COST",
+        "name":  "Costco Wholesale Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Department/Specialty Retail Stores",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CPAY",
+        "name":  "Corpay Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CPRT",
+        "name":  "Copart Inc. (DE)",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Retail-Auto Dealers and Gas Stations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CPT",
+        "name":  "Camden Property Trust",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CRH",
+        "name":  "CRH PLC",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Building Materials",
+        "country":  "IE"
+    },
+    {
+        "ticker":  "CRL",
+        "name":  "Charles River Laboratories International Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Commercial Physical \u0026 Biological Resarch",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CRM",
+        "name":  "Salesforce Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CRWD",
+        "name":  "CrowdStrike Holdings Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CRWV",
+        "name":  "CoreWeave Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CSCO",
+        "name":  "Cisco Systems Inc. Common Stock (DE)",
+        "exchange":  "Nasdaq",
+        "sector":  "Telecommunications",
+        "industry":  "Computer Communications Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CSGP",
+        "name":  "CoStar Group Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Real Estate",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CSX",
+        "name":  "CSX Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Railroads",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CTAS",
+        "name":  "Cintas Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Garments and Clothing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CTSH",
+        "name":  "Cognizant Technology Solutions Corporation Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "EDP Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CTVA",
+        "name":  "Corteva Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Farming/Seeds/Milling",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CVNA",
+        "name":  "Carvana Co. Class A",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Retail-Auto Dealers and Gas Stations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CVS",
+        "name":  "CVS Health Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Retail-Drug Stores and Proprietary Stores",
+        "country":  "US"
+    },
+    {
+        "ticker":  "CVX",
+        "name":  "Chevron Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Energy",
+        "industry":  "Integrated oil Companies",
+        "country":  "US"
+    },
+    {
+        "ticker":  "D",
+        "name":  "Dominion Energy Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DAL",
+        "name":  "Delta Air Lines Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Air Freight/Delivery Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DASH",
+        "name":  "DoorDash Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DD",
+        "name":  "DuPont de Nemours Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Major Chemicals",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DDOG",
+        "name":  "Datadog Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DE",
+        "name":  "Deere \u0026 Company",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DECK",
+        "name":  "Deckers Outdoor Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Shoe Manufacturing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DELL",
+        "name":  "Dell Technologies Inc. Class C",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Computer Manufacturing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DG",
+        "name":  "Dollar General Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Department/Specialty Retail Stores",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DGX",
+        "name":  "Quest Diagnostics Incorporated",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical Specialities",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DHI",
+        "name":  "D.R. Horton Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Homebuilding",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DHR",
+        "name":  "Danaher Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DIS",
+        "name":  "Walt Disney Company (The)",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Services-Misc. Amusement \u0026 Recreation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DLR",
+        "name":  "Digital Realty Trust Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DLTR",
+        "name":  "Dollar Tree Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Department/Specialty Retail Stores",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DOC",
+        "name":  "Healthpeak Properties Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DOV",
+        "name":  "Dover Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DOW",
+        "name":  "Dow Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Major Chemicals",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DPZ",
+        "name":  "Domino\u0027s Pizza Inc",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Food Distributors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DRI",
+        "name":  "Darden Restaurants Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Restaurants",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DTE",
+        "name":  "DTE Energy Company",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DUK",
+        "name":  "Duke Energy Corporation (Holding Company)",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Power Generation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DVA",
+        "name":  "DaVita Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Misc Health and Biotechnology Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DVN",
+        "name":  "Devon Energy Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Energy",
+        "industry":  "Oil \u0026 Gas Production",
+        "country":  "US"
+    },
+    {
+        "ticker":  "DXCM",
+        "name":  "DexCom Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Medical/Dental Instruments",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EBAY",
+        "name":  "eBay Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ECHO",
+        "name":  "EchoStar  Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Telecommunications Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ECL",
+        "name":  "Ecolab Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Package Goods/Cosmetics",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ED",
+        "name":  "Consolidated Edison Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Power Generation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EFX",
+        "name":  "Equifax Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Finance: Consumer Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EG",
+        "name":  "Everest Group Ltd.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Property-Casualty Insurers",
+        "country":  "BM"
+    },
+    {
+        "ticker":  "EIX",
+        "name":  "Edison International",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EL",
+        "name":  "Estee Lauder Companies Inc. (The)",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Package Goods/Cosmetics",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ELV",
+        "name":  "Elevance Health Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical Specialities",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EME",
+        "name":  "EMCOR Group Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Engineering \u0026 Construction",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EMR",
+        "name":  "Emerson Electric Company",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Consumer Electronics/Appliances",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EOG",
+        "name":  "EOG Resources Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Energy",
+        "industry":  "Oil \u0026 Gas Production",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EQIX",
+        "name":  "Equinix Inc. Common Stock REIT",
+        "exchange":  "Nasdaq",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EQT",
+        "name":  "EQT Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Energy",
+        "industry":  "Oil \u0026 Gas Production",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ERIE",
+        "name":  "Erie Indemnity Company Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Specialty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ES",
+        "name":  "Eversource Energy (D/B/A)",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ESS",
+        "name":  "Essex Property Trust Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ETN",
+        "name":  "Eaton Corporation PLC",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "IE"
+    },
+    {
+        "ticker":  "ETR",
+        "name":  "Entergy Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EVRG",
+        "name":  "Evergy Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Utilities",
+        "industry":  "Power Generation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EW",
+        "name":  "Edwards Lifesciences Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Industrial Specialties",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EXC",
+        "name":  "Exelon Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Utilities",
+        "industry":  "Power Generation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EXE",
+        "name":  "Expand Energy Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Energy",
+        "industry":  "Oil \u0026 Gas Production",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EXPD",
+        "name":  "Expeditors International of Washington Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Integrated Freight \u0026 Logistics",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EXPE",
+        "name":  "Expedia Group Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Transportation Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "EXR",
+        "name":  "Extra Space Storage Inc",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "F",
+        "name":  "Ford Motor Company",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Auto Manufacturing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FANG",
+        "name":  "Diamondback Energy Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Energy",
+        "industry":  "Oil \u0026 Gas Production",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FAST",
+        "name":  "Fastenal Company",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "RETAIL: Building Materials",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FCX",
+        "name":  "Freeport-McMoRan Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Basic Materials",
+        "industry":  "Metal Mining",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FDS",
+        "name":  "FactSet Research Systems Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Programming Data Processing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FDX",
+        "name":  "FedEx Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Air Freight/Delivery Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FDXF",
+        "name":  "FedEx Freight Holding Company Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Air Freight/Delivery Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FE",
+        "name":  "FirstEnergy Corp.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FERG",
+        "name":  "Ferguson Enterprises Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Miscellaneous",
+        "industry":  "Miscellaneous",
+        "country":  "GB"
+    },
+    {
+        "ticker":  "FFIV",
+        "name":  "F5 Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Telecommunications",
+        "industry":  "Computer Communications Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FICO",
+        "name":  "Fair Isaac Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FIS",
+        "name":  "Fidelity National Information Services Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FISV",
+        "name":  "Fiserv Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FITB",
+        "name":  "Fifth Third Bancorp",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FIX",
+        "name":  "Comfort Systems USA Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Engineering \u0026 Construction",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FLEX",
+        "name":  "Flex Ltd.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Electrical Products",
+        "country":  "SG"
+    },
+    {
+        "ticker":  "FOX",
+        "name":  "Fox Corporation Class B",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Broadcasting",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FOXA",
+        "name":  "Fox Corporation Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Broadcasting",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FRT",
+        "name":  "Federal Realty Investment Trust",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FSLR",
+        "name":  "First Solar Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FTNT",
+        "name":  "Fortinet Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer peripheral equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "FTV",
+        "name":  "Fortive Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GD",
+        "name":  "General Dynamics Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Marine Transportation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GDDY",
+        "name":  "GoDaddy Inc. Class A",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "EDP Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GE",
+        "name":  "GE Aerospace",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Consumer Electronics/Appliances",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GEHC",
+        "name":  "GE HealthCare Technologies Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Medical Electronics",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GEN",
+        "name":  "Gen Digital Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GEV",
+        "name":  "GE Vernova Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Consumer Electronics/Appliances",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GILD",
+        "name":  "Gilead Sciences Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Biological Products (No Diagnostic Substances)",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GIS",
+        "name":  "General Mills Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Packaged Foods",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GL",
+        "name":  "Globe Life Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Life Insurance",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GLW",
+        "name":  "Corning Incorporated",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Telecommunications Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GM",
+        "name":  "General Motors Company",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Auto Manufacturing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GNRC",
+        "name":  "Generac Holdlings Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Metal Fabrications",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GOOG",
+        "name":  "Alphabet Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Programming Data Processing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GOOGL",
+        "name":  "Alphabet Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Programming Data Processing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GPC",
+        "name":  "Genuine Parts Company",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Automotive Aftermarket",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GPN",
+        "name":  "Global Payments Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GRMN",
+        "name":  "Garmin Ltd. Common Stock (Switzerland)",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "CH"
+    },
+    {
+        "ticker":  "GS",
+        "name":  "Goldman Sachs Group Inc. (The)",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Investment Bankers/Brokers/Service",
+        "country":  "US"
+    },
+    {
+        "ticker":  "GWW",
+        "name":  "W.W. Grainger Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Office Equipment/Supplies/Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HAL",
+        "name":  "Halliburton Company",
+        "exchange":  "NYSE",
+        "sector":  "Energy",
+        "industry":  "Oilfield Services/Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HAS",
+        "name":  "Hasbro Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Recreational Games/Products/Toys",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HBAN",
+        "name":  "Huntington Bancshares Incorporated",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HCA",
+        "name":  "HCA Healthcare Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Hospital/Nursing Management",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HD",
+        "name":  "Home Depot Inc. (The)",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "RETAIL: Building Materials",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HIG",
+        "name":  "The Hartford Insurance Group Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Property-Casualty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HII",
+        "name":  "Huntington Ingalls Industries Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Marine Transportation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HLT",
+        "name":  "Hilton Worldwide Holdings Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Hotels/Resorts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HON",
+        "name":  "Honeywell International Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Aerospace",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HONA",
+        "name":  "Honeywell Aerospace Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Aerospace",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HOOD",
+        "name":  "Robinhood Markets Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Investment Bankers/Brokers/Service",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HPE",
+        "name":  "Hewlett Packard Enterprise Company",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Retail: Computer Software \u0026 Peripheral Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HPQ",
+        "name":  "HP Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Computer Manufacturing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HRL",
+        "name":  "Hormel Foods Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Meat/Poultry/Fish",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HSIC",
+        "name":  "Henry Schein Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Medical Specialities",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HST",
+        "name":  "Host Hotels \u0026 Resorts Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HSY",
+        "name":  "The Hershey Company",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Specialty Foods",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HUBB",
+        "name":  "Hubbell Inc",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Electrical Products",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HUM",
+        "name":  "Humana Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical Specialities",
+        "country":  "US"
+    },
+    {
+        "ticker":  "HWM",
+        "name":  "Howmet Aerospace Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Metal Fabrications",
+        "country":  "US"
+    },
+    {
+        "ticker":  "IBKR",
+        "name":  "Interactive Brokers Group Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Investment Bankers/Brokers/Service",
+        "country":  "US"
+    },
+    {
+        "ticker":  "IBM",
+        "name":  "International Business Machines Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Computer Manufacturing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ICE",
+        "name":  "Intercontinental Exchange Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Investment Bankers/Brokers/Service",
+        "country":  "US"
+    },
+    {
+        "ticker":  "IDXX",
+        "name":  "IDEXX Laboratories Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: In Vitro \u0026 In Vivo Diagnostic Substances",
+        "country":  "US"
+    },
+    {
+        "ticker":  "IEX",
+        "name":  "IDEX Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Fluid Controls",
+        "country":  "US"
+    },
+    {
+        "ticker":  "IFF",
+        "name":  "International Flavors \u0026 Fragrances Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Major Chemicals",
+        "country":  "US"
+    },
+    {
+        "ticker":  "INCY",
+        "name":  "Incyte Corp.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Commercial Physical \u0026 Biological Resarch",
+        "country":  "US"
+    },
+    {
+        "ticker":  "INTC",
+        "name":  "Intel Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "INTU",
+        "name":  "Intuit Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "INVH",
+        "name":  "Invitation Homes Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Real Estate",
+        "country":  "US"
+    },
+    {
+        "ticker":  "IP",
+        "name":  "International Paper Company",
+        "exchange":  "NYSE",
+        "sector":  "Basic Materials",
+        "industry":  "Paper",
+        "country":  "US"
+    },
+    {
+        "ticker":  "IQV",
+        "name":  "IQVIA Holdings Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Commercial Physical \u0026 Biological Resarch",
+        "country":  "US"
+    },
+    {
+        "ticker":  "IR",
+        "name":  "Ingersoll Rand Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "IRM",
+        "name":  "Iron Mountain Incorporated (Delaware)Common Stock REIT",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ISRG",
+        "name":  "Intuitive Surgical Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Industrial Specialties",
+        "country":  "US"
+    },
+    {
+        "ticker":  "IT",
+        "name":  "Gartner Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Other Consumer Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ITW",
+        "name":  "Illinois Tool Works Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "IVZ",
+        "name":  "Invesco Ltd",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Investment Managers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "J",
+        "name":  "Jacobs Solutions Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Military/Government/Technical",
+        "country":  "US"
+    },
+    {
+        "ticker":  "JBHT",
+        "name":  "J.B. Hunt Transport Services Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Trucking Freight/Courier Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "JBL",
+        "name":  "Jabil Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Electrical Products",
+        "country":  "US"
+    },
+    {
+        "ticker":  "JCI",
+        "name":  "Johnson Controls International plc Ordinary Share",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "CH"
+    },
+    {
+        "ticker":  "JKHY",
+        "name":  "Jack Henry \u0026 Associates Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "EDP Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "JNJ",
+        "name":  "Johnson \u0026 Johnson",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Pharmaceutical Preparations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "JPM",
+        "name":  "JP Morgan Chase \u0026 Co.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "KDP",
+        "name":  "Keurig Dr Pepper Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Staples",
+        "industry":  "Beverages (Production/Distribution)",
+        "country":  "US"
+    },
+    {
+        "ticker":  "KEY",
+        "name":  "KeyCorp",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "KEYS",
+        "name":  "Keysight Technologies Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "KHC",
+        "name":  "The Kraft Heinz Company",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Staples",
+        "industry":  "Packaged Foods",
+        "country":  "US"
+    },
+    {
+        "ticker":  "KIM",
+        "name":  "Kimco Realty Corporation (HC)",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "KKR",
+        "name":  "KKR \u0026 Co. Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Investment Managers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "KLAC",
+        "name":  "KLA Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Electronic Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "KMB",
+        "name":  "Kimberly-Clark Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Containers/Packaging",
+        "country":  "US"
+    },
+    {
+        "ticker":  "KMI",
+        "name":  "Kinder Morgan Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Natural Gas Distribution",
+        "country":  "US"
+    },
+    {
+        "ticker":  "KO",
+        "name":  "Coca-Cola Company (The)",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Beverages (Production/Distribution)",
+        "country":  "US"
+    },
+    {
+        "ticker":  "KR",
+        "name":  "Kroger Company (The)",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Food Chains",
+        "country":  "US"
+    },
+    {
+        "ticker":  "KVUE",
+        "name":  "Kenvue Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Package Goods/Cosmetics",
+        "country":  "US"
+    },
+    {
+        "ticker":  "L",
+        "name":  "Loews Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Property-Casualty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LDOS",
+        "name":  "Leidos Holdings Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "EDP Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LEN",
+        "name":  "Lennar Corporation Class A",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Homebuilding",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LH",
+        "name":  "Labcorp Holdings Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical Specialities",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LHX",
+        "name":  "L3Harris Technologies Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LII",
+        "name":  "Lennox International Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LIN",
+        "name":  "Linde plc",
+        "exchange":  "Nasdaq",
+        "sector":  "Basic Materials",
+        "industry":  "Major Chemicals",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LITE",
+        "name":  "Lumentum Holdings Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Telecommunications",
+        "industry":  "Telecommunications Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LLY",
+        "name":  "Eli Lilly and Company",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Pharmaceutical Preparations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LMT",
+        "name":  "Lockheed Martin Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Military/Government/Technical",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LNT",
+        "name":  "Alliant Energy Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Utilities",
+        "industry":  "Power Generation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LOW",
+        "name":  "Lowe\u0027s Companies Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "RETAIL: Building Materials",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LRCX",
+        "name":  "Lam Research Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LULU",
+        "name":  "lululemon athletica inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Apparel",
+        "country":  "CA"
+    },
+    {
+        "ticker":  "LUV",
+        "name":  "Southwest Airlines Company",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Air Freight/Delivery Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LVS",
+        "name":  "Las Vegas Sands Corp.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Hotels/Resorts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "LYB",
+        "name":  "LyondellBasell Industries NV Ordinary Shares Class A (Netherlands)",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Major Chemicals",
+        "country":  "NL"
+    },
+    {
+        "ticker":  "LYV",
+        "name":  "Live Nation Entertainment Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Services-Misc. Amusement \u0026 Recreation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MA",
+        "name":  "Mastercard Incorporated",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MAA",
+        "name":  "Mid-America Apartment Communities Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MAR",
+        "name":  "Marriott International Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Hotels/Resorts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MAS",
+        "name":  "Masco Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Specialties",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MCD",
+        "name":  "McDonald\u0027s Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Restaurants",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MCHP",
+        "name":  "Microchip Technology Incorporated",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MCK",
+        "name":  "McKesson Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Other Pharmaceuticals",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MCO",
+        "name":  "Moody\u0027s Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Finance: Consumer Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MDLZ",
+        "name":  "Mondelez International Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Staples",
+        "industry":  "Packaged Foods",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MDT",
+        "name":  "Medtronic plc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Electromedical \u0026 Electrotherapeutic Apparatus",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MELI",
+        "name":  "MercadoLibre Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "AR"
+    },
+    {
+        "ticker":  "MET",
+        "name":  "MetLife Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Life Insurance",
+        "country":  "US"
+    },
+    {
+        "ticker":  "META",
+        "name":  "Meta Platforms Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Programming Data Processing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MGM",
+        "name":  "MGM Resorts International",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Hotels/Resorts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MKC",
+        "name":  "McCormick \u0026 Company Incorporated",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Packaged Foods",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MLM",
+        "name":  "Martin Marietta Materials Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Mining \u0026 Quarrying of Nonmetallic Minerals (No Fuels)",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MMM",
+        "name":  "3M Company",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical/Dental Instruments",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MNST",
+        "name":  "Monster Beverage Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Staples",
+        "industry":  "Beverages (Production/Distribution)",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MO",
+        "name":  "Altria Group Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  " Medicinal Chemicals and Botanical Products ",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MOS",
+        "name":  "Mosaic Company (The)",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Agricultural Chemicals",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MPC",
+        "name":  "Marathon Petroleum Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Energy",
+        "industry":  "Integrated oil Companies",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MPWR",
+        "name":  "Monolithic Power Systems Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MRK",
+        "name":  "Merck \u0026 Company Inc. Common Stock (new)",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Pharmaceutical Preparations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MRNA",
+        "name":  "Moderna Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Biological Products (No Diagnostic Substances)",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MRSH",
+        "name":  "Marsh",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Specialty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MRVL",
+        "name":  "Marvell Technology Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MS",
+        "name":  "Morgan Stanley",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Investment Bankers/Brokers/Service",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MSCI",
+        "name":  "MSCI Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MSFT",
+        "name":  "Microsoft Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MSI",
+        "name":  "Motorola Solutions Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Radio And Television Broadcasting And Communications Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MSTR",
+        "name":  "Strategy Inc Common Stock Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MTB",
+        "name":  "M\u0026T Bank Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "MTD",
+        "name":  "Mettler-Toledo International Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Biotechnology: Laboratory Analytical Instruments",
+        "country":  "CH"
+    },
+    {
+        "ticker":  "MU",
+        "name":  "Micron Technology Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NBIS",
+        "name":  "Nebius Group N.V. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Programming Data Processing",
+        "country":  "NL"
+    },
+    {
+        "ticker":  "NCLH",
+        "name":  "Norwegian Cruise Line Holdings Ltd.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Marine Transportation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NDAQ",
+        "name":  "Nasdaq Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Investment Bankers/Brokers/Service",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NDSN",
+        "name":  "Nordson Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NEE",
+        "name":  "NextEra Energy Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NEM",
+        "name":  "Newmont Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Basic Materials",
+        "industry":  "Precious Metals",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NFLX",
+        "name":  "Netflix Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Consumer Electronics/Video Chains",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NI",
+        "name":  "NiSource Inc",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Power Generation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NKE",
+        "name":  "Nike Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Shoe Manufacturing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NOC",
+        "name":  "Northrop Grumman Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NOW",
+        "name":  "ServiceNow Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NRG",
+        "name":  "NRG Energy Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NSC",
+        "name":  "Norfolk Southern Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Railroads",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NTAP",
+        "name":  "NetApp Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Electronic Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NTRS",
+        "name":  "Northern Trust Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NUE",
+        "name":  "Nucor Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Steel/Iron Ore",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NVDA",
+        "name":  "NVIDIA Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NVR",
+        "name":  "NVR Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Homebuilding",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NWS",
+        "name":  "News Corporation Class B",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Newspapers/Magazines",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NWSA",
+        "name":  "News Corporation Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Newspapers/Magazines",
+        "country":  "US"
+    },
+    {
+        "ticker":  "NXPI",
+        "name":  "NXP Semiconductors N.V.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "NL"
+    },
+    {
+        "ticker":  "O",
+        "name":  "Realty Income Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ODFL",
+        "name":  "Old Dominion Freight Line Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Trucking Freight/Courier Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "OKE",
+        "name":  "ONEOK Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Oil \u0026 Gas Production",
+        "country":  "US"
+    },
+    {
+        "ticker":  "OMC",
+        "name":  "Omnicom Group Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Advertising",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ON",
+        "name":  "ON Semiconductor Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ORCL",
+        "name":  "Oracle Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ORLY",
+        "name":  "O\u0027Reilly Automotive Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Auto \u0026 Home Supply Stores",
+        "country":  "US"
+    },
+    {
+        "ticker":  "OTIS",
+        "name":  "Otis Worldwide Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Consumer Electronics/Appliances",
+        "country":  "US"
+    },
+    {
+        "ticker":  "OXY",
+        "name":  "Occidental Petroleum Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Energy",
+        "industry":  "Oil \u0026 Gas Production",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PANW",
+        "name":  "Palo Alto Networks Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer peripheral equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PAYX",
+        "name":  "Paychex Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Diversified Commercial Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PCAR",
+        "name":  "PACCAR Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Auto Manufacturing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PCG",
+        "name":  "Pacific Gas \u0026 Electric Co.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Power Generation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PDD",
+        "name":  "PDD Holdings Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "CN"
+    },
+    {
+        "ticker":  "PEG",
+        "name":  "Public Service Enterprise Group Incorporated",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Power Generation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PEP",
+        "name":  "PepsiCo Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Staples",
+        "industry":  "Beverages (Production/Distribution)",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PFE",
+        "name":  "Pfizer Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Pharmaceutical Preparations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PFG",
+        "name":  "Principal Financial Group Inc",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Accident \u0026Health Insurance",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PG",
+        "name":  "Procter \u0026 Gamble Company (The)",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Package Goods/Cosmetics",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PGR",
+        "name":  "Progressive Corporation (The)",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Property-Casualty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PH",
+        "name":  "Parker-Hannifin Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Metal Fabrications",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PHM",
+        "name":  "PulteGroup Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Homebuilding",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PKG",
+        "name":  "Packaging Corporation of America",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Containers/Packaging",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PLD",
+        "name":  "Prologis Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PLTR",
+        "name":  "Palantir Technologies Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PM",
+        "name":  "Philip Morris International Inc",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  " Medicinal Chemicals and Botanical Products ",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PNC",
+        "name":  "PNC Financial Services Group Inc. (The)",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PNR",
+        "name":  "Pentair plc. Ordinary Share",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "CH"
+    },
+    {
+        "ticker":  "PNW",
+        "name":  "Pinnacle West Capital Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PODD",
+        "name":  "Insulet Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Medical/Dental Instruments",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PPG",
+        "name":  "PPG Industries Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Paints/Coatings",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PPL",
+        "name":  "PPL Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PRU",
+        "name":  "Prudential Financial Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Life Insurance",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PSA",
+        "name":  "Public Storage",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PSKY",
+        "name":  "Paramount Skydance Corporation Class B",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Broadcasting",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PSX",
+        "name":  "Phillips 66",
+        "exchange":  "NYSE",
+        "sector":  "Energy",
+        "industry":  "Integrated oil Companies",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PTC",
+        "name":  "PTC Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PWR",
+        "name":  "Quanta Services Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Engineering \u0026 Construction",
+        "country":  "US"
+    },
+    {
+        "ticker":  "PYPL",
+        "name":  "PayPal Holdings Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Diversified Commercial Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "Q",
+        "name":  "Qnity Electronics Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "QCOM",
+        "name":  "QUALCOMM Incorporated",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Radio And Television Broadcasting And Communications Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "RCL",
+        "name":  "Royal Caribbean Cruises Ltd.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Marine Transportation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "RDDT",
+        "name":  "Reddit Inc. Class A",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "EDP Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "REG",
+        "name":  "Regency Centers Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "REGN",
+        "name":  "Regeneron Pharmaceuticals Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Pharmaceutical Preparations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "RF",
+        "name":  "Regions Financial Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "RJF",
+        "name":  "Raymond James Financial Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Investment Bankers/Brokers/Service",
+        "country":  "US"
+    },
+    {
+        "ticker":  "RKLB",
+        "name":  "Rocket Lab Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Military/Government/Technical",
+        "country":  "US"
+    },
+    {
+        "ticker":  "RL",
+        "name":  "Ralph Lauren Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Garments and Clothing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "RMD",
+        "name":  "ResMed Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical/Dental Instruments",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ROK",
+        "name":  "Rockwell Automation Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ROL",
+        "name":  "Rollins Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Diversified Commercial Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ROP",
+        "name":  "Roper Technologies Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ROST",
+        "name":  "Ross Stores Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Clothing/Shoe/Accessory Stores",
+        "country":  "US"
+    },
+    {
+        "ticker":  "RSG",
+        "name":  "Republic Services Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Environmental Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "RTX",
+        "name":  "RTX Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Aerospace",
+        "country":  "US"
+    },
+    {
+        "ticker":  "RVTY",
+        "name":  "Revvity Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Biotechnology: Laboratory Analytical Instruments",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SBAC",
+        "name":  "SBA Communications Corporation Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SBUX",
+        "name":  "Starbucks Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Restaurants",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SCHW",
+        "name":  "Charles Schwab Corporation (The)",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Investment Bankers/Brokers/Service",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SHOP",
+        "name":  "Shopify Inc. Class A Subordinate Voting Shares",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "CA"
+    },
+    {
+        "ticker":  "SHW",
+        "name":  "Sherwin-Williams Company (The)",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "RETAIL: Building Materials",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SJM",
+        "name":  "The J.M. Smucker Company",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Packaged Foods",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SLB",
+        "name":  "SLB Limited Common Shares",
+        "exchange":  "NYSE",
+        "sector":  "Energy",
+        "industry":  "Oilfield Services/Equipment",
+        "country":  "FR"
+    },
+    {
+        "ticker":  "SMCI",
+        "name":  "Super Micro Computer Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Manufacturing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SNA",
+        "name":  "Snap-On Incorporated",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SNDK",
+        "name":  "Sandisk Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Electronic Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SNPS",
+        "name":  "Synopsys Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SO",
+        "name":  "Southern Company (The)",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SOLV",
+        "name":  "Solventum Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical/Dental Instruments",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SPCX",
+        "name":  "Space Exploration Technologies Corp. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Programming Data Processing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SPG",
+        "name":  "Simon Property Group Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SPGI",
+        "name":  "S\u0026P Global Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Finance: Consumer Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SRE",
+        "name":  "DBA Sempra",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Natural Gas Distribution",
+        "country":  "US"
+    },
+    {
+        "ticker":  "STE",
+        "name":  "STERIS plc (Ireland)",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Industrial Specialties",
+        "country":  "US"
+    },
+    {
+        "ticker":  "STLD",
+        "name":  "Steel Dynamics Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Steel/Iron Ore",
+        "country":  "US"
+    },
+    {
+        "ticker":  "STT",
+        "name":  "State Street Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "STX",
+        "name":  "Seagate Technology Holdings PLC Ordinary Shares (Ireland)",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Electronic Components",
+        "country":  "IE"
+    },
+    {
+        "ticker":  "STZ",
+        "name":  "Constellation Brands Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Beverages (Production/Distribution)",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SW",
+        "name":  "Smurfit WestRock plc",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Containers/Packaging",
+        "country":  "IE"
+    },
+    {
+        "ticker":  "SWK",
+        "name":  "Stanley Black \u0026 Decker Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SWKS",
+        "name":  "Skyworks Solutions Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SYF",
+        "name":  "Synchrony Financial",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Finance: Consumer Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SYK",
+        "name":  "Stryker Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical/Dental Instruments",
+        "country":  "US"
+    },
+    {
+        "ticker":  "SYY",
+        "name":  "Sysco Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Food Distributors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "T",
+        "name":  "AT\u0026T Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Telecommunications",
+        "industry":  "Telecommunications Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TAP",
+        "name":  "Molson Coors Beverage Company Class B",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Beverages (Production/Distribution)",
+        "country":  "CA"
+    },
+    {
+        "ticker":  "TDG",
+        "name":  "Transdigm Group Incorporated",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Military/Government/Technical",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TDY",
+        "name":  "Teledyne Technologies Incorporated",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TECH",
+        "name":  "Bio-Techne Corp",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Biological Products (No Diagnostic Substances)",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TEL",
+        "name":  "TE Connectivity plc",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Electronic Components",
+        "country":  "IE"
+    },
+    {
+        "ticker":  "TER",
+        "name":  "Teradyne Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Electrical Products",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TFC",
+        "name":  "Truist Financial Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TGT",
+        "name":  "Target Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Department/Specialty Retail Stores",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TJX",
+        "name":  "TJX Companies Inc. (The)",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Clothing/Shoe/Accessory Stores",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TKO",
+        "name":  "TKO Group Holdings Inc. Class A",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Services-Misc. Amusement \u0026 Recreation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TMO",
+        "name":  "Thermo Fisher Scientific Inc",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TMUS",
+        "name":  "T-Mobile US Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Telecommunications",
+        "industry":  "Telecommunications Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TPL",
+        "name":  "Texas Pacific Land Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Energy",
+        "industry":  "Oil \u0026 Gas Production",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TPR",
+        "name":  "Tapestry Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Apparel",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TRGP",
+        "name":  "Targa Resources Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Natural Gas Distribution",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TRI",
+        "name":  "Thomson Reuters Corporation Common Shares",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Publishing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TRMB",
+        "name":  "Trimble Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TROW",
+        "name":  "T. Rowe Price Group Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Investment Managers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TRV",
+        "name":  "The Travelers Companies Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Property-Casualty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TSCO",
+        "name":  "Tractor Supply Company",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "RETAIL: Building Materials",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TSLA",
+        "name":  "Tesla Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Auto Manufacturing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TSN",
+        "name":  "Tyson Foods Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Staples",
+        "industry":  "Meat/Poultry/Fish",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TT",
+        "name":  "Trane Technologies plc",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Auto Parts:O.E.M.",
+        "country":  "IE"
+    },
+    {
+        "ticker":  "TTD",
+        "name":  "The Trade Desk Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Programming Data Processing",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TTWO",
+        "name":  "Take-Two Interactive Software Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TXN",
+        "name":  "Texas Instruments Incorporated",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Semiconductors",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TXT",
+        "name":  "Textron Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Aerospace",
+        "country":  "US"
+    },
+    {
+        "ticker":  "TYL",
+        "name":  "Tyler Technologies Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "UAL",
+        "name":  "United Airlines Holdings Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Air Freight/Delivery Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "UBER",
+        "name":  "Uber Technologies Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "UDR",
+        "name":  "UDR Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "UHS",
+        "name":  "Universal Health Services Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Hospital/Nursing Management",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ULTA",
+        "name":  "Ulta Beauty Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Other Specialty Stores",
+        "country":  "US"
+    },
+    {
+        "ticker":  "UNH",
+        "name":  "UnitedHealth Group Incorporated Common Stock (DE)",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical Specialities",
+        "country":  "US"
+    },
+    {
+        "ticker":  "UNP",
+        "name":  "Union Pacific Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Railroads",
+        "country":  "US"
+    },
+    {
+        "ticker":  "UPS",
+        "name":  "United Parcel Service Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Trucking Freight/Courier Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "URI",
+        "name":  "United Rentals Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Diversified Commercial Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "USB",
+        "name":  "U.S. Bancorp",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "V",
+        "name":  "Visa Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Business Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VEEV",
+        "name":  "Veeva Systems Inc. Class A",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VICI",
+        "name":  "VICI Properties Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VLO",
+        "name":  "Valero Energy Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Energy",
+        "industry":  "Integrated oil Companies",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VLTO",
+        "name":  "Veralto Corp",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Electrical Products",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VMC",
+        "name":  "Vulcan Materials Company (Holding Company)",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Mining \u0026 Quarrying of Nonmetallic Minerals (No Fuels)",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VMRK",
+        "name":  "Vivmark Residential Common Shares of Beneficial Interest",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VRSK",
+        "name":  "Verisk Analytics Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "EDP Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VRSN",
+        "name":  "VeriSign Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "EDP Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VRT",
+        "name":  "Vertiv Holdings LLC Class A",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VRTX",
+        "name":  "Vertex Pharmaceuticals Incorporated",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Pharmaceutical Preparations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VST",
+        "name":  "Vistra Corp.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Electric Utilities: Central",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VTR",
+        "name":  "Ventas Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VTRS",
+        "name":  "Viatris Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Pharmaceutical Preparations",
+        "country":  "US"
+    },
+    {
+        "ticker":  "VZ",
+        "name":  "Verizon Communications Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Telecommunications",
+        "industry":  "Telecommunications Equipment",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WAB",
+        "name":  "Westinghouse Air Brake Technologies Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Railroads",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WAT",
+        "name":  "Waters Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Biotechnology: Laboratory Analytical Instruments",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WBD",
+        "name":  "Warner Bros. Discovery Inc. Series A",
+        "exchange":  "Nasdaq",
+        "sector":  "Telecommunications",
+        "industry":  "Cable \u0026 Other Pay Television Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WDAY",
+        "name":  "Workday Inc. Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "EDP Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WDC",
+        "name":  "Western Digital Corporation",
+        "exchange":  "Nasdaq",
+        "sector":  "Technology",
+        "industry":  "Electronic Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WEC",
+        "name":  "WEC Energy Group Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Power Generation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WELL",
+        "name":  "Welltower Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WFC",
+        "name":  "Wells Fargo \u0026 Company",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Major Banks",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WM",
+        "name":  "Waste Management Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Environmental Services",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WMB",
+        "name":  "Williams Companies Inc. (The)",
+        "exchange":  "NYSE",
+        "sector":  "Utilities",
+        "industry":  "Natural Gas Distribution",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WMT",
+        "name":  "Walmart Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Department/Specialty Retail Stores",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WRB",
+        "name":  "W.R. Berkley Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Finance",
+        "industry":  "Property-Casualty Insurers",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WSM",
+        "name":  "Williams-Sonoma Inc. Common Stock (DE)",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Home Furnishings",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WST",
+        "name":  "West Pharmaceutical Services Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Medical/Dental Instruments",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WTW",
+        "name":  "Willis Towers Watson Public Limited Company",
+        "exchange":  "Nasdaq",
+        "sector":  "Finance",
+        "industry":  "Specialty Insurers",
+        "country":  "GB"
+    },
+    {
+        "ticker":  "WY",
+        "name":  "Weyerhaeuser Company",
+        "exchange":  "NYSE",
+        "sector":  "Real Estate",
+        "industry":  "Real Estate Investment Trusts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "WYNN",
+        "name":  "Wynn Resorts Limited Common stock",
+        "exchange":  "Nasdaq",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Hotels/Resorts",
+        "country":  "US"
+    },
+    {
+        "ticker":  "XEL",
+        "name":  "Xcel Energy Inc.",
+        "exchange":  "Nasdaq",
+        "sector":  "Utilities",
+        "industry":  "Power Generation",
+        "country":  "US"
+    },
+    {
+        "ticker":  "XOM",
+        "name":  "ExxonMobil Holdings Corporation",
+        "exchange":  "NYSE",
+        "sector":  "Energy",
+        "industry":  "Integrated oil Companies",
+        "country":  "US"
+    },
+    {
+        "ticker":  "XYL",
+        "name":  "Xylem Inc. Common Stock New",
+        "exchange":  "NYSE",
+        "sector":  "Industrials",
+        "industry":  "Fluid Controls",
+        "country":  "US"
+    },
+    {
+        "ticker":  "XYZ",
+        "name":  "Block Inc. Class A",
+        "exchange":  "NYSE",
+        "sector":  "Technology",
+        "industry":  "Computer Software: Prepackaged Software",
+        "country":  "US"
+    },
+    {
+        "ticker":  "YUM",
+        "name":  "Yum! Brands Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Consumer Discretionary",
+        "industry":  "Restaurants",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ZBH",
+        "name":  "Zimmer Biomet Holdings Inc.",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Industrial Specialties",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ZBRA",
+        "name":  "Zebra Technologies Corporation Class A",
+        "exchange":  "Nasdaq",
+        "sector":  "Industrials",
+        "industry":  "Industrial Machinery/Components",
+        "country":  "US"
+    },
+    {
+        "ticker":  "ZTS",
+        "name":  "Zoetis Inc. Class A",
+        "exchange":  "NYSE",
+        "sector":  "Health Care",
+        "industry":  "Biotechnology: Pharmaceutical Preparations",
+        "country":  "US"
+    }
+]

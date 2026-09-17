@@ -5,3 +5,8 @@ logging:
   level:
     com.catalystradar: DEBUG
     org.springframework.web: INFO
+
+catalyst:
+  universe:
+    # Seed the S&P 500 + Nasdaq-100 universe on startup (insert-if-absent).
+    seed-on-startup: true
