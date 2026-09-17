@@ -34,7 +34,8 @@ dependencies {
 	testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
 	testImplementation("org.testcontainers:testcontainers-postgresql")
-	testImplementation("org.wiremock:wiremock:3.13.2")
+	// Shaded WireMock server (3.x split the Jetty backend out of the core jar).
+	testImplementation("org.wiremock:wiremock-standalone:3.13.2")
 	testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
