@@ -30,6 +30,48 @@ class EventStore(
     fun findByClusterId(clusterId: UUID): List<CatalystEvent> =
         repository.findByClusterId(clusterId).map { it.toDomain() }
 
+    /**
+     * Bounded filtered feed with keyset pagination. The cursor encodes
+     * the last seen (discoveredAt, id); one extra row is read to know
+     * whether a next page exists.
+     */
+    fun searchEvents(query: EventSearch): EventSearchPage {
+        require(query.limit in 1..100) { "limit must be within 1..100" }
+        val decoded = query.cursor?.let { decodeCursor(it) }
+        val rows = repository.search(
+            ticker = query.ticker,
+            family = query.family?.name,
+            type = query.type?.name,
+            direction = query.direction?.name,
+            from = query.from,
+            to = query.to,
+            cursorTs = decoded?.first,
+            cursorId = decoded?.second,
+            limit = query.limit + 1,
+        )
+        val page = rows.take(query.limit)
+        val next = if (rows.size > query.limit) {
+            val last = page.last()
+            "${last.discoveredAt}|${last.id}"
+        } else {
+            null
+        }
+        return EventSearchPage(
+            events = page.map { EventWithSource(it.toDomain(), it.sourceDocumentId) },
+            nextCursor = next,
+        )
+    }
+
+    private fun decodeCursor(cursor: String): Pair<Instant, UUID> {
+        val parts = cursor.split("|")
+        if (parts.size != 2) throw IllegalArgumentException("invalid cursor: $cursor")
+        try {
+            return Instant.parse(parts[0]) to UUID.fromString(parts[1])
+        } catch (e: RuntimeException) {
+            throw IllegalArgumentException("invalid cursor: $cursor")
+        }
+    }
+
     fun findDetailedByCompanyId(companyId: UUID): List<EventWithSource> =
         repository.findByCompanyId(companyId).map { EventWithSource(it.toDomain(), it.sourceDocumentId) }
 
