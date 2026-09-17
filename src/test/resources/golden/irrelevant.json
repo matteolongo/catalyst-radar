@@ -1,0 +1,14 @@
+{
+  "id": "irrelevant-market-chatter",
+  "article": {
+    "title": "Analysts debate whether tech stocks are overbought",
+    "body": "Market strategists offered mixed views on technology valuations in a panel discussion, with no company-specific news."
+  },
+  "modelOutput": {
+    "document_relevant": false,
+    "events": []
+  },
+  "expectedRelevant": false,
+  "expectedEventCount": 0,
+  "expectedFirstType": null
+}

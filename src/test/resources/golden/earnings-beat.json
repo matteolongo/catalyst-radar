@@ -1,0 +1,32 @@
+{
+  "id": "earnings-beat",
+  "article": {
+    "title": "Nvidia beats quarterly estimates as data-center revenue surges",
+    "body": "Nvidia reported quarterly revenue well above analyst estimates, with data-center sales up sharply year over year."
+  },
+  "modelOutput": {
+    "document_relevant": true,
+    "events": [
+      {
+        "ticker": "NVDA",
+        "family": "EARNINGS",
+        "type": "REVENUE_BEAT",
+        "direction": "POSITIVE",
+        "confidence": 0.95,
+        "magnitude": null,
+        "surprise": 0.7,
+        "materiality": 0.9,
+        "expected_horizon": "WEEKS",
+        "directness": "DIRECT",
+        "event_timestamp": null,
+        "evidence": [
+          {"quote_or_fact": "quarterly revenue well above analyst estimates", "source_offset_hint": null}
+        ],
+        "attributes": []
+      }
+    ]
+  },
+  "expectedRelevant": true,
+  "expectedEventCount": 1,
+  "expectedFirstType": "REVENUE_BEAT"
+}
