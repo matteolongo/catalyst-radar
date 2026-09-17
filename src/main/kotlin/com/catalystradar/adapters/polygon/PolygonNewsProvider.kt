@@ -1,5 +1,6 @@
 package com.catalystradar.adapters.polygon
 
+import com.catalystradar.adapters.http.mapHttpClientError
 import com.catalystradar.ports.NewsFetchRequest
 import com.catalystradar.ports.NewsFetchResult
 import com.catalystradar.ports.NewsProvider
@@ -39,7 +40,7 @@ class PolygonNewsProvider(
                     nextCursor = page.nextUrl,
                 )
             } catch (e: HttpClientErrorException) {
-                throw mapPolygonClientError(e)
+                throw mapHttpClientError("polygon", e)
             } catch (e: HttpServerErrorException) {
                 throw ProviderException.TemporaryUnavailable("polygon: ${e.statusCode}")
             } catch (e: RestClientException) {

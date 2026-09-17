@@ -1,5 +1,6 @@
 package com.catalystradar.adapters.polygon
 
+import com.catalystradar.adapters.http.mapHttpClientError
 import com.catalystradar.ports.CompanyPage
 import com.catalystradar.ports.CompanyReference
 import com.catalystradar.ports.CompanyReferenceProvider
@@ -38,7 +39,7 @@ class PolygonCompanyReferenceProvider(
                     nextCursor = page.nextUrl,
                 )
             } catch (e: HttpClientErrorException) {
-                throw mapPolygonClientError(e)
+                throw mapHttpClientError("polygon", e)
             } catch (e: HttpServerErrorException) {
                 throw ProviderException.TemporaryUnavailable("polygon: ${e.statusCode}")
             } catch (e: RestClientException) {
