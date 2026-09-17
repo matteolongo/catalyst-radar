@@ -8,8 +8,6 @@ import org.springframework.data.convert.WritingConverter
 import org.springframework.data.jdbc.core.convert.JdbcCustomConversions
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import tools.jackson.core.type.TypeReference
-import tools.jackson.databind.ObjectMapper
 
 /**
  * Explicit JSON string wrapper: a global String <-> jsonb converter would
@@ -23,8 +21,6 @@ data class JsonB(val json: String) {
     }
 }
 
-private val jsonMapper: ObjectMapper = ObjectMapper()
-
 @WritingConverter
 class PGvectorToPGobject : Converter<PGvector, PGobject> {
     override fun convert(source: PGvector): PGobject = source
@@ -32,22 +28,8 @@ class PGvectorToPGobject : Converter<PGvector, PGobject> {
 
 @ReadingConverter
 class PGobjectToPGvector : Converter<PGobject, PGvector> {
-    override fun convert(source: PGobject): PGvector = PGvector(source.value)
-}
-
-@WritingConverter
-class StringMapToJsonb : Converter<Map<String, String>, PGobject> {
-    override fun convert(source: Map<String, String>): PGobject =
-        PGobject().apply {
-            type = "jsonb"
-            value = jsonMapper.writeValueAsString(source)
-        }
-}
-
-@ReadingConverter
-class JsonbToStringMap : Converter<PGobject, Map<String, String>> {
-    override fun convert(source: PGobject): Map<String, String> =
-        jsonMapper.readValue(source.value, object : TypeReference<Map<String, String>>() {})
+    override fun convert(source: PGobject): PGvector =
+        PGvector(requireNotNull(source.value) { "vector value must not be null" })
 }
 
 @WritingConverter
@@ -74,8 +56,6 @@ class JdbcConverterConfiguration {
             listOf(
                 PGvectorToPGobject(),
                 PGobjectToPGvector(),
-                StringMapToJsonb(),
-                JsonbToStringMap(),
                 JsonBToPGobject(),
                 PGobjectToJsonB(),
             ),

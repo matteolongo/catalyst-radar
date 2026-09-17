@@ -21,11 +21,9 @@ class ConvertersTest {
     fun `string map survives a jsonb round trip`() {
         val attributes = mapOf("guidance" to "raised", "period" to "FY2026")
 
-        val stored = StringMapToJsonb().convert(attributes)
-        val reloaded = JsonbToStringMap().convert(stored)
+        val stored = attributes.toJsonB()
 
-        assertEquals("jsonb", stored.type)
-        assertEquals(attributes, reloaded)
+        assertEquals(attributes, stored.toStringMap())
     }
 
     @Test
@@ -46,7 +44,7 @@ class ConvertersTest {
             value = """{"a":"b"}"""
         }
 
-        assertEquals(mapOf("a" to "b"), JsonbToStringMap().convert(fromDatabase))
+        assertEquals(mapOf("a" to "b"), JsonB("""{"a":"b"}""").toStringMap())
         assertEquals(JsonB("""{"a":"b"}"""), PGobjectToJsonB().convert(fromDatabase))
     }
 }
