@@ -45,24 +45,28 @@ class CompanyControllerTest {
     }
 
     @Test
-    fun `unknown ticker returns 404`() {
+    fun `unknown ticker returns problem response`() {
         `when`(service.findByTicker(anyString())).thenReturn(null)
 
         mockMvc.get("/v1/companies/NOPE") {
             accept = MediaType.APPLICATION_JSON
         }.andExpect {
             status { isNotFound() }
+            jsonPath("$.code") { value("COMPANY_NOT_FOUND") }
+            jsonPath("$.status") { value(404) }
+            jsonPath("$.requestId") { exists() }
         }
     }
 
     @Test
-    fun `invalid ticker returns 400`() {
+    fun `invalid ticker returns problem response`() {
         `when`(service.findByTicker("!!!")).thenThrow(IllegalArgumentException("invalid ticker: !!!"))
 
         mockMvc.get("/v1/companies/!!!") {
             accept = MediaType.APPLICATION_JSON
         }.andExpect {
             status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_REQUEST") }
         }
     }
 }

@@ -6,7 +6,6 @@ import com.catalystradar.domain.catalyst.CatalystScore
 import com.catalystradar.domain.catalyst.CatalystSnapshot
 import com.catalystradar.domain.catalyst.CatalystState
 import com.catalystradar.domain.catalyst.ScoreVelocity
-import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.persistence.catalyst.CatalystSnapshotStore
 import com.catalystradar.persistence.event.EventStore
 import org.springframework.stereotype.Service
@@ -40,13 +39,14 @@ fun stateForScore(score: Double): CatalystState = when {
 class CatalystService(
     private val events: EventStore,
     private val snapshots: CatalystSnapshotStore,
+    private val selector: CanonicalEventSelector,
 ) {
 
     private val calculator = ScoreCalculator()
 
     @Transactional
     fun recalculate(companyId: UUID, asOf: Instant = Instant.now()): CatalystSnapshot {
-        val canonical = canonicalEvents(companyId)
+        val canonical = selector.select(events.findByCompanyId(companyId))
         val calculated = calculator.calculate(canonical, asOf)
         val state = stateForScore(calculated.score.value)
         val history = snapshots.history(companyId)
@@ -70,20 +70,6 @@ class CatalystService(
             snapshots.recordTransition(companyId, previousState, state, calculated.score, asOf)
         }
         return snapshot
-    }
-
-    private fun canonicalEvents(companyId: UUID): List<CatalystEvent> {
-        // Null cluster ids must NOT group together: every unclustered event
-        // is its own singleton until the clusterer assigns it.
-        val (clustered, unclustered) = events.findByCompanyId(companyId).partition { it.clusterId != null }
-        val canonical = clustered.groupBy { it.clusterId }.values.map { group ->
-            group.minWith(
-                compareBy<CatalystEvent> { it.eventTimestamp ?: it.discoveredAt }
-                    .thenBy { it.discoveredAt }
-                    .thenBy { it.id },
-            )
-        }
-        return canonical + unclustered
     }
 
     private fun changeSince(

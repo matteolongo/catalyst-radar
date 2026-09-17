@@ -64,8 +64,7 @@ fun EventRow.toDomain() = CatalystEvent(
     attributes = attributes.toStringMap(),
 )
 
-fun CatalystEvent.toRow(
-    sourceDocumentId: UUID? = null,
+fun CatalystEvent.toRow(    sourceDocumentId: UUID? = null,
 ) = EventRow(
     id = id,
     companyId = companyId,
@@ -87,4 +86,10 @@ fun CatalystEvent.toRow(
     taxonomyVersion = taxonomyVersion,
     extractorVersion = extractorVersion,
     attributes = attributes.toJsonB(),
+)
+
+/** An event with its source linkage for API and evaluation reads. */
+data class EventWithSource(
+    val event: CatalystEvent,
+    val sourceDocumentId: UUID?,
 )
