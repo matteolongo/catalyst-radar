@@ -2,9 +2,11 @@ package com.catalystradar.persistence.event
 
 import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.EventCluster
+import com.catalystradar.domain.event.EventType
 import com.pgvector.PGvector
 import org.springframework.data.jdbc.core.JdbcAggregateTemplate
 import org.springframework.stereotype.Repository
+import java.time.Instant
 import java.util.UUID
 
 @Repository
@@ -27,6 +29,11 @@ class EventStore(
 
     fun findByClusterId(clusterId: UUID): List<CatalystEvent> =
         repository.findByClusterId(clusterId).map { it.toDomain() }
+
+    fun assignCluster(eventId: UUID, clusterId: UUID) {
+        val row = repository.findById(eventId).orElseThrow()
+        repository.save(row.copy(clusterId = clusterId))
+    }
 }
 
 @Repository
@@ -40,4 +47,24 @@ class EventClusterStore(
 
     fun findById(id: UUID): EventCluster? =
         repository.findById(id).map { it.toDomain() }.orElse(null)
+
+    fun findRecent(
+        companyId: UUID,
+        type: EventType,
+        since: Instant,
+        limit: Int,
+    ): List<EventCluster> =
+        repository
+            .findByCompanyIdAndEventTypeAndFirstSeenAtAfterOrderByFirstSeenAtDesc(
+                companyId,
+                type.name,
+                since,
+            )
+            .take(limit)
+            .map { it.toDomain() }
+
+    fun findEmbedding(clusterId: UUID): List<Float>? =
+        repository.findById(clusterId)
+            .map { it.embedding?.toArray()?.toList() }
+            .orElse(null)
 }
