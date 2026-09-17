@@ -28,6 +28,7 @@ data class CatalystEvent(
     val discoveredAt: Instant,
     val taxonomyVersion: String,
     val extractorVersion: String,
+    val attributes: Map<String, String> = emptyMap(),
 ) {
     val family: EventFamily get() = type.family
 

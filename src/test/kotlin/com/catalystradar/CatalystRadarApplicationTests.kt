@@ -1,12 +1,11 @@
 package com.catalystradar
 
+import com.catalystradar.persistence.PostgresIntegrationTest
 import org.junit.jupiter.api.Test
-import org.springframework.boot.test.context.SpringBootTest
 
-@SpringBootTest
-class CatalystRadarApplicationTests {
+class CatalystRadarApplicationTests : PostgresIntegrationTest() {
 
-	@Test
-	fun contextLoads() {
-	}
+    @Test
+    fun contextLoads() {
+    }
 }
