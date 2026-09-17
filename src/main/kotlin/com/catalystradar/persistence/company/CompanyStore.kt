@@ -19,4 +19,7 @@ class CompanyStore(
 
     fun findByTicker(ticker: String): Company? =
         repository.findByTicker(ticker)?.toDomain()
+
+    fun findAllActive(): List<Company> =
+        repository.findByActiveTrue().map { it.toDomain() }
 }

@@ -33,6 +33,8 @@ class FinnhubNewsProvider(
 
     private val client = builder.baseUrl(properties.baseUrl).build()
 
+    override val name: String = "finnhub"
+
     override suspend fun fetch(request: NewsFetchRequest): NewsFetchResult =
         withContext(Dispatchers.IO) {
             try {

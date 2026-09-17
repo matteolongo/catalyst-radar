@@ -10,6 +10,8 @@ class NewsProviderContractTest {
     @Test
     fun `contract supports paged fetch through a stub`() = runTest {
         val provider = object : NewsProvider {
+            override val name: String = "stub"
+
             override suspend fun fetch(request: NewsFetchRequest) = NewsFetchResult(
                 articles = listOf(
                     RawArticle(
