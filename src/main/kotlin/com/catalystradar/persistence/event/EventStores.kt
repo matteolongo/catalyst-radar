@@ -30,6 +30,9 @@ class EventStore(
     fun findByClusterId(clusterId: UUID): List<CatalystEvent> =
         repository.findByClusterId(clusterId).map { it.toDomain() }
 
+    fun findDetailedByCompanyId(companyId: UUID): List<EventWithSource> =
+        repository.findByCompanyId(companyId).map { EventWithSource(it.toDomain(), it.sourceDocumentId) }
+
     fun assignCluster(eventId: UUID, clusterId: UUID) {
         val row = repository.findById(eventId).orElseThrow()
         repository.save(row.copy(clusterId = clusterId))
