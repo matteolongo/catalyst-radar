@@ -1,0 +1,49 @@
+{
+  "id": "multi-event",
+  "article": {
+    "title": "Dell raises forecast and expands buyback",
+    "body": "Dell raised its full-year forecast and separately announced a larger share repurchase program."
+  },
+  "modelOutput": {
+    "document_relevant": true,
+    "events": [
+      {
+        "ticker": "DELL",
+        "family": "GUIDANCE",
+        "type": "GUIDANCE_RAISE",
+        "direction": "POSITIVE",
+        "confidence": 0.9,
+        "magnitude": null,
+        "surprise": 0.5,
+        "materiality": 0.8,
+        "expected_horizon": "MONTHS",
+        "directness": "DIRECT",
+        "event_timestamp": null,
+        "evidence": [
+          {"quote_or_fact": "raised its full-year forecast", "source_offset_hint": null}
+        ],
+        "attributes": []
+      },
+      {
+        "ticker": "DELL",
+        "family": "CAPITAL_ALLOCATION",
+        "type": "BUYBACK_INCREASED",
+        "direction": "POSITIVE",
+        "confidence": 0.85,
+        "magnitude": null,
+        "surprise": 0.4,
+        "materiality": 0.6,
+        "expected_horizon": "MONTHS",
+        "directness": "DIRECT",
+        "event_timestamp": null,
+        "evidence": [
+          {"quote_or_fact": "larger share repurchase program", "source_offset_hint": null}
+        ],
+        "attributes": []
+      }
+    ]
+  },
+  "expectedRelevant": true,
+  "expectedEventCount": 2,
+  "expectedFirstType": "GUIDANCE_RAISE"
+}

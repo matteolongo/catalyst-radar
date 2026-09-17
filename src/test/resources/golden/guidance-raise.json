@@ -1,0 +1,32 @@
+{
+  "id": "guidance-raise",
+  "article": {
+    "title": "Dell raises full-year forecast on AI server demand",
+    "body": "Dell Technologies raised its full-year revenue forecast on Thursday, citing accelerating demand for its AI-optimized servers."
+  },
+  "modelOutput": {
+    "document_relevant": true,
+    "events": [
+      {
+        "ticker": "DELL",
+        "family": "GUIDANCE",
+        "type": "GUIDANCE_RAISE",
+        "direction": "POSITIVE",
+        "confidence": 0.92,
+        "magnitude": null,
+        "surprise": 0.6,
+        "materiality": 0.85,
+        "expected_horizon": "MONTHS",
+        "directness": "DIRECT",
+        "event_timestamp": null,
+        "evidence": [
+          {"quote_or_fact": "raised its full-year revenue forecast", "source_offset_hint": null}
+        ],
+        "attributes": [{"key": "driver", "value": "AI server demand"}]
+      }
+    ]
+  },
+  "expectedRelevant": true,
+  "expectedEventCount": 1,
+  "expectedFirstType": "GUIDANCE_RAISE"
+}

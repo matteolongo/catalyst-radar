@@ -37,3 +37,9 @@ catalyst:
     base-url: https://finnhub.io
     # Never commit a real key: export FINNHUB_API_KEY in the environment.
     api-key: ${FINNHUB_API_KEY:}
+  openai:
+    base-url: https://api.openai.com
+    # Never commit a real key: export OPENAI_API_KEY in the environment.
+    api-key: ${OPENAI_API_KEY:}
+    extraction-model: ${CATALYST_OPENAI_EXTRACTION_MODEL:gpt-4o-mini}
+    embedding-model: text-embedding-3-small

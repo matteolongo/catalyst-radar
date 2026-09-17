@@ -1,0 +1,32 @@
+{
+  "id": "out-of-range-confidence",
+  "article": {
+    "title": "Dell raises full-year forecast",
+    "body": "Dell raised its full-year forecast."
+  },
+  "modelOutput": {
+    "document_relevant": true,
+    "events": [
+      {
+        "ticker": "DELL",
+        "family": "GUIDANCE",
+        "type": "GUIDANCE_RAISE",
+        "direction": "POSITIVE",
+        "confidence": 1.5,
+        "magnitude": null,
+        "surprise": null,
+        "materiality": null,
+        "expected_horizon": "MONTHS",
+        "directness": "DIRECT",
+        "event_timestamp": null,
+        "evidence": [
+          {"quote_or_fact": "raised its full-year forecast", "source_offset_hint": null}
+        ],
+        "attributes": []
+      }
+    ]
+  },
+  "expectedRelevant": true,
+  "expectedEventCount": 0,
+  "expectedFirstType": null
+}
