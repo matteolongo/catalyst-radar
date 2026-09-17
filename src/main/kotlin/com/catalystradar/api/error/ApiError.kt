@@ -1,6 +1,8 @@
 package com.catalystradar.api.error
 
 import jakarta.servlet.http.HttpServletRequest
+import com.catalystradar.application.catalyst.CatalystNotFoundException
+import com.catalystradar.application.company.CompanyNotFoundException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -20,16 +22,6 @@ data class ProblemResponse(
     val detail: String,
     val requestId: String,
 )
-
-class CompanyNotFoundException(ticker: String) :
-    RuntimeException("No supported company exists for ticker $ticker") {
-    val ticker: String = ticker
-}
-
-class CatalystNotFoundException(ticker: String) :
-    RuntimeException("No catalyst state exists for ticker $ticker") {
-    val ticker: String = ticker
-}
 
 @RestControllerAdvice
 class ApiExceptionHandler {

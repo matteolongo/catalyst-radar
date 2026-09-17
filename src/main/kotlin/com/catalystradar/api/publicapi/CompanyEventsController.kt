@@ -2,7 +2,7 @@ package com.catalystradar.api.publicapi
 
 import com.catalystradar.api.dto.EventsFeedResponse
 import com.catalystradar.api.dto.toResponse
-import com.catalystradar.api.error.CompanyNotFoundException
+import com.catalystradar.application.company.CompanyNotFoundException
 import com.catalystradar.application.company.CompanyService
 import com.catalystradar.persistence.event.EventStore
 import com.catalystradar.persistence.event.EventWithSource

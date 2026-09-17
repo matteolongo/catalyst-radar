@@ -36,11 +36,7 @@ class ScoreCalculator(private val config: ScoreConfig = ScoreV1.config) {
             .map { it.family }
             .toSet()
         val raw = contributions.sumOf { it.value } * config.convergenceMultiplier(families.size)
-        val score = if (raw <= 0.0) {
-            0.0
-        } else {
-            (100.0 * raw / (raw + config.normalizationScale)).coerceIn(0.0, 100.0)
-        }
+        val score = scoreForRaw(raw)
         return CalculatedScore(
             score = CatalystScore(value = score, version = config.version),
             contributions = contributions,
@@ -49,8 +45,15 @@ class ScoreCalculator(private val config: ScoreConfig = ScoreV1.config) {
         )
     }
 
-    private fun contribution(event: CatalystEvent, asOf: Instant): Double {
-        val sign = when (event.direction) {
+    /** Bounded 0..100 mapping shared by totals and read-only breakdowns. */
+    fun scoreForRaw(raw: Double): Double =
+        if (raw <= 0.0) {
+            0.0
+        } else {
+            (100.0 * raw / (raw + config.normalizationScale)).coerceIn(0.0, 100.0)
+        }
+
+    private fun contribution(event: CatalystEvent, asOf: Instant): Double {        val sign = when (event.direction) {
             Direction.POSITIVE -> 1.0
             Direction.NEGATIVE -> -1.0
             else -> 0.0
