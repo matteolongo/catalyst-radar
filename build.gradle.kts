@@ -37,6 +37,7 @@ dependencies {
 	// Shaded WireMock server (3.x split the Jetty backend out of the core jar).
 	testImplementation("org.wiremock:wiremock-standalone:3.13.2")
 	testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
+	testImplementation("org.mockito.kotlin:mockito-kotlin:6.3.0")
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
