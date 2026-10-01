@@ -22,10 +22,13 @@ class OpenAiEmbeddingProviderTest {
 
     private val runs: ModelRunStore = mock()
 
+    private val meterRegistry = io.micrometer.core.instrument.simple.SimpleMeterRegistry()
+
     private val provider = OpenAiEmbeddingProvider(
         RestClient.builder(),
         OpenAiProperties(baseUrl = wireMock.baseUrl(), apiKey = "test-key"),
         runs,
+        com.catalystradar.observability.CatalystMetrics(meterRegistry),
     )
 
     @Test
