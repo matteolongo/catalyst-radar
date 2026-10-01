@@ -10,3 +10,6 @@ catalyst:
   universe:
     # Seed the S&P 500 + Nasdaq-100 universe on startup (insert-if-absent).
     seed-on-startup: true
+  internal:
+    # Local development admin key for /internal/* endpoints.
+    admin-key: local-dev-secret
