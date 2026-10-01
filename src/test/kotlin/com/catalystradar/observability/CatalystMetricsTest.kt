@@ -66,6 +66,16 @@ class CatalystMetricsTest {
     }
 
     @Test
+    fun `counts pipeline cycles`() {
+        metrics.pipelineCycle("success")
+
+        assertEquals(
+            1.0,
+            registry.counter("catalyst_pipeline_cycles_total", "status", "success").count(),
+        )
+    }
+
+    @Test
     fun `tags are stable objects`() {
         // Guard against tag-order churn in dashboards: same call twice, one meter.
         metrics.documentIngested("polygon", "new")

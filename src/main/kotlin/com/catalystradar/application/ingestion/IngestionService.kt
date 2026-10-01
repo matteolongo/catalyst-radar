@@ -13,8 +13,17 @@ import com.catalystradar.ports.RawArticle
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
+import java.util.UUID
 
-data class IngestionCycleResult(val runs: List<IngestionRunRecord>)
+data class IngestionCycleResult(
+    val runs: List<IngestionRunRecord>,
+    val newDocuments: List<NewDocument> = emptyList(),
+)
+
+data class NewDocument(
+    val id: UUID,
+    val tickers: List<String>,
+)
 
 /**
  * Scheduled ingestion orchestration: select universe tickers, fetch the
@@ -54,27 +63,36 @@ class IngestionService(
             runs.finishRun(runId, IngestionStatus.FAILED, 0, 0, 0, "unknown provider: ${properties.provider}")
             return IngestionCycleResult(listOfNotNull(runs.findById(runId)))
         }
-        val records = mutableListOf(runProvider(primary, tickers, now))
-        val last = records.last()
-        if ((last.status == IngestionStatus.FAILED || last.status == IngestionStatus.PARTIAL) &&
+        val outcomes = mutableListOf(runProvider(primary, tickers, now))
+        val last = outcomes.last()
+        if ((last.record.status == IngestionStatus.FAILED || last.record.status == IngestionStatus.PARTIAL) &&
             properties.fallbackProvider != primary.name
         ) {
-            providersByName[properties.fallbackProvider]?.let { records += runProvider(it, tickers, now) }
+            providersByName[properties.fallbackProvider]?.let { outcomes += runProvider(it, tickers, now) }
         }
-        return IngestionCycleResult(records)
+        return IngestionCycleResult(
+            runs = outcomes.map { it.record },
+            newDocuments = outcomes.flatMap { it.newDocuments },
+        )
     }
+
+    private data class ProviderOutcome(
+        val record: IngestionRunRecord,
+        val newDocuments: List<NewDocument>,
+    )
 
     private suspend fun runProvider(
         provider: NewsProvider,
         tickers: List<String>,
         now: Instant,
-    ): IngestionRunRecord {
+    ): ProviderOutcome {
         val runId = runs.startRun(provider.name)
         val started = System.nanoTime()
         var fetched = 0
         var added = 0
         var duplicates = 0
         var firstError: String? = null
+        val fresh = mutableListOf<NewDocument>()
         try {
             for (chunk in tickers.chunked(TICKER_CHUNK_SIZE)) {
                 val page = provider.fetch(
@@ -88,8 +106,10 @@ class IngestionService(
                 fetched += page.articles.size
                 for (article in page.articles) {
                     try {
-                        if (persistIfNew(provider.name, article, now)) {
+                        val freshId = persistIfNew(provider.name, article, now)
+                        if (freshId != null) {
                             added++
+                            fresh += NewDocument(freshId, article.tickers)
                             metrics.documentIngested(provider.name, "new")
                         } else {
                             duplicates++
@@ -108,32 +128,31 @@ class IngestionService(
         } catch (e: ProviderException.RateLimited) {
             // Preserve the window: a later cycle re-fetches it idempotently.
             metrics.ingestionRun(provider.name, elapsedMs(started))
-            return finish(runId, IngestionStatus.PARTIAL, fetched, added, duplicates, "rate limited")
+            return ProviderOutcome(finish(runId, IngestionStatus.PARTIAL, fetched, added, duplicates, "rate limited"), fresh)
         } catch (e: ProviderException) {
             metrics.ingestionRun(provider.name, elapsedMs(started))
-            return finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, e.message)
+            return ProviderOutcome(finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, e.message), fresh)
         }
         val status = if (firstError != null) IngestionStatus.PARTIAL else IngestionStatus.SUCCESS
         metrics.ingestionRun(provider.name, elapsedMs(started))
-        return finish(runId, status, fetched, added, duplicates, firstError)
+        return ProviderOutcome(finish(runId, status, fetched, added, duplicates, firstError), fresh)
     }
 
     private fun elapsedMs(started: Long): Long = (System.nanoTime() - started) / 1_000_000
 
-    private fun persistIfNew(provider: String, article: RawArticle, now: Instant): Boolean {
+    private fun persistIfNew(provider: String, article: RawArticle, now: Instant): UUID? {
         val normalized = normalizeArticle(article, now)
         val known = normalized.providerDocumentId
             ?.let { documents.findByProviderAndProviderDocumentId(provider, it) }
             ?: documents.findByContentHash(normalized.contentHash)
-        if (known != null) return false
-        documents.save(
+        if (known != null) return null
+        return documents.save(
             normalized.toDocument(),
             rawPayload = mapOf(
                 "provider" to article.provider,
                 "tickers" to article.tickers.joinToString(","),
             ).toJsonB(),
-        )
-        return true
+        ).id
     }
 
     private fun finish(

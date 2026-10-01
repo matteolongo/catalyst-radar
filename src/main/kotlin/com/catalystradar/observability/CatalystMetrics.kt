@@ -68,4 +68,11 @@ class CatalystMetrics(private val registry: MeterRegistry) {
             listOf(Tag.of("from", from), Tag.of("to", to)),
         ).increment()
     }
+
+    fun pipelineCycle(status: String) {
+        registry.counter(
+            "catalyst_pipeline_cycles_total",
+            listOf(Tag.of("status", status)),
+        ).increment()
+    }
 }
