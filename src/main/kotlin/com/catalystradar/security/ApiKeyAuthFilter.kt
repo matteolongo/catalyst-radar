@@ -3,6 +3,7 @@ package com.catalystradar.security
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.core.env.Environment
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
@@ -18,9 +19,15 @@ import tools.jackson.databind.ObjectMapper
 @Component
 class ApiKeyAuthFilter(
     private val keys: ApiKeyService,
-    private val properties: SecurityProperties,
+    private val environment: Environment,
     private val mapper: ObjectMapper,
 ) : OncePerRequestFilter() {
+
+    private val authEnabled: Boolean
+        get() = environment.getProperty("catalyst.api.auth-enabled", Boolean::class.java, false)
+
+    private val adminKey: String
+        get() = environment.getProperty("catalyst.internal.admin-key", "")
 
     override fun doFilterInternal(
         request: HttpServletRequest,
@@ -31,7 +38,7 @@ class ApiKeyAuthFilter(
         when {
             path == "/actuator" || path.startsWith("/actuator/") -> chain.doFilter(request, response)
             path.startsWith("/internal/") -> checkAdmin(request, response, chain)
-            path.startsWith("/v1/") && properties.api.authEnabled -> checkApiKey(request, response, chain)
+            path.startsWith("/v1/") && authEnabled -> checkApiKey(request, response, chain)
             else -> chain.doFilter(request, response)
         }
     }
@@ -48,7 +55,7 @@ class ApiKeyAuthFilter(
     }
 
     private fun checkAdmin(request: HttpServletRequest, response: HttpServletResponse, chain: FilterChain) {
-        val configured = properties.internal.adminKey
+        val configured = adminKey
         val presented = request.getHeader("X-Admin-Key")
         if (configured.isNotBlank() && presented != null && constantEquals(configured, presented)) {
             chain.doFilter(request, response)
