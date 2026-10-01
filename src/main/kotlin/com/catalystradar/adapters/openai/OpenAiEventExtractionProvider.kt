@@ -2,6 +2,7 @@ package com.catalystradar.adapters.openai
 
 import com.catalystradar.adapters.http.mapHttpClientError
 import com.catalystradar.common.Versions
+import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.extraction.ModelRunInput
 import com.catalystradar.persistence.extraction.ModelRunStore
 import com.catalystradar.ports.EventExtractionProvider
@@ -37,6 +38,7 @@ class OpenAiEventExtractionProvider(
     private val properties: OpenAiProperties,
     private val modelRuns: ModelRunStore,
     private val resources: ResourceLoader,
+    private val metrics: CatalystMetrics,
 ) : EventExtractionProvider {
 
     private val client = builder.baseUrl(properties.baseUrl)
@@ -140,6 +142,14 @@ class OpenAiEventExtractionProvider(
         error: String?,
     ) {
         val resolvedModel = model ?: properties.extractionModel
+        metrics.llmCall(
+            operation = "extract",
+            model = resolvedModel,
+            success = success,
+            inputTokens = usage?.promptTokens ?: 0,
+            outputTokens = usage?.completionTokens ?: 0,
+            latencyMs = latencyMs,
+        )
         runCatching {
             modelRuns.record(
                 ModelRunInput(

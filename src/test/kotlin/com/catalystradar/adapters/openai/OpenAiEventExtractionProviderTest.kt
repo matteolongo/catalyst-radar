@@ -36,11 +36,14 @@ class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
     @Autowired
     private lateinit var documents: SourceDocumentStore
 
+    private val meterRegistry = io.micrometer.core.instrument.simple.SimpleMeterRegistry()
+
     private fun provider() = OpenAiEventExtractionProvider(
         RestClient.builder(),
         OpenAiProperties(baseUrl = wireMock.baseUrl(), apiKey = "test-key"),
         modelRuns,
         DefaultResourceLoader(),
+        com.catalystradar.observability.CatalystMetrics(meterRegistry),
     )
 
     private fun request() = ExtractionRequest(
@@ -75,6 +78,14 @@ class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
         assertEquals("gpt-4o-mini", runs[0].model)
         assertEquals(100, runs[0].inputTokens)
         assertEquals(50, runs[0].outputTokens)
+        assertEquals(
+            1.0,
+            meterRegistry.counter(
+                "catalyst_llm_calls_total",
+                "operation", "extract",
+                "status", "success",
+            ).count(),
+        )
     }
 
     @Test

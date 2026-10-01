@@ -5,6 +5,7 @@ import com.catalystradar.adapters.finnhub.FinnhubProperties
 import com.catalystradar.adapters.polygon.PolygonNewsProvider
 import com.catalystradar.adapters.polygon.PolygonProperties
 import com.catalystradar.domain.company.Company
+import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.PostgresIntegrationTest
 import com.catalystradar.persistence.company.CompanyStore
 import com.catalystradar.persistence.document.SourceDocumentStore
@@ -14,6 +15,7 @@ import com.github.tomakehurst.wiremock.client.WireMock.okJson
 import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
 import com.github.tomakehurst.wiremock.junit5.WireMockExtension
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
@@ -49,6 +51,7 @@ class IngestionIdempotencyTest : PostgresIntegrationTest() {
         companies = companies,
         documents = documents,
         runs = runs,
+        metrics = CatalystMetrics(SimpleMeterRegistry()),
     )
 
     @Test

@@ -1,5 +1,6 @@
 package com.catalystradar.application.ingestion
 
+import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.company.CompanyStore
 import com.catalystradar.persistence.document.SourceDocumentStore
 import com.catalystradar.persistence.ingestion.IngestionRunRecord
@@ -31,6 +32,7 @@ class IngestionService(
     private val companies: CompanyStore,
     private val documents: SourceDocumentStore,
     private val runs: IngestionRunStore,
+    private val metrics: CatalystMetrics,
 ) {
 
     private val log = LoggerFactory.getLogger(IngestionService::class.java)
@@ -64,6 +66,7 @@ class IngestionService(
         now: Instant,
     ): IngestionRunRecord {
         val runId = runs.startRun(provider.name)
+        val started = System.nanoTime()
         var fetched = 0
         var added = 0
         var duplicates = 0
@@ -81,9 +84,16 @@ class IngestionService(
                 fetched += page.articles.size
                 for (article in page.articles) {
                     try {
-                        if (persistIfNew(provider.name, article, now)) added++ else duplicates++
+                        if (persistIfNew(provider.name, article, now)) {
+                            added++
+                            metrics.documentIngested(provider.name, "new")
+                        } else {
+                            duplicates++
+                            metrics.documentIngested(provider.name, "duplicate")
+                        }
                     } catch (e: RuntimeException) {
                         if (firstError == null) firstError = e.message
+                        metrics.documentIngested(provider.name, "failed")
                         log.warn(
                             "ingestion run {} skipping failed document provider={} article={}: {}",
                             runId, provider.name, article.providerArticleId, e.message,
@@ -93,13 +103,18 @@ class IngestionService(
             }
         } catch (e: ProviderException.RateLimited) {
             // Preserve the window: a later cycle re-fetches it idempotently.
+            metrics.ingestionRun(provider.name, elapsedMs(started))
             return finish(runId, IngestionStatus.PARTIAL, fetched, added, duplicates, "rate limited")
         } catch (e: ProviderException) {
+            metrics.ingestionRun(provider.name, elapsedMs(started))
             return finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, e.message)
         }
         val status = if (firstError != null) IngestionStatus.PARTIAL else IngestionStatus.SUCCESS
+        metrics.ingestionRun(provider.name, elapsedMs(started))
         return finish(runId, status, fetched, added, duplicates, firstError)
     }
+
+    private fun elapsedMs(started: Long): Long = (System.nanoTime() - started) / 1_000_000
 
     private fun persistIfNew(provider: String, article: RawArticle, now: Instant): Boolean {
         val normalized = normalizeArticle(article, now)

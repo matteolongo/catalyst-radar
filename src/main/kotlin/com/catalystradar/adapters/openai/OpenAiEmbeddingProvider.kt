@@ -1,6 +1,7 @@
 package com.catalystradar.adapters.openai
 
 import com.catalystradar.adapters.http.mapHttpClientError
+import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.extraction.ModelRunInput
 import com.catalystradar.persistence.extraction.ModelRunStore
 import com.catalystradar.ports.Embedding
@@ -31,6 +32,7 @@ class OpenAiEmbeddingProvider(
     builder: RestClient.Builder,
     private val properties: OpenAiProperties,
     private val modelRuns: ModelRunStore,
+    private val metrics: CatalystMetrics,
 ) : EmbeddingProvider {
 
     override val model: String get() = properties.embeddingModel
@@ -97,6 +99,14 @@ class OpenAiEmbeddingProvider(
         success: Boolean,
         error: String?,
     ) {
+        metrics.llmCall(
+            operation = "embed",
+            model = properties.embeddingModel,
+            success = success,
+            inputTokens = response.usage?.promptTokens ?: 0,
+            outputTokens = 0,
+            latencyMs = latencyMs,
+        )
         runCatching {
             modelRuns.record(
                 ModelRunInput(
