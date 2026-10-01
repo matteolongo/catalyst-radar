@@ -117,6 +117,8 @@ Polygon and Finnhub are accessed through provider abstractions and must not leak
 
 Local infrastructure runs in Docker while the Kotlin application normally runs directly from the IDE or Gradle.
 
+Prerequisites: JDK 21, Docker Desktop running (Testcontainers needs it for integration tests).
+
 Expected development flow:
 
 ```bash
@@ -124,40 +126,63 @@ docker compose up -d
 ./gradlew bootRun
 ```
 
+The `local` profile (`SPRING_PROFILES_ACTIVE=local`) seeds the S&P 500 +
+Nasdaq-100 universe on startup and enables the local admin key.
+
 Local services:
 
 ```text
-CatalystRadar API
-http://localhost:8080
-
-PostgreSQL
-localhost:5432
+CatalystRadar API   http://localhost:8080
+OpenAPI             http://localhost:8080/v3/api-docs
+Swagger UI          http://localhost:8080/swagger-ui.html
+PostgreSQL          localhost:5432
 ```
 
 Developers should not need a locally installed PostgreSQL instance.
+
+Flyway migrates the database automatically on startup.
 
 ---
 
 ## Environment variables
 
-The exact configuration may evolve, but v0.1 is expected to use variables similar to:
-
 ```bash
-DATABASE_URL=jdbc:postgresql://localhost:5432/catalyst_radar
-DATABASE_USER=catalyst
-DATABASE_PASSWORD=catalyst
-
 POLYGON_API_KEY=...
 FINNHUB_API_KEY=...
 OPENAI_API_KEY=...
+CATALYST_OPENAI_EXTRACTION_MODEL=gpt-4o-mini
 
 CATALYST_INGESTION_ENABLED=true
 CATALYST_INGESTION_INTERVAL=PT30M
+CATALYST_INTERNAL_ADMIN_KEY=local-dev-secret
 ```
 
 Secrets must never be committed to Git.
 
 Use local environment variables or a `.env` file excluded through `.gitignore`.
+
+---
+
+## Running the pipeline
+
+With provider keys exported, trigger a full cycle
+(ingest → extract → normalize → cluster → score → snapshot):
+
+```bash
+curl -X POST http://localhost:8080/internal/ingestion/runs \
+  -H "X-Admin-Key: local-dev-secret"
+```
+
+Then query the results:
+
+```bash
+curl http://localhost:8080/v1/companies/DELL/catalyst
+curl "http://localhost:8080/v1/discovery/catalyzed?minScore=45&limit=20"
+```
+
+API keys for public `/v1` access are issued through
+`POST /internal/api-clients` (raw key is shown once, only hashes persist)
+and enforced when `catalyst.api.auth-enabled=true`.
 
 ---
 
@@ -771,11 +796,7 @@ Potential additions:
 
 ## Project status
 
-CatalystRadar is currently in the initial implementation phase.
-
-Architecture, initial taxonomy, domain boundaries, scoring model, and v0.1 scope have been defined.
-
-The immediate objective is to implement a complete vertical slice:
+CatalystRadar v0.1 is implemented: the vertical slice works end to end.
 
 ```text
 news ingestion
@@ -793,4 +814,12 @@ historical snapshot
 discovery API
 ```
 
-The first milestone is successful when a developer can ingest real news for a defined US company universe and query CatalystRadar to understand which companies are entering a stronger catalyst state and why.
+A developer with provider API keys can ingest real news for the seeded
+US company universe and query which companies are entering a stronger
+catalyst state and why. Without keys, the full suite (including the
+end-to-end pipeline test over WireMock and stubbed LLM boundaries)
+proves the same flow deterministically via `./gradlew clean test`.
+
+Deliberately deferred: persisting score-version configs (code-defined
+`score-v1` for now), company aliases, a daily snapshot job for quiet
+days, and score calibration from benchmark results (v0.3).
