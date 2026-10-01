@@ -2,6 +2,7 @@ package com.catalystradar.api.publicapi
 
 import com.catalystradar.application.company.CompanyService
 import com.catalystradar.domain.company.Company
+import com.catalystradar.security.ApiKeyService
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mockito.`when`
@@ -20,6 +21,9 @@ class CompanyControllerTest {
 
     @MockitoBean
     private lateinit var service: CompanyService
+
+    @MockitoBean
+    private lateinit var apiKeys: ApiKeyService
 
     @Test
     fun `returns company metadata`() {

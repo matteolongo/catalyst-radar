@@ -22,6 +22,12 @@ info:
     version: 0.0.1-SNAPSHOT
 
 catalyst:
+  api:
+    # Local development needs no keys; enable explicitly to test auth.
+    auth-enabled: false
+  internal:
+    # Always required for /internal/*, even locally. Never commit a real value.
+    admin-key: ${CATALYST_INTERNAL_ADMIN_KEY:}
   ingestion:
     enabled: false
     interval: PT30M
