@@ -1,6 +1,11 @@
 spring:
   application:
     name: catalyst-radar
+  datasource:
+    # Local compose defaults; override per environment. Never commit secrets.
+    url: ${CATALYST_DB_URL:jdbc:postgresql://localhost:5432/catalyst_radar}
+    username: ${CATALYST_DB_USER:catalyst}
+    password: ${CATALYST_DB_PASSWORD:catalyst}
 
 server:
   port: 8080
