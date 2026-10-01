@@ -6,6 +6,7 @@ import com.catalystradar.persistence.event.EventStore
 import com.catalystradar.domain.event.EventCluster
 import com.catalystradar.ports.EmbeddingProvider
 import com.pgvector.PGvector
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.UUID
@@ -25,6 +26,8 @@ class EventClusteringService(
     private val companies: CompanyStore,
     private val properties: DedupProperties,
 ) {
+
+    private val log = LoggerFactory.getLogger(EventClusteringService::class.java)
 
     suspend fun clusterEvent(eventId: UUID): UUID {
         val event = events.findById(eventId)
@@ -47,6 +50,7 @@ class EventClusteringService(
             }
         if (match != null) {
             events.assignCluster(eventId, match)
+            log.info("event {} joined cluster {}", eventId, match)
             return match
         }
         val created = clusters.save(
@@ -54,6 +58,7 @@ class EventClusteringService(
             embedding = PGvector(candidate.values.toFloatArray()),
         )
         events.assignCluster(eventId, created.id)
+        log.info("event {} opened cluster {}", eventId, created.id)
         return created.id
     }
 }

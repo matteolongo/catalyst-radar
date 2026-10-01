@@ -44,6 +44,10 @@ class IngestionService(
             log.info("ingestion cycle skipped: no active companies")
             return IngestionCycleResult(emptyList())
         }
+        log.info(
+            "ingestion cycle started tickers={} primary={} lookback={}",
+            tickers.size, properties.provider, properties.lookback,
+        )
         val primary = providersByName[properties.provider]
         if (primary == null) {
             val runId = runs.startRun(properties.provider)
