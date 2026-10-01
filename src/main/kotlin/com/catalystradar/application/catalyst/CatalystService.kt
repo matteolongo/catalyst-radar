@@ -51,9 +51,9 @@ class CatalystService(
         val state = stateForScore(calculated.score.value)
         val history = snapshots.history(companyId)
         val velocity = ScoreVelocity(
-            velocity1d = changeSince(history, asOf.minusSeconds(86_400), calculated.score.value),
-            velocity3d = changeSince(history, asOf.minusSeconds(3L * 86_400), calculated.score.value),
-            velocity7d = changeSince(history, asOf.minusSeconds(7L * 86_400), calculated.score.value),
+            velocity1d = scoreChangeSince(history, asOf.minusSeconds(86_400), calculated.score.value),
+            velocity3d = scoreChangeSince(history, asOf.minusSeconds(3L * 86_400), calculated.score.value),
+            velocity7d = scoreChangeSince(history, asOf.minusSeconds(7L * 86_400), calculated.score.value),
         )
         val previousState = history.firstOrNull()?.state
         val snapshot = snapshots.save(
@@ -71,14 +71,19 @@ class CatalystService(
         }
         return snapshot
     }
+}
 
-    private fun changeSince(
-        history: List<CatalystSnapshot>,
-        cutoff: Instant,
-        current: Double,
-    ): Double {
-        val baseline = history.filter { !it.asOf.isAfter(cutoff) }.maxByOrNull { it.asOf }
-            ?: return 0.0
-        return current - baseline.score.value
-    }
+/**
+ * Score change since a cutoff against stored history: current minus the
+ * latest snapshot at or before the cutoff, or zero when the window has
+ * no history. Shared by live recalculation and historical replay.
+ */
+fun scoreChangeSince(
+    history: List<CatalystSnapshot>,
+    cutoff: Instant,
+    current: Double,
+): Double {
+    val baseline = history.filter { !it.asOf.isAfter(cutoff) }.maxByOrNull { it.asOf }
+        ?: return 0.0
+    return current - baseline.score.value
 }

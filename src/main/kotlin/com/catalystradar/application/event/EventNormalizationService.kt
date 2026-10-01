@@ -29,16 +29,23 @@ class EventNormalizationService(
     fun processDocument(document: SourceDocument, result: ExtractionResult): List<CatalystEvent> {
         val validated = validator.validate(result)
         if (!validated.documentRelevant) return emptyList()
-        return validated.events.mapNotNull { candidate -> persistCandidate(document, candidate) }
+        return validated.events.mapNotNull { candidate ->
+            normalize(document, candidate)?.let { events.save(it, sourceDocumentId = document.id) }
+        }
     }
 
-    private fun persistCandidate(document: SourceDocument, candidate: ExtractedEvent): CatalystEvent? {
+    /**
+     * Dry-run normalization without persistence: replay and evaluation
+     * recompute history through this path while live storage stays
+     * untouched.
+     */
+    fun normalize(document: SourceDocument, candidate: ExtractedEvent): CatalystEvent? {
         val companyId = try {
             companies.findByTicker(normalizeTicker(candidate.ticker))?.id
         } catch (e: IllegalArgumentException) {
             null
         } ?: return null
-        val event = CatalystEvent(
+        return CatalystEvent(
             companyId = companyId,
             type = candidate.type,
             direction = candidate.direction,
@@ -58,7 +65,6 @@ class EventNormalizationService(
             extractorVersion = Versions.EXTRACTOR_V1,
             attributes = candidate.attributes,
         )
-        return events.save(event, sourceDocumentId = document.id)
     }
 
     private fun sourceQualityFor(provider: String): SourceQuality = when (provider) {
