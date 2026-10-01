@@ -6,6 +6,7 @@ import com.catalystradar.domain.company.normalizeTicker
 import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.SourceDocument
 import com.catalystradar.domain.event.SourceQuality
+import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.company.CompanyStore
 import com.catalystradar.persistence.event.EventStore
 import com.catalystradar.ports.ExtractedEvent
@@ -24,13 +25,18 @@ class EventNormalizationService(
     private val validator: ExtractionValidator,
     private val companies: CompanyStore,
     private val events: EventStore,
+    private val metrics: CatalystMetrics,
 ) {
 
     fun processDocument(document: SourceDocument, result: ExtractionResult): List<CatalystEvent> {
         val validated = validator.validate(result)
         if (!validated.documentRelevant) return emptyList()
         return validated.events.mapNotNull { candidate ->
-            normalize(document, candidate)?.let { events.save(it, sourceDocumentId = document.id) }
+            normalize(document, candidate)?.let {
+                val saved = events.save(it, sourceDocumentId = document.id)
+                metrics.eventExtracted(it.family.name, it.type.name, it.direction.name)
+                saved
+            }
         }
     }
 

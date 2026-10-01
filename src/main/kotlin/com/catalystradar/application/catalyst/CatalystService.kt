@@ -6,7 +6,9 @@ import com.catalystradar.domain.catalyst.CatalystScore
 import com.catalystradar.domain.catalyst.CatalystSnapshot
 import com.catalystradar.domain.catalyst.CatalystState
 import com.catalystradar.domain.catalyst.ScoreVelocity
+import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.catalyst.CatalystSnapshotStore
+import org.slf4j.LoggerFactory
 import com.catalystradar.persistence.event.EventStore
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -40,8 +42,10 @@ class CatalystService(
     private val events: EventStore,
     private val snapshots: CatalystSnapshotStore,
     private val selector: CanonicalEventSelector,
+    private val metrics: CatalystMetrics,
 ) {
 
+    private val log = LoggerFactory.getLogger(CatalystService::class.java)
     private val calculator = ScoreCalculator()
 
     @Transactional
@@ -68,6 +72,10 @@ class CatalystService(
         )
         if (previousState != null && previousState != state) {
             snapshots.recordTransition(companyId, previousState, state, calculated.score, asOf)
+            metrics.stateTransition(previousState.name, state.name)
+            log.info("company {} transitioned {} -> {} at score {}", companyId, previousState, state, calculated.score.value)
+        } else {
+            log.info("company {} recalculated score={} state={}", companyId, calculated.score.value, state)
         }
         return snapshot
     }
