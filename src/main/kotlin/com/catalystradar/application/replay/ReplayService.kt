@@ -90,7 +90,7 @@ class ReplayService(
             }
         }
         val canonical = recomputed
-            .groupBy { (_, clusterId) -> clusterId }
+            .groupBy { (event, clusterId) -> clusterId ?: event.id }
             .values
             .map { group -> group.minBy { (event, _) -> event.discoveredAt }.first }
         val calculated = calculator.calculate(canonical, request.cutoff)

@@ -83,6 +83,19 @@ class ReplayServiceTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `unclustered events never collapse together`() = runTest {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell"))
+        val first = documents.save(newDocument("poly-1", t0.minusSeconds(5L * 86_400)))
+        val second = documents.save(newDocument("poly-2", t0.minusSeconds(4L * 86_400)))
+        events.save(liveEvent(company.id), sourceDocumentId = first.id)
+        events.save(liveEvent(company.id), sourceDocumentId = second.id)
+
+        val result = replay.replay(ReplayRequest(ticker = "DELL", cutoff = t0), FixedExtractionProvider)
+
+        assertEquals(2, result.eventCount)
+    }
+
+    @Test
     fun `unknown versions are rejected`() = runTest {
         assertThrows<IllegalArgumentException> {
             replay.replay(
