@@ -18,6 +18,7 @@ management:
       cors:
         allowed-origin-patterns: http://localhost:*,http://127.0.0.1:*
         allowed-methods: GET
+        allowed-headers: Authorization,X-Admin-Key,X-Request-Id,Content-Type,Accept
   endpoint:
     health:
       show-details: never
