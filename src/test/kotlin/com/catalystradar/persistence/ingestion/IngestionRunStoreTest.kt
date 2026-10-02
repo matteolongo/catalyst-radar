@@ -48,4 +48,15 @@ class IngestionRunStoreTest : PostgresIntegrationTest() {
         assertEquals(3, run.duplicates)
         assertNotNull(run.finishedAt)
     }
+
+    @Test
+    fun `lists recent runs newest first`() {
+        val first = runs.startRun("polygon")
+        Thread.sleep(5)
+        val second = runs.startRun("finnhub")
+
+        val recent = runs.listRecent(10)
+
+        assertEquals(listOf(second, first), recent.map { it.id })
+    }
 }

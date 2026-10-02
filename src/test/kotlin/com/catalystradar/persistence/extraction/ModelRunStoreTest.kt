@@ -86,4 +86,15 @@ class ModelRunStoreTest : PostgresIntegrationTest() {
         assertEquals(false, stored[0].success)
         assertEquals("401 Unauthorized", stored[0].error)
     }
+
+    @Test
+    fun `lists recent runs newest first`() {
+        runs.record(ModelRunInput(provider = "openai", operation = "extract", model = "m", success = true))
+        Thread.sleep(5)
+        runs.record(ModelRunInput(provider = "openai", operation = "embed", model = "m", success = true))
+
+        val recent = runs.listRecent(10)
+
+        assertEquals(listOf("embed", "extract"), recent.map { it.operation })
+    }
 }
