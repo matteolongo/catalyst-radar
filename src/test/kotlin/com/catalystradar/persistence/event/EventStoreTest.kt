@@ -19,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 @Transactional
 class EventStoreTest : PostgresIntegrationTest() {
@@ -101,6 +103,21 @@ class EventStoreTest : PostgresIntegrationTest() {
         assertEquals(2, events.findByCompanyId(company.id).size)
         assertEquals(1, events.findByCompanyId(other.id).size)
         assertEquals(2, events.findByClusterId(cluster.id).size)
+    }
+
+    @Test
+    fun `reuses an event already saved for the same source fingerprint`() {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell Technologies"))
+        val document = documents.save(newDocument())
+        val fingerprint = "a".repeat(64)
+
+        val first = events.saveIfAbsent(newEvent(company.id, null, EventType.GUIDANCE_RAISE), document.id, fingerprint)
+        val second = events.saveIfAbsent(newEvent(company.id, null, EventType.GUIDANCE_RAISE), document.id, fingerprint)
+
+        assertTrue(first.inserted)
+        assertFalse(second.inserted)
+        assertEquals(first.event.id, second.event.id)
+        assertEquals(1, events.findByCompanyId(company.id).size)
     }
 
     private fun newDocument() = SourceDocument(

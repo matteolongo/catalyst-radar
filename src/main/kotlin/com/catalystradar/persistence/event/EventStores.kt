@@ -4,6 +4,7 @@ import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.EventCluster
 import com.catalystradar.domain.event.EventType
 import com.pgvector.PGvector
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.jdbc.core.JdbcAggregateTemplate
 import org.springframework.stereotype.Repository
 import java.time.Instant
@@ -20,6 +21,26 @@ class EventStore(
         sourceDocumentId: UUID? = null,
     ): CatalystEvent =
         template.insert(event.toRow(sourceDocumentId)).toDomain()
+
+    fun saveIfAbsent(
+        event: CatalystEvent,
+        sourceDocumentId: UUID,
+        eventFingerprint: String,
+    ): StoredEvent {
+        require(eventFingerprint.length == 64) { "eventFingerprint must be a SHA-256 hex value" }
+        repository.findBySourceDocumentIdAndEventFingerprint(sourceDocumentId, eventFingerprint)?.let {
+            return StoredEvent(it.toDomain(), inserted = false)
+        }
+        return try {
+            StoredEvent(
+                event = template.insert(event.toRow(sourceDocumentId, eventFingerprint)).toDomain(),
+                inserted = true,
+            )
+        } catch (e: DataIntegrityViolationException) {
+            val existing = repository.findBySourceDocumentIdAndEventFingerprint(sourceDocumentId, eventFingerprint)
+            if (existing != null) StoredEvent(existing.toDomain(), inserted = false) else throw e
+        }
+    }
 
     fun findById(id: UUID): CatalystEvent? =
         repository.findById(id).map { it.toDomain() }.orElse(null)
@@ -80,6 +101,11 @@ class EventStore(
         repository.save(row.copy(clusterId = clusterId))
     }
 }
+
+data class StoredEvent(
+    val event: CatalystEvent,
+    val inserted: Boolean,
+)
 
 @Repository
 class EventClusterStore(

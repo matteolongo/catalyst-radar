@@ -4,6 +4,7 @@ import com.catalystradar.application.extraction.ExtractionValidator
 import com.catalystradar.common.Versions
 import com.catalystradar.domain.company.normalizeTicker
 import com.catalystradar.domain.event.CatalystEvent
+import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.SourceDocument
 import com.catalystradar.domain.event.SourceQuality
 import com.catalystradar.observability.CatalystMetrics
@@ -12,6 +13,9 @@ import com.catalystradar.persistence.event.EventStore
 import com.catalystradar.ports.ExtractedEvent
 import com.catalystradar.ports.ExtractionResult
 import org.springframework.stereotype.Service
+import java.security.MessageDigest
+import java.util.HexFormat
+import java.util.Locale
 
 /**
  * Turns validated extraction candidates for one stored document into
@@ -33,9 +37,11 @@ class EventNormalizationService(
         if (!validated.documentRelevant) return emptyList()
         return validated.events.mapNotNull { candidate ->
             normalize(document, candidate)?.let {
-                val saved = events.save(it, sourceDocumentId = document.id)
-                metrics.eventExtracted(it.family.name, it.type.name, it.direction.name)
-                saved
+                val saved = events.saveIfAbsent(it, document.id, eventFingerprint(document.id, it))
+                if (saved.inserted) {
+                    metrics.eventExtracted(it.family.name, it.type.name, it.direction.name)
+                }
+                saved.event
             }
         }
     }
@@ -70,7 +76,32 @@ class EventNormalizationService(
             taxonomyVersion = Versions.TAXONOMY_V1,
             extractorVersion = Versions.EXTRACTOR_V1,
             attributes = candidate.attributes,
+            evidence = candidate.evidence.map { EventEvidence(it.quoteOrFact, it.sourceOffsetHint) },
         )
+    }
+
+    private fun eventFingerprint(sourceDocumentId: java.util.UUID, event: CatalystEvent): String {
+        val facts = event.evidence
+            .map { "${it.quoteOrFact.trim().lowercase(Locale.ROOT)}\u001f${it.sourceOffsetHint.orEmpty().trim()}" }
+            .sorted()
+            .joinToString("\u001e")
+        val attributes = event.attributes.toSortedMap().entries.joinToString("\u001e") { "${it.key}\u001f${it.value}" }
+        val canonical = listOf(
+            sourceDocumentId,
+            event.companyId,
+            event.type,
+            event.direction,
+            event.eventTimestamp,
+            event.confidence,
+            event.magnitude,
+            event.surprise,
+            event.materiality,
+            event.expectedHorizon,
+            event.directness,
+            facts,
+            attributes,
+        ).joinToString("\u001d")
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray()))
     }
 
     private fun sourceQualityFor(provider: String): SourceQuality = when (provider) {

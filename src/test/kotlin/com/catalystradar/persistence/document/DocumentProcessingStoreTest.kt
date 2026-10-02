@@ -67,6 +67,19 @@ class DocumentProcessingStoreTest : PostgresIntegrationTest() {
         assertEquals(retryAt, due.nextAttemptAt)
     }
 
+    @Test
+    fun `keeps an interrupted processing attempt eligible for the next cycle`() {
+        val document = documents.save(newDocument())
+        processing.ensurePending(document.id, NOW)
+        processing.markProcessing(document.id, NOW.plusSeconds(1))
+
+        val due = processing.findDue(NOW.plusSeconds(2), limit = 10).single()
+
+        assertEquals(document.id, due.sourceDocumentId)
+        assertEquals(DocumentProcessingStatus.PROCESSING, due.status)
+        assertEquals(1, due.attemptCount)
+    }
+
     private fun newDocument() = SourceDocument(
         provider = "polygon",
         title = "Dell raises guidance",

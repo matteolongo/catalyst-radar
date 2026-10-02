@@ -11,7 +11,10 @@ interface DocumentProcessingRepository : ListCrudRepository<DocumentProcessingRo
         """
         SELECT *
         FROM document_processing
-        WHERE status = 'PENDING'
+        -- PipelineService uses an in-process single-flight guard. Retrying a
+        -- PROCESSING row therefore recovers work interrupted by a restart
+        -- without allowing local overlap.
+        WHERE status IN ('PENDING', 'PROCESSING')
            OR (status = 'RETRYABLE_ERROR' AND next_attempt_at <= :now)
         ORDER BY COALESCE(next_attempt_at, created_at), source_document_id
         LIMIT :limit

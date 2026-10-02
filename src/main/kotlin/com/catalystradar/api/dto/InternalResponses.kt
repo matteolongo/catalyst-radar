@@ -10,6 +10,10 @@ data class PipelineResultResponse(
     val eventsExtracted: Int,
     val companiesRescored: Int,
     val error: String?,
+    val documentsSkipped: Int,
+    val documentsRetryScheduled: Int,
+    val documentsTerminalFailures: Int,
+    val alreadyRunning: Boolean,
 )
 
 fun PipelineResult.toResponse() = PipelineResultResponse(
@@ -18,6 +22,10 @@ fun PipelineResult.toResponse() = PipelineResultResponse(
     eventsExtracted = eventsExtracted,
     companiesRescored = companiesRescored,
     error = error,
+    documentsSkipped = documentsSkipped,
+    documentsRetryScheduled = documentsRetryScheduled,
+    documentsTerminalFailures = documentsTerminalFailures,
+    alreadyRunning = alreadyRunning,
 )
 
 data class CreateApiClientRequest(val name: String)
