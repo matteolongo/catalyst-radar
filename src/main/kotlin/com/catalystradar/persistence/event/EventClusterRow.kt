@@ -21,6 +21,7 @@ data class EventClusterRow(
     @Column("event_type") val eventType: String,
     @Column("first_seen_at") val firstSeenAt: Instant,
     val embedding: PGvector?,
+    @Column("embedding_model") val embeddingModel: String?,
 )
 
 fun EventClusterRow.toDomain() = EventCluster(
@@ -30,10 +31,14 @@ fun EventClusterRow.toDomain() = EventCluster(
     firstSeenAt = firstSeenAt,
 )
 
-fun EventCluster.toRow(embedding: PGvector? = null) = EventClusterRow(
+fun EventCluster.toRow(
+    embedding: PGvector? = null,
+    embeddingModel: String? = null,
+) = EventClusterRow(
     id = id,
     companyId = companyId,
     eventType = eventType.name,
     firstSeenAt = firstSeenAt,
     embedding = embedding,
+    embeddingModel = embeddingModel,
 )

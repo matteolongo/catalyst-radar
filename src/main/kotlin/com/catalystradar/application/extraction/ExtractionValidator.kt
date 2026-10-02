@@ -25,6 +25,7 @@ class ExtractionValidator {
         if (materiality != null && materiality !in 0.0..1.0) return false
         if (magnitude != null && (!magnitude.isFinite() || magnitude < 0.0)) return false
         if (evidence.isEmpty()) return false
+        if (evidence.any { it.quoteOrFact.isBlank() }) return false
         return true
     }
 }

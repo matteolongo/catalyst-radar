@@ -30,6 +30,13 @@ class EventClusteringService(
     private val log = LoggerFactory.getLogger(EventClusteringService::class.java)
 
     suspend fun clusterEvent(eventId: UUID): UUID {
+        require(!properties.window.isNegative && !properties.window.isZero) {
+            "deduplication window must be positive"
+        }
+        require(properties.maxCandidates > 0) { "deduplication candidate limit must be positive" }
+        require(properties.similarityThreshold in -1.0..1.0) {
+            "deduplication similarity threshold must be within -1..1"
+        }
         val event = events.findById(eventId)
             ?: throw IllegalArgumentException("unknown event: $eventId")
         event.clusterId?.let { return it }
@@ -39,10 +46,13 @@ class EventClusteringService(
         }
         val candidate = embeddings.embed(candidateText(ticker, event))
         val since = at.minus(properties.window)
-        val match = clusters.findRecent(event.companyId, event.type, since, properties.maxCandidates)
+        // Event timestamps are the clustering clock. A late-arriving document
+        // must not join a cluster first observed after this candidate occurred.
+        val match = clusters.findWithinWindow(event.companyId, event.type, since, at, properties.maxCandidates)
             .firstNotNullOfOrNull { cluster ->
-                val vector = clusters.findEmbedding(cluster.id) ?: return@firstNotNullOfOrNull null
-                if (cosineSimilarity(candidate.values, vector) >= properties.similarityThreshold) {
+                val stored = clusters.findEmbedding(cluster.id) ?: return@firstNotNullOfOrNull null
+                if (stored.model != candidate.model) return@firstNotNullOfOrNull null
+                if (cosineSimilarity(candidate.values, stored.values) >= properties.similarityThreshold) {
                     cluster.id
                 } else {
                     null
@@ -56,6 +66,7 @@ class EventClusteringService(
         val created = clusters.save(
             EventCluster(companyId = event.companyId, eventType = event.type, firstSeenAt = at),
             embedding = PGvector(candidate.values.toFloatArray()),
+            embeddingModel = candidate.model,
         )
         events.assignCluster(eventId, created.id)
         log.info("event {} opened cluster {}", eventId, created.id)

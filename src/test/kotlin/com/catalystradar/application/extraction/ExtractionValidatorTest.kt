@@ -41,6 +41,18 @@ class ExtractionValidatorTest {
     }
 
     @Test
+    fun `drops candidates with blank evidence`() {
+        val result = validator.validate(
+            ExtractionResult(
+                documentRelevant = true,
+                events = listOf(valid().copy(evidence = listOf(EvidenceSpan(" ", null)))),
+            ),
+        )
+
+        assertTrue(result.events.isEmpty())
+    }
+
+    @Test
     fun `drops blank tickers`() {
         val result = validator.validate(
             ExtractionResult(documentRelevant = true, events = listOf(valid().copy(ticker = " "))),

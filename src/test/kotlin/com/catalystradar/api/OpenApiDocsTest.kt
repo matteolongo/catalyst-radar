@@ -23,6 +23,8 @@ class OpenApiDocsTest : PostgresIntegrationTest() {
             jsonPath("$.paths./v1/companies/{ticker}") { exists() }
             jsonPath("$.paths./v1/discovery/catalyzed") { exists() }
             jsonPath("$.paths./v1/events") { exists() }
+            jsonPath("$.paths./internal/replays") { exists() }
+            jsonPath("$.components.schemas.CatalystEventResponse.properties.evidence") { exists() }
         }
     }
 }

@@ -40,6 +40,13 @@ catalyst:
     provider: polygon
     fallback-provider: finnhub
     page-size: 50
+  pipeline:
+    batch-size: 50
+    max-attempts: 3
+    retry-delay: PT1M
+  snapshots:
+    enabled: false
+    interval: PT24H
   polygon:
     base-url: https://api.polygon.io
     # Never commit a real key: export POLYGON_API_KEY in the environment.

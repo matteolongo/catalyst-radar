@@ -9,12 +9,14 @@ import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.Directness
 import com.catalystradar.domain.event.Direction
 import com.catalystradar.domain.event.EventHorizon
+import com.catalystradar.domain.event.EventCluster
 import com.catalystradar.domain.event.EventType
 import com.catalystradar.domain.event.SourceQuality
 import com.catalystradar.persistence.PostgresIntegrationTest
 import com.catalystradar.persistence.catalyst.CatalystSnapshotStore
 import com.catalystradar.persistence.company.CompanyStore
 import com.catalystradar.persistence.event.EventStore
+import com.catalystradar.persistence.event.EventClusterStore
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.transaction.annotation.Transactional
@@ -36,6 +38,9 @@ class DiscoveryStoreTest : PostgresIntegrationTest() {
 
     @Autowired
     private lateinit var events: EventStore
+
+    @Autowired
+    private lateinit var clusters: EventClusterStore
 
     private val t0 = Instant.parse("2026-09-16T10:00:00Z")
 
@@ -101,7 +106,7 @@ class DiscoveryStoreTest : PostgresIntegrationTest() {
     fun `counts recent events per company`() {
         val dell = companies.save(Company(ticker = "DELL", name = "Dell"))
         snapshots.save(snapshot(dell.id, 46.6, CatalystState.BUILDING, t0))
-        val now = Instant.now()
+        val now = t0
         events.save(
             CatalystEvent(
                 companyId = dell.id,
@@ -118,9 +123,29 @@ class DiscoveryStoreTest : PostgresIntegrationTest() {
             ),
         )
 
-        val page = store.discover(DiscoveryQuery(limit = 10, offset = 0))
+        val page = store.discover(DiscoveryQuery(limit = 10, offset = 0, asOf = now))
 
         assertEquals(1, page.results.single().events7d)
+    }
+
+    @Test
+    fun `counts canonical recent events per company`() {
+        val dell = companies.save(Company(ticker = "DELL", name = "Dell"))
+        snapshots.save(snapshot(dell.id, 46.6, CatalystState.BUILDING, t0))
+        val cluster = clusters.save(
+            EventCluster(
+                companyId = dell.id,
+                eventType = EventType.GUIDANCE_RAISE,
+                firstSeenAt = t0.minusSeconds(3_600),
+            ),
+        )
+        events.save(event(dell.id, EventType.GUIDANCE_RAISE, t0.minusSeconds(3_600), cluster.id))
+        events.save(event(dell.id, EventType.GUIDANCE_RAISE, t0.minusSeconds(1_800), cluster.id))
+        events.save(event(dell.id, EventType.EARNINGS_BEAT, t0.minusSeconds(900)))
+
+        val page = store.discover(DiscoveryQuery(limit = 10, offset = 0, asOf = t0))
+
+        assertEquals(2, page.results.single().events7d)
     }
 
     @Test
@@ -155,5 +180,25 @@ class DiscoveryStoreTest : PostgresIntegrationTest() {
         velocity = ScoreVelocity(0.0, 0.0, v7d),
         asOf = at,
         taxonomyVersion = "taxonomy-v1",
+    )
+
+    private fun event(
+        companyId: java.util.UUID,
+        type: EventType,
+        at: Instant,
+        clusterId: java.util.UUID? = null,
+    ) = CatalystEvent(
+        companyId = companyId,
+        clusterId = clusterId,
+        type = type,
+        direction = Direction.POSITIVE,
+        confidence = 0.9,
+        sourceQuality = SourceQuality.TIER1_NEWS,
+        expectedHorizon = EventHorizon.WEEKS,
+        directness = Directness.DIRECT,
+        eventTimestamp = at,
+        discoveredAt = at,
+        taxonomyVersion = "taxonomy-v1",
+        extractorVersion = "event-extractor-v1",
     )
 }

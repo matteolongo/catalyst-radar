@@ -1,7 +1,9 @@
 package com.catalystradar.api.dto
 
 import com.catalystradar.application.pipeline.PipelineResult
+import com.catalystradar.application.replay.ReplayResult
 import com.catalystradar.security.CreatedApiKey
+import java.time.Instant
 import java.util.UUID
 
 data class PipelineResultResponse(
@@ -10,6 +12,10 @@ data class PipelineResultResponse(
     val eventsExtracted: Int,
     val companiesRescored: Int,
     val error: String?,
+    val documentsSkipped: Int,
+    val documentsRetryScheduled: Int,
+    val documentsTerminalFailures: Int,
+    val alreadyRunning: Boolean,
 )
 
 fun PipelineResult.toResponse() = PipelineResultResponse(
@@ -18,6 +24,10 @@ fun PipelineResult.toResponse() = PipelineResultResponse(
     eventsExtracted = eventsExtracted,
     companiesRescored = companiesRescored,
     error = error,
+    documentsSkipped = documentsSkipped,
+    documentsRetryScheduled = documentsRetryScheduled,
+    documentsTerminalFailures = documentsTerminalFailures,
+    alreadyRunning = alreadyRunning,
 )
 
 data class CreateApiClientRequest(val name: String)
@@ -34,4 +44,43 @@ fun CreatedApiKey.toResponse() = CreatedApiClientResponse(
     name = name,
     prefix = prefix,
     rawKey = rawKey,
+)
+
+data class InternalReplayRequest(
+    val ticker: String,
+    val cutoff: Instant,
+)
+
+data class ReplayResponse(
+    val ticker: String,
+    val asOf: Instant,
+    val score: Double,
+    val state: String,
+    val velocity1d: Double,
+    val velocity3d: Double,
+    val velocity7d: Double,
+    val eventCount: Int,
+    val scoreVersion: String,
+    val taxonomyVersion: String,
+    val extractorVersion: String,
+    val documentsConsidered: Int,
+    val documentsSkipped: Int,
+    val candidatesAccepted: Int,
+)
+
+fun ReplayResult.toResponse() = ReplayResponse(
+    ticker = ticker,
+    asOf = asOf,
+    score = score,
+    state = state.name,
+    velocity1d = velocity1d,
+    velocity3d = velocity3d,
+    velocity7d = velocity7d,
+    eventCount = eventCount,
+    scoreVersion = scoreVersion,
+    taxonomyVersion = taxonomyVersion,
+    extractorVersion = extractorVersion,
+    documentsConsidered = documentsConsidered,
+    documentsSkipped = documentsSkipped,
+    candidatesAccepted = candidatesAccepted,
 )

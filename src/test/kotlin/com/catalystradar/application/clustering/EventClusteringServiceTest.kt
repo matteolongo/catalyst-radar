@@ -4,6 +4,7 @@ import com.catalystradar.domain.company.Company
 import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.Directness
 import com.catalystradar.domain.event.Direction
+import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.EventHorizon
 import com.catalystradar.domain.event.EventType
 import com.catalystradar.domain.event.SourceQuality
@@ -53,8 +54,9 @@ class EventClusteringServiceTest : PostgresIntegrationTest() {
     @Test
     fun `duplicate reports share one cluster`() = runTest {
         val company = companies.save(Company(ticker = "DELL", name = "Dell"))
-        val first = events.save(newEvent(company.id, EventType.GUIDANCE_RAISE, "2026-09-16T10:00:00Z"))
-        val second = events.save(newEvent(company.id, EventType.GUIDANCE_RAISE, "2026-09-16T11:00:00Z"))
+        val evidence = listOf(EventEvidence("Dell raised its full-year outlook."))
+        val first = events.save(newEvent(company.id, EventType.GUIDANCE_RAISE, "2026-09-16T10:00:00Z", evidence))
+        val second = events.save(newEvent(company.id, EventType.GUIDANCE_RAISE, "2026-09-16T11:00:00Z", evidence))
 
         val firstCluster = service().clusterEvent(first.id)
         val secondCluster = service().clusterEvent(second.id)
@@ -89,6 +91,45 @@ class EventClusteringServiceTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `same typed events with different evidence stay apart`() = runTest {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell"))
+        val first = events.save(
+            newEvent(
+                company.id,
+                EventType.GUIDANCE_RAISE,
+                "2026-09-16T10:00:00Z",
+                listOf(EventEvidence("Dell raised fiscal 2027 EPS guidance.")),
+            ),
+        )
+        val second = events.save(
+            newEvent(
+                company.id,
+                EventType.GUIDANCE_RAISE,
+                "2026-09-16T11:00:00Z",
+                listOf(EventEvidence("Dell raised fiscal 2028 revenue guidance.")),
+            ),
+        )
+
+        val firstCluster = service().clusterEvent(first.id)
+        val secondCluster = service().clusterEvent(second.id)
+
+        assertNotEquals(firstCluster, secondCluster)
+    }
+
+    @Test
+    fun `later cluster cannot match an earlier event`() = runTest {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell"))
+        val evidence = listOf(EventEvidence("Dell raised its full-year outlook."))
+        val later = events.save(newEvent(company.id, EventType.GUIDANCE_RAISE, "2026-09-16T10:00:00Z", evidence))
+        val earlier = events.save(newEvent(company.id, EventType.GUIDANCE_RAISE, "2026-09-15T10:00:00Z", evidence))
+
+        val laterCluster = service().clusterEvent(later.id)
+        val earlierCluster = service().clusterEvent(earlier.id)
+
+        assertNotEquals(laterCluster, earlierCluster)
+    }
+
+    @Test
     fun `reclustering is idempotent`() = runTest {
         val company = companies.save(Company(ticker = "DELL", name = "Dell"))
         val event = events.save(newEvent(company.id, EventType.GUIDANCE_RAISE, "2026-09-16T10:00:00Z"))
@@ -99,9 +140,15 @@ class EventClusteringServiceTest : PostgresIntegrationTest() {
 
         assertEquals(first, second)
         assertNotNull(clusters.findById(first))
+        assertEquals("fake", clusters.findEmbedding(first)?.model)
     }
 
-    private fun newEvent(companyId: UUID, type: EventType, at: String) = CatalystEvent(
+    private fun newEvent(
+        companyId: UUID,
+        type: EventType,
+        at: String,
+        evidence: List<EventEvidence> = emptyList(),
+    ) = CatalystEvent(
         companyId = companyId,
         type = type,
         direction = Direction.POSITIVE,
@@ -113,6 +160,7 @@ class EventClusteringServiceTest : PostgresIntegrationTest() {
         discoveredAt = Instant.parse("2026-09-16T12:00:00Z"),
         taxonomyVersion = "taxonomy-v1",
         extractorVersion = "event-extractor-v1",
+        evidence = evidence,
     )
 
     /** Deterministic 1536-dim vectors: identical text always matches exactly. */

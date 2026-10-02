@@ -19,6 +19,7 @@ data class DiscoveryQuery(
     val sort: DiscoverySort = DiscoverySort.SCORE,
     val limit: Int = 20,
     val offset: Int = 0,
+    val asOf: Instant = Instant.now(),
 )
 
 data class DiscoveryRow(
@@ -76,6 +77,7 @@ class DiscoveryStore(private val jdbc: JdbcClient) {
         }
         params["limit"] = query.limit
         params["offset"] = query.offset
+        params["asOf"] = java.sql.Timestamp.from(query.asOf)
         val sql = """
             SELECT COUNT(*) OVER() AS total,
               c.id AS company_id, c.ticker AS ticker, c.name AS name, c.sector AS sector,
@@ -84,6 +86,7 @@ class DiscoveryStore(private val jdbc: JdbcClient) {
             FROM (
               SELECT DISTINCT ON (company_id) *
               FROM catalyst_snapshots
+              WHERE as_of <= :asOf
               ORDER BY company_id, as_of DESC
             ) s
             JOIN companies c ON c.id = s.company_id
@@ -109,24 +112,27 @@ class DiscoveryStore(private val jdbc: JdbcClient) {
             )
         }.list()
         if (page.isEmpty()) return DiscoveryPage(emptyList(), 0)
-        val counts = recentEventCounts(page.map { it.second.companyId })
+        val counts = recentEventCounts(page.map { it.second.companyId }, query.asOf)
         return DiscoveryPage(
             results = page.map { (_, row) -> row.copy(events7d = counts[row.companyId] ?: 0) },
             total = page.first().first,
         )
     }
 
-    private fun recentEventCounts(companyIds: List<UUID>): Map<UUID, Int> {
+    private fun recentEventCounts(companyIds: List<UUID>, asOf: Instant): Map<UUID, Int> {
         if (companyIds.isEmpty()) return emptyMap()
-        val since = java.sql.Timestamp.from(Instant.now().minusSeconds(7L * 86_400))
+        val since = java.sql.Timestamp.from(asOf.minusSeconds(7L * 86_400))
         return jdbc.sql(
             """
-            SELECT company_id, COUNT(*) AS events FROM events
-            WHERE discovered_at >= :since AND company_id IN (:ids)
+            SELECT company_id, COUNT(DISTINCT COALESCE(cluster_id, id)) AS events FROM events
+            WHERE discovered_at >= :since
+              AND discovered_at <= :asOf
+              AND company_id IN (:ids)
             GROUP BY company_id
             """.trimIndent(),
         )
             .param("since", since)
+            .param("asOf", java.sql.Timestamp.from(asOf))
             .param("ids", companyIds)
             .query { rs, _ -> rs.getObject("company_id", UUID::class.java) to rs.getInt("events") }
             .list().toMap()
