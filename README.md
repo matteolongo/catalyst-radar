@@ -4,6 +4,31 @@ CatalystRadar is a standalone market-intelligence service that continuously anal
 
 The project is designed as an independent service and is not tied to any specific trading application.
 
+## POC status
+
+This repository contains a working, single-process POC rather than a finished
+production market-data platform. It can persist provider documents, keep a
+durable per-document processing record, extract evidence-backed events, group
+duplicate reporting into canonical events, calculate/snapshot catalyst state,
+and expose the resulting intelligence through the REST API.
+
+The POC also includes bounded retries, an authenticated full-pipeline trigger,
+daily score-decay snapshots, and cutoff-safe replay from durable source
+documents. Its fixture-based end-to-end test exercises the main
+document-to-discovery path without live Polygon, Finnhub, or OpenAI credentials.
+
+Important limits are intentional:
+
+* Run one application instance. Scheduler guards are in-process and do not
+  coordinate multiple deployments.
+* Keep real-provider smoke runs to a small active universe. The local profile
+  seeds the S&P 500 plus Nasdaq-100, and ingestion queries every active ticker
+  in batches; review that scope before enabling scheduled ingestion.
+* Real ingestion requires provider credentials supplied at runtime; no sample
+  secret in this repository is valid for production.
+* Scores use provisional `score-v1` rules. Benchmarking reports data quality
+  explicitly but does not calibrate the model.
+
 ## What CatalystRadar does
 
 CatalystRadar answers questions such as:
@@ -113,64 +138,103 @@ Polygon and Finnhub are accessed through provider abstractions and must not leak
 
 ---
 
-## Development environment
+## Run the POC
 
-Local infrastructure runs in Docker while the Kotlin application normally runs directly from the IDE or Gradle.
+Local infrastructure runs in Docker while the Kotlin application runs from
+Gradle or an IDE. Prerequisites are JDK 21 and Docker Desktop; Docker is also
+required for the Testcontainers integration tests.
 
-Prerequisites: JDK 21, Docker Desktop running (Testcontainers needs it for integration tests).
+### Configure it safely
 
-Expected development flow:
+Start PostgreSQL + pgvector with:
 
 ```bash
 docker compose up -d
-./gradlew bootRun
 ```
 
-The `local` profile (`SPRING_PROFILES_ACTIVE=local`) seeds the S&P 500 +
-Nasdaq-100 universe on startup and enables the local admin key.
+Flyway applies V1 and the additive V2 migration automatically at application
+startup. The local profile seeds the S&P 500 plus Nasdaq-100 reference data,
+but schedulers remain disabled unless explicitly enabled. Ingestion queries
+every active company ticker in batches, so keep the active universe small for a
+real-provider smoke run.
 
-Local services:
+Use environment variables or a Git-ignored `.env` file for configuration.
+Never commit a real key, token, or database password.
+
+| Purpose | Environment variable |
+| --- | --- |
+| PostgreSQL connection | `CATALYST_DB_URL`, `CATALYST_DB_USER`, `CATALYST_DB_PASSWORD` |
+| Internal-operation key | `CATALYST_INTERNAL_ADMIN_KEY` |
+| Public API-key enforcement | `CATALYST_API_AUTH_ENABLED` |
+| News providers | `POLYGON_API_KEY`, `FINNHUB_API_KEY` |
+| Extraction/embeddings | `OPENAI_API_KEY`, `CATALYST_OPENAI_EXTRACTION_MODEL` |
+| Full-pipeline scheduler | `CATALYST_INGESTION_ENABLED`, `CATALYST_INGESTION_INTERVAL` |
+| Processing safety | `CATALYST_PIPELINE_BATCH_SIZE`, `CATALYST_PIPELINE_MAX_ATTEMPTS`, `CATALYST_PIPELINE_RETRY_DELAY` |
+| Daily decay snapshots | `CATALYST_SNAPSHOTS_ENABLED`, `CATALYST_SNAPSHOTS_INTERVAL` |
+
+On Windows PowerShell, for example:
+
+```powershell
+$env:SPRING_PROFILES_ACTIVE = "local"
+$env:CATALYST_INTERNAL_ADMIN_KEY = "choose-a-local-admin-key"
+.\gradlew.bat bootRun
+```
+
+On macOS/Linux:
+
+```bash
+SPRING_PROFILES_ACTIVE=local CATALYST_INTERNAL_ADMIN_KEY=choose-a-local-admin-key ./gradlew bootRun
+```
+
+Local endpoints are:
 
 ```text
 CatalystRadar API   http://localhost:8080
 OpenAPI             http://localhost:8080/v3/api-docs
 Swagger UI          http://localhost:8080/swagger-ui.html
+Health              http://localhost:8080/actuator/health
 PostgreSQL          localhost:5432
 ```
 
-Developers should not need a locally installed PostgreSQL instance.
+### Five-minute fixture demo
 
-Flyway migrates the database automatically on startup.
+This is the fastest proof that the POC works and requires no provider account.
+It starts its own PostgreSQL Testcontainer, uses WireMock news fixtures, and
+stubs the extraction/embedding boundaries:
 
----
-
-## Environment variables
-
-```bash
-POLYGON_API_KEY=...
-FINNHUB_API_KEY=...
-OPENAI_API_KEY=...
-CATALYST_OPENAI_EXTRACTION_MODEL=gpt-4o-mini
-
-CATALYST_INGESTION_ENABLED=true
-CATALYST_INGESTION_INTERVAL=PT30M
-CATALYST_INTERNAL_ADMIN_KEY=local-dev-secret
+```powershell
+.\gradlew.bat test --tests "com.catalystradar.e2e.CatalystPipelineE2ETest" --no-daemon
 ```
 
-Secrets must never be committed to Git.
+The scenario proves a document becomes an evidence-backed event, a canonical
+cluster, a catalyst snapshot, and a discovery result. Run the complete suite
+before changing the POC:
 
-Use local environment variables or a `.env` file excluded through `.gitignore`.
+```powershell
+.\gradlew.bat clean test --no-daemon
+```
 
----
+The suite covers the POC acceptance path without calling live providers:
 
-## Running the pipeline
+| Scenario | Automated evidence |
+| --- | --- |
+| Full document-to-discovery flow | `CatalystPipelineE2ETest` with WireMock and stubbed LLM boundaries |
+| Scheduled execution | `IngestionSchedulerTest` calls `PipelineService` |
+| Retry and idempotency | `PipelineServiceTest` retries a transient extraction failure without re-ingesting or duplicating an event |
+| Extraction trust boundary | `EventNormalizationServiceTest` rejects out-of-scope and future-dated candidates |
+| Canonical clustering | `EventClusteringServiceTest` keeps distinct evidence separate and syndication together |
+| Daily decay | `DailySnapshotServiceTest` writes a fresher, lower decayed score for an active company |
+| Point-in-time replay | `ReplayServiceTest` excludes future documents/live clusters and accepts a newly relevant linked document |
+| Key issuance safety | `InternalControllersTest` asserts `Cache-Control: no-store` on raw-key issuance |
 
-With provider keys exported, trigger a full cycle
-(ingest → extract → normalize → cluster → score → snapshot):
+### Run real ingestion and inspect results
+
+With Polygon/Finnhub/OpenAI keys supplied at runtime, trigger the same complete
+pipeline used by the ingestion scheduler:
 
 ```bash
 curl -X POST http://localhost:8080/internal/ingestion/runs \
-  -H "X-Admin-Key: local-dev-secret"
+  -H "X-Admin-Key: $CATALYST_INTERNAL_ADMIN_KEY"
 ```
 
 Then query the results:
@@ -180,9 +244,49 @@ curl http://localhost:8080/v1/companies/DELL/catalyst
 curl "http://localhost:8080/v1/discovery/catalyzed?minScore=45&limit=20"
 ```
 
-API keys for public `/v1` access are issued through
-`POST /internal/api-clients` (raw key is shown once, only hashes persist)
-and enforced when `catalyst.api.auth-enabled=true`.
+All `/internal/*` routes require `X-Admin-Key`. The operational endpoints are:
+
+```text
+POST /internal/ingestion/runs      run the full ingest-to-snapshot pipeline
+POST /internal/replays             recompute one company at a historical cutoff
+POST /internal/api-clients         issue a public API key
+```
+
+Replay accepts only a ticker and a cutoff, never raw source content:
+
+```bash
+curl -X POST http://localhost:8080/internal/replays \
+  -H "Content-Type: application/json" \
+  -H "X-Admin-Key: $CATALYST_INTERNAL_ADMIN_KEY" \
+  -d '{"ticker":"DELL","cutoff":"2026-09-16T10:00:00Z"}'
+```
+
+Create a public API key with an internal operation, copy `rawKey` immediately,
+and store it in a secret manager. The response has `Cache-Control: no-store`;
+only the key hash persists. Enable `CATALYST_API_AUTH_ENABLED=true` to enforce
+the key on `/v1/*` requests, then send it as `Authorization: Bearer <rawKey>`.
+
+### Scheduler and migration notes
+
+`catalyst.ingestion.enabled` and `catalyst.snapshots.enabled` both default to
+`false`. Leave them disabled for fixture-based tests. Enable them only for one
+application process: the pipeline's and daily snapshot task's overlap guards
+are intentionally in-memory for this POC. The daily task performs local
+recalculation only; it makes no provider or LLM call.
+
+V2 is additive and safely applies after V1. It backfills document/company
+links derivable from existing events. A legacy source document with neither an
+event nor a resolvable company link cannot be made replayable automatically;
+start from a fresh POC database or re-ingest that material.
+
+### Observability
+
+`/actuator/health` is public for deployment checks and does not reveal health
+details. The Micrometer registry records bounded-cardinality pipeline,
+document-processing, retry, daily-snapshot, replay, provider, and LLM metrics.
+No metric tags include a ticker, company ID, document body, prompt, or secret.
+Connect the registry to the deployment's chosen monitoring backend rather than
+logging raw provider payloads.
 
 ---
 
@@ -573,35 +677,31 @@ sequenceDiagram
     E->>DB: Store catalyst snapshot
 ```
 
-The v0.1 ingestion process uses scheduled polling.
-
-A queue is deliberately not required initially.
+The v0.1 ingestion process uses scheduled polling backed by a durable
+PostgreSQL processing record for retries. A separate message broker is
+deliberately not required for the POC.
 
 ---
 
 ## Historical replay
 
-Replayability is a core requirement.
+Replayability is a core requirement. For the supported v0.1 artifact versions,
+replay selects only company-linked source documents discovered by the requested
+cutoff, re-extracts them, and rebuilds temporary canonical clusters without
+reading live events or live cluster IDs.
 
-Given previously stored source documents, CatalystRadar must be able to regenerate:
-
-```text
-events
-event clusters
-company scores
-state transitions
-historical snapshots
-```
-
-using a newer:
+That produces a non-persistent historical result with:
 
 ```text
-taxonomy version
-extractor version
-scoring version
+validated replay candidates
+temporary canonical clusters
+company score and state
+velocity calculated from cutoff-bounded snapshots
 ```
 
-Historical experiments must be reproducible.
+Unsupported version changes fail fast. A future taxonomy, extractor, or score
+version requires an explicit versioned implementation and regression data;
+replay does not silently mix artifact versions.
 
 ---
 
@@ -794,32 +894,27 @@ Potential additions:
 
 ---
 
-## Project status
+## Project status and deliberate deferrals
 
-CatalystRadar v0.1 is implemented: the vertical slice works end to end.
+The POC's vertical slice is implemented and verified through automated fixtures:
 
 ```text
-news ingestion
+provider fixture or live provider
     ↓
-event extraction
+durable source document + company link + processing state
     ↓
-event persistence
+validated evidence-backed event
     ↓
-deduplication
+canonical event cluster
     ↓
-catalyst scoring
+score/state snapshot and discovery API
     ↓
-historical snapshot
-    ↓
-discovery API
+cutoff-safe replay without persistent side effects
 ```
 
-A developer with provider API keys can ingest real news for the seeded
-US company universe and query which companies are entering a stronger
-catalyst state and why. Without keys, the full suite (including the
-end-to-end pipeline test over WireMock and stubbed LLM boundaries)
-proves the same flow deterministically via `./gradlew clean test`.
-
-Deliberately deferred: persisting score-version configs (code-defined
-`score-v1` for now), company aliases, a daily snapshot job for quiet
-days, and score calibration from benchmark results (v0.3).
+Deliberately deferred are multi-instance scheduling/leases, UI and trading
+features, social/SEC/IR ingestion, webhooks, distributed infrastructure,
+large-universe tuning, broad historical backfills, company aliases, and score
+calibration. `score-v1` remains code-defined while benchmark reports are used
+to make future calibration work visible rather than pretending missing market
+data is a valid result.

@@ -8,6 +8,13 @@ import com.catalystradar.ports.MarketDataProvider
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.concurrent.CancellationException
+
+enum class PriceDataStatus {
+    AVAILABLE,
+    INCOMPLETE,
+    UNAVAILABLE,
+}
 
 data class CaseEvaluation(
     val caseId: String?,
@@ -19,6 +26,7 @@ data class CaseEvaluation(
     val mfe: Double?,
     val mae: Double?,
     val priced: Boolean,
+    val priceDataStatus: PriceDataStatus,
 )
 
 data class BenchmarkReport(
@@ -72,11 +80,20 @@ class BenchmarkRunner(
             replay.replay(ReplayRequest(ticker, cutoff), extraction).state
         }
         val detectedLookbacks = states.filterValues { it >= CatalystState.BUILDING }.keys
-        val bars = runCatching {
+        val fetchedBars = try {
             marketData.dailyBars(ticker, t0.minusDays(15), t0.plusDays(30))
-        }.getOrDefault(emptyList())
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            null
+        }
+        val bars = fetchedBars.orEmpty()
         val returns = definition.horizons.associateWith { horizon -> forwardReturn(bars, t0, horizon) }
         val excursionsPair = excursions(bars, t0, definition.horizons.maxOrNull() ?: 10)
+        val priceDataStatus = when {
+            fetchedBars == null -> PriceDataStatus.UNAVAILABLE
+            returns.values.all { it != null } -> PriceDataStatus.AVAILABLE
+            else -> PriceDataStatus.INCOMPLETE
+        }
         return CaseEvaluation(
             caseId = caseId,
             ticker = ticker,
@@ -86,7 +103,8 @@ class BenchmarkRunner(
             returns = returns,
             mfe = excursionsPair.first,
             mae = excursionsPair.second,
-            priced = returns.values.all { it != null },
+            priced = priceDataStatus == PriceDataStatus.AVAILABLE,
+            priceDataStatus = priceDataStatus,
         )
     }
 

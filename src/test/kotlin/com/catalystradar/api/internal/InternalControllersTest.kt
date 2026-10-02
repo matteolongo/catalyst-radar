@@ -197,6 +197,7 @@ class InternalControllersTest {
             content = """{"name": "backtester"}"""
         }.andExpect {
             status { isOk() }
+            header { string("Cache-Control", "no-store") }
             jsonPath("$.prefix") { value("a1b2c3d4") }
             jsonPath("$.rawKey") { value("cr_live_a1b2c3d4_secret") }
         }
