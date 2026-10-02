@@ -98,6 +98,9 @@ class EventStore(
     fun findDetailedByCompanyId(companyId: UUID): List<EventWithSource> =
         detailed(repository.findByCompanyId(companyId))
 
+    fun findDetailedAvailableByCompanyId(companyId: UUID, snapshotCreatedAt: Instant): List<EventWithSource> =
+        detailed(repository.findAvailableByCompanyId(companyId, snapshotCreatedAt))
+
     private fun detailed(rows: List<EventRow>): List<EventWithSource> {
         if (rows.isEmpty()) return emptyList()
         val metadata = jdbc.query(

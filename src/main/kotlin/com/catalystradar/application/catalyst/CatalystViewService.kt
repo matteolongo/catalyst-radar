@@ -16,6 +16,9 @@ import com.catalystradar.persistence.event.SafeSourceMetadata
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.UUID
+import kotlin.math.abs
+
+enum class ExplanationStatus { MATCHED, SCORE_MISMATCH, VERSION_MISMATCH }
 
 data class EventDriver(
     val eventId: UUID,
@@ -49,6 +52,7 @@ data class CatalystView(
     val taxonomyVersion: String,
     val asOf: Instant,
     val scoreCalculation: CalculatedScore? = null,
+    val explanationStatus: ExplanationStatus = ExplanationStatus.VERSION_MISMATCH,
 ) {
     val stateBand: StateBand get() = stateBandForScore(score)
 }
@@ -71,10 +75,17 @@ class CatalystViewService(
     fun view(ticker: String): CatalystView {
         val company = companies.findByTicker(ticker) ?: throw CompanyNotFoundException(ticker)
         val snapshot = snapshots.latestSnapshot(company.id) ?: throw CatalystNotFoundException(ticker)
-        val detailed = events.findDetailedByCompanyId(company.id)
-        val canonical = selector.select(detailed.map { it.event }.filter { !it.discoveredAt.isAfter(snapshot.asOf) })
+        val detailed = events.findDetailedAvailableByCompanyId(company.id, snapshots.createdAt(snapshot.id))
+        val canonical = selector.select(detailed.map { it.event })
         val detailsById = detailed.associateBy { it.event.id }
         val calculated = calculator.calculate(canonical, snapshot.asOf)
+        val explanationStatus = when {
+            snapshot.score.version != calculated.score.version ||
+                canonical.any { it.taxonomyVersion != snapshot.taxonomyVersion } -> ExplanationStatus.VERSION_MISMATCH
+            abs(snapshot.score.value - calculated.score.value) > 1e-9 ||
+                snapshot.state != stateForScore(snapshot.score.value) -> ExplanationStatus.SCORE_MISMATCH
+            else -> ExplanationStatus.MATCHED
+        }
         val byId = canonical.associateBy { it.id }
         val rawFor = { predicate: (CatalystEvent) -> Boolean ->
             calculated.contributions
@@ -100,7 +111,7 @@ class CatalystViewService(
                         source = detailsById[it.id]?.source,
                     )
                 }
-            }
+            }.takeIf { explanationStatus == ExplanationStatus.MATCHED } ?: emptyList()
         val weekAgo = snapshot.asOf.minusSeconds(7L * 86_400)
         return CatalystView(
             ticker = company.ticker,
@@ -119,7 +130,8 @@ class CatalystViewService(
             scoreVersion = snapshot.score.version,
             taxonomyVersion = snapshot.taxonomyVersion,
             asOf = snapshot.asOf,
-            scoreCalculation = calculated,
+            scoreCalculation = calculated.takeIf { explanationStatus == ExplanationStatus.MATCHED },
+            explanationStatus = explanationStatus,
         )
     }
 }

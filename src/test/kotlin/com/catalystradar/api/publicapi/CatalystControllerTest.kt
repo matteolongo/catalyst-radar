@@ -4,6 +4,7 @@ import com.catalystradar.application.catalyst.CatalystNotFoundException
 import com.catalystradar.application.catalyst.CatalystView
 import com.catalystradar.application.catalyst.CatalystViewService
 import com.catalystradar.application.catalyst.EventDriver
+import com.catalystradar.application.catalyst.ExplanationStatus
 import com.catalystradar.application.scoring.ScoreCalculator
 import com.catalystradar.application.company.CompanyNotFoundException
 import com.catalystradar.application.company.CompanyService
@@ -123,11 +124,13 @@ class CatalystControllerTest {
             )),
             scoreVersion = "score-v1", taxonomyVersion = "taxonomy-v1", asOf = t0,
             scoreCalculation = calculated,
+            explanationStatus = ExplanationStatus.MATCHED,
         ))
 
         mockMvc.get("/v1/companies/DELL/catalyst").andExpect {
             status { isOk() }
             jsonPath("$.scoreCalculation.contributionSum") { value(9.0) }
+            jsonPath("$.explanationStatus") { value("MATCHED") }
             jsonPath("$.scoreCalculation.familyCount") { value(1) }
             jsonPath("$.scoreCalculation.convergenceMultiplier") { value(1.0) }
             jsonPath("$.scoreCalculation.rawScore") { value(9.0) }
@@ -142,6 +145,28 @@ class CatalystControllerTest {
             jsonPath("$.topDrivers[0].source.canonicalUrl") { value("https://example.com") }
             jsonPath("$.topDrivers[0].source.body") { doesNotExist() }
             jsonPath("$.topDrivers[0].source.rawPayload") { doesNotExist() }
+        }
+    }
+
+    @Test
+    fun `unmatched explanations report status without drivers or calculation`() {
+        listOf(ExplanationStatus.SCORE_MISMATCH, ExplanationStatus.VERSION_MISMATCH).forEach { explanationStatus ->
+            `when`(views.view("DELL")).thenReturn(CatalystView(
+                ticker = "DELL", score = 46.6, state = CatalystState.BUILDING,
+                velocity1d = 0.0, velocity3d = 0.0, velocity7d = 0.0,
+                positiveScore = 0.0, negativeScore = 0.0,
+                directScore = 0.0, inferredScore = 0.0,
+                totalEvents = 1, events7d = 1, topDrivers = emptyList(),
+                scoreVersion = "score-v1", taxonomyVersion = "taxonomy-v1", asOf = t0,
+                scoreCalculation = null, explanationStatus = explanationStatus,
+            ))
+
+            mockMvc.get("/v1/companies/DELL/catalyst").andExpect {
+                status { isOk() }
+                jsonPath("$.explanationStatus") { value(explanationStatus.name) }
+                jsonPath("$.topDrivers.length()") { value(0) }
+                jsonPath("$.scoreCalculation") { doesNotExist() }
+            }
         }
     }
 

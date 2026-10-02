@@ -18,7 +18,9 @@ import com.catalystradar.persistence.document.SourceDocumentStore
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.transaction.annotation.Transactional
+import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -62,6 +64,9 @@ class CatalystViewServiceTest : PostgresIntegrationTest() {
 
     @Autowired
     private lateinit var catalyst: CatalystService
+
+    @Autowired
+    private lateinit var jdbc: JdbcTemplate
 
     private val t0 = Instant.parse("2026-09-16T10:00:00Z")
 
@@ -126,14 +131,16 @@ class CatalystViewServiceTest : PostgresIntegrationTest() {
     }
 
     @Test
-    fun `current explanation excludes events discovered after persisted snapshot`() {
+    fun `current explanation excludes event persisted after snapshot despite earlier discovery`() {
         val company = companies.save(Company(ticker = "DELL", name = "Dell"))
         val first = raise(company.id, EventType.GUIDANCE_RAISE)
         events.save(first)
         val snapshot = catalyst.recalculate(company.id, t0)
-        events.save(raise(company.id, EventType.EARNINGS_BEAT).copy(
-            discoveredAt = t0.plusSeconds(60),
-        ))
+        val late = events.save(raise(company.id, EventType.EARNINGS_BEAT))
+        val snapshotCreatedAt = assertNotNull(jdbc.queryForObject(
+            "SELECT created_at FROM catalyst_snapshots WHERE id = ?", Timestamp::class.java, snapshot.id,
+        )).toInstant()
+        jdbc.update("UPDATE events SET created_at = ? WHERE id = ?", Timestamp.from(snapshotCreatedAt.plusSeconds(1)), late.id)
 
         val view = views.view("DELL")
 
@@ -142,6 +149,35 @@ class CatalystViewServiceTest : PostgresIntegrationTest() {
         assertEquals(1, view.topDrivers.size)
         assertEquals(first.id, view.topDrivers.single().eventId)
         assertEquals(9.0, assertNotNull(view.scoreCalculation).rawScore, 1e-9)
+        assertEquals(ExplanationStatus.MATCHED, view.explanationStatus)
+    }
+
+    @Test
+    fun `score mismatch withholds drivers and aggregate explanation`() {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell"))
+        events.save(raise(company.id, EventType.GUIDANCE_RAISE))
+        val snapshot = catalyst.recalculate(company.id, t0)
+        jdbc.update("UPDATE catalyst_snapshots SET score = score + 1 WHERE id = ?", snapshot.id)
+
+        val view = views.view("DELL")
+
+        assertEquals(ExplanationStatus.SCORE_MISMATCH, view.explanationStatus)
+        assertTrue(view.topDrivers.isEmpty())
+        assertEquals(null, view.scoreCalculation)
+    }
+
+    @Test
+    fun `version mismatch withholds drivers and aggregate explanation`() {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell"))
+        events.save(raise(company.id, EventType.GUIDANCE_RAISE))
+        val snapshot = catalyst.recalculate(company.id, t0)
+        jdbc.update("UPDATE catalyst_snapshots SET score_version = 'score-v2' WHERE id = ?", snapshot.id)
+
+        val view = views.view("DELL")
+
+        assertEquals(ExplanationStatus.VERSION_MISMATCH, view.explanationStatus)
+        assertTrue(view.topDrivers.isEmpty())
+        assertEquals(null, view.scoreCalculation)
     }
 
     @Test

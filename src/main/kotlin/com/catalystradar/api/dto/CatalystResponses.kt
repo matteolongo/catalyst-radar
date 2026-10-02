@@ -80,6 +80,7 @@ data class CatalystResponse(
     val asOf: Instant,
     val stateBand: StateBandResponse,
     val scoreCalculation: ScoreCalculationResponse?,
+    val explanationStatus: String,
 )
 
 fun EventDriver.toResponse() = EventDriverResponse(
@@ -116,6 +117,7 @@ fun CatalystView.toResponse() = CatalystResponse(
     stateBand = StateBandResponse(stateBand.state.name, stateBand.minScore, stateBand.maxScore,
         stateBand.state == CatalystState.HIGH),
     scoreCalculation = scoreCalculation?.toResponse(),
+    explanationStatus = explanationStatus.name,
 )
 
 data class SnapshotResponse(
