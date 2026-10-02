@@ -11,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import kotlin.test.assertTrue
 import org.springframework.transaction.annotation.Transactional
 
 @SpringBootTest(properties = ["catalyst.api.auth-enabled=true"])
@@ -86,5 +87,26 @@ class ApiKeyAuthFilterTest : PostgresIntegrationTest() {
         }.andExpect {
             status { isUnauthorized() }
         }
+    }
+
+    @Test
+    fun `denials carry cors headers for allowed origins`() {
+        mockMvc.get("/v1/companies/DELL") {
+            accept = MediaType.APPLICATION_JSON
+            header("Origin", "http://localhost:8090")
+        }.andExpect {
+            status { isUnauthorized() }
+            header { string("Access-Control-Allow-Origin", "http://localhost:8090") }
+        }
+    }
+
+    @Test
+    fun `origin patterns match ports but not foreign hosts`() {
+        val patterns = listOf("http://localhost:*", "http://127.0.0.1:*")
+
+        assertTrue(ApiKeyAuthFilter.isOriginAllowed(patterns, "http://localhost:8090"))
+        assertTrue(ApiKeyAuthFilter.isOriginAllowed(patterns, "http://127.0.0.1:3000"))
+        assertTrue(!ApiKeyAuthFilter.isOriginAllowed(patterns, "https://evil.example"))
+        assertTrue(!ApiKeyAuthFilter.isOriginAllowed(patterns, "http://localhost.evil.example:8090"))
     }
 }

@@ -15,6 +15,9 @@ management:
     web:
       exposure:
         include: health,info
+      cors:
+        allowed-origin-patterns: http://localhost:*,http://127.0.0.1:*
+        allowed-methods: GET
   endpoint:
     health:
       show-details: never
@@ -33,6 +36,9 @@ catalyst:
   internal:
     # Always required for /internal/*, even locally. Never commit a real value.
     admin-key: ${CATALYST_INTERNAL_ADMIN_KEY:}
+  ui:
+    # Dashboard origins for browser CORS, including filter denials.
+    allowed-origins: http://localhost:*,http://127.0.0.1:*
   ingestion:
     enabled: false
     interval: PT30M

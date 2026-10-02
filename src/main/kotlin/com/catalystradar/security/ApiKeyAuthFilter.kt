@@ -29,6 +29,10 @@ class ApiKeyAuthFilter(
     private val adminKey: String
         get() = environment.getProperty("catalyst.internal.admin-key", "")
 
+    private val allowedOrigins: List<String>
+        get() = environment.getProperty("catalyst.ui.allowed-origins", List::class.java, DEFAULT_ORIGINS)
+            ?.filterIsInstance<String>() ?: DEFAULT_ORIGINS
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
@@ -73,6 +77,19 @@ class ApiKeyAuthFilter(
     private fun constantEquals(expected: String, actual: String): Boolean =
         java.security.MessageDigest.isEqual(expected.toByteArray(), actual.toByteArray())
 
+    private fun isAllowedOrigin(origin: String): Boolean =
+        isOriginAllowed(allowedOrigins, origin)
+
+    companion object {
+        private val DEFAULT_ORIGINS = listOf("http://localhost:*", "http://127.0.0.1:*")
+
+        /** Mirrors the WebMvcConfigurer patterns: exact or `*` wildcards. */
+        internal fun isOriginAllowed(patterns: List<String>, origin: String): Boolean =
+            patterns.any { pattern ->
+                Regex(pattern.split("*").joinToString(".*") { Regex.escape(it) }).matches(origin)
+            }
+    }
+
     private fun deny(
         request: HttpServletRequest,
         response: HttpServletResponse,
@@ -82,6 +99,13 @@ class ApiKeyAuthFilter(
     ) {
         response.status = status.value()
         response.contentType = MediaType.APPLICATION_JSON_VALUE
+        // Filter short-circuits never reach DispatcherServlet CORS handling,
+        // so allowed origins get their headers here or browsers misreport
+        // every denial as a CORS failure.
+        request.getHeader("Origin")?.takeIf { isAllowedOrigin(it) }?.let {
+            response.setHeader("Access-Control-Allow-Origin", it)
+            response.setHeader("Vary", "Origin")
+        }
         val requestId = request.getHeader("X-Request-Id")?.takeIf { it.isNotBlank() }
             ?: java.util.UUID.randomUUID().toString()
         mapper.writeValue(
