@@ -1,30 +1,43 @@
-# CatalystRadar Ops dashboard
+# CatalystRadar analysis dashboard
 
 The dashboard is packaged with the Spring Boot application. Follow the
 [local startup steps](../README.md#operator-dashboard-poc), then open
-`http://localhost:8080/ops/index.html`. The `local` profile uses
-`local-dev-secret` as its admin key. Outside that profile, configure
-`CATALYST_INTERNAL_ADMIN_KEY`. No separate web server, UI build step, or CORS
-configuration is needed; the page always calls the API that served it.
+`http://localhost:8080/ops/index.html`. It uses the same origin as the API and
+has no separate build step.
 
-What it shows:
+## Views
 
-- API health plus admin and public API key management. Keys live in the
-  browser tab's `sessionStorage`. The admin key is sent only to `/internal/*`;
-  the API key is sent only to `/v1/*` when public authentication is enabled.
-- Pipeline controls: trigger a run, watch ingestion runs with
-  fetch/new/duplicate counters and errors.
-- Model runs with tokens, latency, and estimated cost, plus page
-  totals for spend tracking.
-- Current discovery leaders by catalyst score.
+- **Discover** opens first. Filter companies by state, minimum score,
+  minimum 7-day velocity, and **exact-match** sector text. Results are bounded
+  pages and open company analysis by ticker.
+- **Company analysis** shows the saved current score and state, the server's
+  state range, current metrics, a reconstructed explanation when its score and
+  versions match the saved snapshot, stored history, and contextual events.
+  Raw event contributions are not normalized score points. The chart contains
+  stored snapshot points only; a selected range returns at most 200 snapshots
+  and 200 transitions. Contextual events do not establish causes of historical
+  scores or states.
+- **Events** searches across companies using ticker, family, type, direction,
+  and first-captured dates. The date controls filter `discoveredAt`, including
+  the full selected through date in UTC. Event date (`eventTimestamp`), source
+  publication date (`source.publishedAt`), and first captured (`discoveredAt`)
+  are displayed separately. Each bounded page is loaded with **Load more**;
+  reports retain their evidence and cluster identifiers. A ticker opens its
+  company analysis.
+- **Operations** keeps the pipeline trigger, ingestion and model run tables,
+  token counts, latency, and page cost totals. Model run details show version
+  and source document identifiers, without prompts or document bodies.
 
-Run history and pipeline controls require the server-side admin key
-(`CATALYST_INTERNAL_ADMIN_KEY`). Clear entered keys with **Clear keys** or
-by closing the tab.
+## Keys and access
 
-Use HTTPS and restrict access to the dashboard for remote deployments. Never
-deploy the `local` profile remotely. This key-entry flow is intended for an
-operator POC, not an Internet-facing login system.
+Run history and pipeline controls require an admin key. The `local` profile
+uses `local-dev-secret`; other profiles need `CATALYST_INTERNAL_ADMIN_KEY`.
+If public API authentication is enabled, issue a public API key through
+`POST /internal/api-clients` and enter it in the API key field for Discover,
+Company, and Events. The admin key goes only to `/internal/*`; the public API
+key goes only to `/v1/*`. Keys live in this tab's `sessionStorage`. **Clear
+keys** removes both and clears protected run data.
 
-If `catalyst.api.auth-enabled=true`, create a public API key with
-`POST /internal/api-clients` and save it in the API key field to load leaders.
+**Run pipeline now** can make live provider and LLM calls when their keys are
+configured and may incur costs. Use HTTPS and restrict access for remote
+deployments. Do not deploy the `local` profile remotely.

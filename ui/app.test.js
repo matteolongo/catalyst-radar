@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const app = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
-function startDashboard({ search = '', stored = {}, origin = 'https://ops.example', discovery, company = {}, deferDiscovery = false, deferAdmin = false, deferTimeline = false } = {}) {
+function startDashboard({ search = '', stored = {}, origin = 'https://ops.example', discovery, events, company = {}, deferDiscovery = false, deferAdmin = false, deferTimeline = false } = {}) {
   const requests = [];
   const values = new Map(Object.entries(stored));
   const elements = new Map();
@@ -89,6 +89,11 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
     if (route === '/v1/discovery/catalyzed' && discovery === 'error') {
       return { ok: false, status: 503, json: async () => ({ detail: 'Discovery unavailable' }) };
     }
+    if (route === '/v1/events') {
+      const answer = typeof events === 'function' ? events(new URL(url)) : events;
+      return answer === 'error' ? { ok: false, status: 503, json: async () => ({ detail: 'Events unavailable' }) }
+        : { ok: true, status: 200, json: async () => answer || eventFixture };
+    }
     const body = route === '/actuator/health' ? { status: 'UP' }
       : route === '/internal/ingestion/runs' ? { runs: [{
         id: 'a7f2cd30-6717-4e3a-8870-4bdba9d7af95', provider: 'polygon', status: 'SUCCESS',
@@ -159,6 +164,8 @@ const discoveryPage = (ticker, total = 1, offset = 0) => ({
     state: 'WATCH', velocity7d: 1, events7d: 1, scoreVersion: 'score-v1',
     taxonomyVersion: 'taxonomy-v1', asOf: '2026-10-02T12:00:00Z' }],
 });
+
+const eventFixture = { events: [{ ...companyFixture['/events'].events[0], ticker: 'DELL', companyName: 'Dell Technologies' }], nextCursor: null };
 
 test('the dashboard sends requests only to the origin serving it', async () => {
   const dashboard = startDashboard({
@@ -517,4 +524,93 @@ test('scoring details retain the returned numeric factor precision', async () =>
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/catalyst': { ...companyFixture['/catalyst'], topDrivers: [driver] } } });
   await waitForRequests(dashboard.requests, 6);
   assert.match(dashboard.elements.get('companyExplanation').innerHTML, /0\.9876/);
+});
+
+test('event search sends only bounded API filters and labels discovery time', async () => {
+  const dashboard = startDashboard({ search: '?view=events' });
+  await waitForRequests(dashboard.requests, 3);
+  dashboard.elements.get('eventTicker').value = 'DELL';
+  dashboard.elements.get('eventFamily').value = 'GUIDANCE';
+  dashboard.elements.get('eventType').value = 'GUIDANCE_RAISE';
+  dashboard.elements.get('eventDirection').value = 'POSITIVE';
+  dashboard.elements.get('eventFrom').value = '2026-10-01';
+  dashboard.elements.get('eventTo').value = '2026-10-02';
+  dashboard.elements.get('eventPageSize').value = '20';
+  await dashboard.elements.get('eventFilters').trigger('submit', { preventDefault() {} });
+  const url = new URL(dashboard.requests.at(-1).url);
+  assert.equal(url.pathname + url.search,
+    '/v1/events?ticker=DELL&family=GUIDANCE&type=GUIDANCE_RAISE&direction=POSITIVE&from=2026-10-01T00%3A00%3A00Z&to=2026-10-02T23%3A59%3A59.999Z&limit=20');
+  assert.match(html, /First captured from/);
+  assert.match(html, /First captured through/);
+  const rendered = dashboard.elements.get('eventResults').innerHTML;
+  assert.match(rendered, /Event date:/);
+  assert.match(rendered, /Source publication date:/);
+  assert.match(rendered, /First captured:/);
+});
+
+test('event cursor appends reports and preserves source evidence when returning from company', async () => {
+  const second = { ...eventFixture.events[0], id: 'event-2', evidence: [{ quoteOrFact: 'Second report', sourceOffsetHint: null }] };
+  const dashboard = startDashboard({ search: '?view=events', events: (url) =>
+    url.searchParams.has('cursor') ? { events: [second], nextCursor: null }
+      : { ...eventFixture, nextCursor: 'opaque-page-2' } });
+  await waitForRequests(dashboard.requests, 3);
+  await dashboard.elements.get('loadEvents').trigger('click');
+  assert.equal(new URL(dashboard.requests.at(-1).url).searchParams.get('cursor'), 'opaque-page-2');
+  assert.match(dashboard.elements.get('eventResults').innerHTML, /Raised guidance.*Second report/s);
+  assert.match(dashboard.elements.get('eventResults').innerHTML, /cluster-1/);
+  dashboard.elements.get('eventResults').trigger('click', { target: { closest: () => ({ dataset: { ticker: 'DELL' } }) }, preventDefault() {} });
+  assert.equal(dashboard.window.location.search, '?view=company&ticker=DELL');
+  dashboard.popstate('?view=events');
+  assert.match(dashboard.elements.get('eventResults').innerHTML, /Raised guidance.*Second report/s);
+  assert.equal(dashboard.requests.filter((request) => new URL(request.url).pathname === '/v1/events').length, 2);
+});
+
+test('events use public credentials and Operations remains admin gated with model provenance', async () => {
+  const dashboard = startDashboard({ search: '?view=events', stored: { 'catalyst-api-key': 'public-secret' } });
+  await waitForRequests(dashboard.requests, 3);
+  const eventRequest = dashboard.requests.find((request) => new URL(request.url).pathname === '/v1/events');
+  assert.equal(eventRequest.headers.Authorization, 'Bearer public-secret');
+  assert.equal(eventRequest.headers['X-Admin-Key'], undefined);
+  assert.equal(dashboard.requests.filter((request) => new URL(request.url).pathname.startsWith('/internal/')).length, 0);
+  assert.equal(dashboard.elements.get('runNow').disabled, true);
+  dashboard.document.getElementById('adminKey').value = 'admin-secret';
+  dashboard.elements.get('saveKey').trigger('click');
+  await waitForRequests(dashboard.requests, 8);
+  assert.match(dashboard.elements.get('ingestionRows').innerHTML, /polygon/);
+  assert.match(dashboard.elements.get('modelRows').innerHTML, /prompt-v1.*extractor-v1.*Source document/s);
+  assert.equal(dashboard.elements.get('totalCost').textContent, '$0.010000');
+  assert.equal(dashboard.elements.get('runNow').disabled, false);
+});
+
+test('a failed event continuation leaves captured evidence available for retry', async () => {
+  const dashboard = startDashboard({ search: '?view=events', events: (url) =>
+    url.searchParams.has('cursor') ? 'error' : { ...eventFixture, nextCursor: 'opaque-page-2' } });
+  await waitForRequests(dashboard.requests, 3);
+  await dashboard.elements.get('loadEvents').trigger('click');
+  assert.match(dashboard.elements.get('eventResults').innerHTML, /Raised guidance/);
+  assert.match(dashboard.elements.get('eventStatus').textContent, /Unable to load more/);
+  assert.equal(dashboard.elements.get('loadEvents').disabled, false);
+});
+
+test('event API strings render as escaped text and model-run details remain available', async () => {
+  const event = { ...eventFixture.events[0], companyName: '<img src=x onerror=alert(1)>',
+    evidence: [{ quoteOrFact: '<script>alert(1)</script>', sourceOffsetHint: null }] };
+  const dashboard = startDashboard({ search: '?view=events', stored: { 'catalyst-admin-key': 'admin-secret' },
+    events: { events: [event], nextCursor: null } });
+  await waitForRequests(dashboard.requests, 5);
+  const rendered = dashboard.elements.get('eventResults').innerHTML;
+  assert.doesNotMatch(rendered, /<img|<script>/);
+  assert.match(rendered, /&lt;script&gt;alert/);
+  assert.match(dashboard.elements.get('modelRows').innerHTML, /<details>/);
+});
+
+test('an event without source metadata still distinguishes its missing publication date', async () => {
+  const dashboard = startDashboard({ search: '?view=events', events: {
+    events: [{ ...eventFixture.events[0], source: null }], nextCursor: null,
+  } });
+  await waitForRequests(dashboard.requests, 3);
+  const rendered = dashboard.elements.get('eventResults').innerHTML;
+  assert.match(rendered, /Event date:/);
+  assert.match(rendered, /Source publication date:.*–/s);
+  assert.match(rendered, /First captured:/);
 });

@@ -70,7 +70,23 @@
       <section class="company-panel" aria-labelledby="explanationTitle"><h3 id="explanationTitle">Why this state?</h3><div id="companyExplanation" role="status">Loading explanation…</div></section>
       <section class="company-panel" aria-labelledby="companyEventsTitle"><h3 id="companyEventsTitle">Contextual company events</h3><p class="muted small">Loaded reports are grouped by event cluster. These events do not establish causes of past scores; scoring remains server determined.</p><div id="companyEvents" role="status">Loading events…</div><p id="companyEventsStatus" class="panel-error" role="status"></p><button id="loadCompanyEvents" type="button" class="ghost hidden">Load more</button></section>
     </section>
-    <section id="eventsView" class="card view hidden"><h2>Events</h2><p class="muted">Event search will appear here.</p></section>
+    <section id="eventsView" class="card view hidden" aria-labelledby="eventsTitle">
+      <h2 id="eventsTitle" tabindex="-1">Events</h2>
+      <p class="muted">Search captured event reports across companies. Reports sharing a cluster may describe the same catalyst.</p>
+      <form id="eventFilters" class="filter-grid">
+        <label>Ticker <input id="eventTicker" type="text" autocomplete="off"></label>
+        <label>Family <select id="eventFamily"><option value="">All families</option><option>EARNINGS</option><option>GUIDANCE</option><option>COMMERCIAL</option><option>PRODUCT_TECH</option><option>CORPORATE_ACTION</option><option>CAPITAL_ALLOCATION</option><option>ANALYST</option><option>REGULATORY</option><option>LEGAL</option><option>MANAGEMENT_OWNERSHIP</option><option>INDUSTRY_EXTERNAL</option></select></label>
+        <label>Type <input id="eventType" type="text" autocomplete="off" placeholder="e.g. GUIDANCE_RAISE"></label>
+        <label>Direction <select id="eventDirection"><option value="">All directions</option><option>POSITIVE</option><option>NEGATIVE</option><option>NEUTRAL</option><option>MIXED</option></select></label>
+        <label>First captured from (UTC) <input id="eventFrom" type="date"></label>
+        <label>First captured through (UTC) <input id="eventTo" type="date"></label>
+        <label>Results per page <select id="eventPageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label>
+        <button type="submit">Search events</button>
+      </form>
+      <p id="eventStatus" class="muted" role="status">Open Events to search.</p>
+      <div id="eventResults" class="event-results"></div>
+      <button id="loadEvents" type="button" class="ghost hidden">Load more</button>
+    </section>
     <div id="operationsView" class="view hidden">
     <section class="card">
       <div class="card-head">

@@ -21,6 +21,12 @@
   var companyEvents = [];
   var companyNextCursor = null;
   var companyEventsLoading = false;
+  var eventRequest = 0;
+  var eventLoaded = false;
+  var eventLoading = false;
+  var eventItems = [];
+  var eventNextCursor = null;
+  var appliedEventFilters;
 
   function $(id) { return document.getElementById(id); }
 
@@ -143,7 +149,10 @@
         '<td class="num">' + fmtInt(run.outputTokens) + '</td>' +
         '<td class="num">' + fmtInt(run.latencyMs) + ' ms</td>' +
         '<td class="num">' + fmtCost(run.estimatedCost) + '</td>' +
-        '<td>' + ok + '</td><td>' + esc(run.error || '') + '</td></tr>';
+        '<td>' + ok + '</td><td>' + esc(run.error || '') +
+        '<details><summary>Details</summary><dl><dt>Prompt version</dt><dd>' + esc(run.promptVersion || '–') +
+        '</dd><dt>Extractor version</dt><dd>' + esc(run.extractorVersion || '–') +
+        '</dd><dt>Source document ID</dt><dd>' + esc(run.sourceDocumentId || '–') + '</dd></dl></details></td></tr>';
     }).join('');
     $('totalIn').textContent = fmtInt(totalIn);
     $('totalOut').textContent = fmtInt(totalOut);
@@ -176,7 +185,7 @@
   }
 
   function sourceLabel(source) {
-    if (!source) return '<span class="muted">Source unavailable</span>';
+    if (!source) return '<span class="muted">Source unavailable</span><span class="source-date">Source publication date: ' + timeLabel(null) + '</span>';
     var label = esc(source.title || 'Untitled source') + ' · ' + esc(source.provider || 'Unknown provider');
     var safeUrl = '';
     try {
@@ -311,6 +320,70 @@
     }).join('') : '<p>No company events found.</p>';
     $('loadCompanyEvents').classList[companyNextCursor ? 'remove' : 'add']('hidden');
     $('loadCompanyEvents').disabled = !companyNextCursor || companyEventsLoading;
+  }
+
+  function readEventFilters() {
+    var query = new URLSearchParams();
+    ['Ticker', 'Family', 'Type', 'Direction'].forEach(function (name) {
+      var value = $('event' + name).value.trim();
+      if (value) query.set(name.toLowerCase(), value.toUpperCase());
+    });
+    if ($('eventFrom').value) query.set('from', $('eventFrom').value + 'T00:00:00Z');
+    if ($('eventTo').value) query.set('to', $('eventTo').value + 'T23:59:59.999Z');
+    query.set('limit', String(Math.min(100, Math.max(1, Number($('eventPageSize').value) || 20))));
+    return query;
+  }
+
+  function renderEvents() {
+    $('eventResults').innerHTML = eventItems.length ? eventItems.map(function (event) {
+      var company = event.ticker
+        ? '<a href="?view=company&ticker=' + encodeURIComponent(event.ticker) + '" data-ticker="' + esc(event.ticker) + '">' + esc(event.ticker) + '</a>'
+        : '<span class="muted">Ticker unavailable</span>';
+      return '<article class="event-cluster"><h3>' + company + ' · ' + esc(event.companyName || 'Company name unavailable') + '</h3>' +
+        '<strong>' + esc(event.direction) + ' · ' + esc(event.family) + ' / ' + esc(event.type) + '</strong>' +
+        '<p>Event date: ' + timeLabel(event.eventTimestamp) + ' · First captured: ' + timeLabel(event.discoveredAt) + '</p>' +
+        '<p class="muted small">Cluster: ' + esc(event.clusterId || 'unclustered') + '</p>' +
+        evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p></article>';
+    }).join('') : '<p>No events match these filters.</p>';
+    $('loadEvents').classList[eventNextCursor ? 'remove' : 'add']('hidden');
+    $('loadEvents').disabled = !eventNextCursor || eventLoading;
+  }
+
+  async function loadEvents(reset) {
+    if (eventLoading && !reset) return;
+    if (!reset && !eventNextCursor) return;
+    if (reset) {
+      appliedEventFilters = readEventFilters();
+      eventItems = [];
+      eventNextCursor = null;
+      $('eventResults').textContent = '';
+    }
+    var query = new URLSearchParams(appliedEventFilters);
+    if (!reset) query.set('cursor', eventNextCursor);
+    var request = ++eventRequest;
+    eventLoading = true;
+    eventLoaded = true;
+    $('eventStatus').textContent = 'Loading events…';
+    $('loadEvents').disabled = true;
+    try {
+      var page = await api('/v1/events?' + query.toString());
+      if (request !== eventRequest) return;
+      eventItems = eventItems.concat(page.events || []);
+      eventNextCursor = page.nextCursor || null;
+      $('eventStatus').textContent = eventItems.length + ' loaded reports' + (eventNextCursor ? '; more available.' : '.');
+      renderEvents();
+    } catch (err) {
+      if (request !== eventRequest) return;
+      $('eventStatus').textContent = reset ? 'Unable to load events. Try searching again.' : 'Unable to load more events. Try again.';
+      if (reset) $('eventResults').textContent = '';
+      else renderEvents();
+      showError('Events: ' + err.message);
+    } finally {
+      if (request === eventRequest) {
+        eventLoading = false;
+        $('loadEvents').disabled = !eventNextCursor;
+      }
+    }
   }
 
   async function loadCompanyEvents(ticker, request, reset) {
@@ -453,6 +526,7 @@
       historyRequest++;
       currentCompany = '';
     }
+    if (view === 'events' && !eventLoaded) loadEvents(true);
     if (moveFocus) {
       if (view === 'company') $('companyTitle').focus();
       else if (view === 'discover') $('discoverTitle').focus();
@@ -491,7 +565,7 @@
   }
 
   async function runPipelineNow() {
-    if (pipelineRunning) return;
+    if (pipelineRunning || !window.sessionStorage.getItem(ADMIN_KEY_NAME)) return;
     pipelineRunning = true;
     var button = $('runNow');
     button.disabled = true;
@@ -534,6 +608,7 @@
       window.sessionStorage.setItem(ADMIN_KEY_NAME, $('adminKey').value.trim());
       window.sessionStorage.setItem(API_KEY_NAME, $('apiKey').value.trim());
       refreshAll();
+      if (new URLSearchParams(window.location.search).get('view') === 'events') loadEvents(true);
     });
     $('clearKey').addEventListener('click', function () {
       window.sessionStorage.removeItem(ADMIN_KEY_NAME);
@@ -578,6 +653,18 @@
     });
     $('loadCompanyEvents').addEventListener('click', function () {
       if (currentCompany) return loadCompanyEvents(currentCompany, companyRequest, false);
+    });
+    $('eventFilters').addEventListener('submit', function (event) {
+      event.preventDefault();
+      clearError();
+      return loadEvents(true);
+    });
+    $('loadEvents').addEventListener('click', function () { return loadEvents(false); });
+    $('eventResults').addEventListener('click', function (event) {
+      var link = event.target.closest('[data-ticker]');
+      if (!link) return;
+      if (event.preventDefault) event.preventDefault();
+      navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker));
     });
     ['Discover', 'Events', 'Operations'].forEach(function (name) {
       $('nav' + name).addEventListener('click', function (event) {
