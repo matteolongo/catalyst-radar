@@ -4,7 +4,7 @@
 
 The company route now requests company metadata, current catalyst, a bounded stored timeline, and the first bounded company event page. Each panel handles its own failure. The page shows company identity, current score and state range, velocities, event counts, versions, and as-of time.
 
-The 30-day, 90-day, and maximum-returned history views use `from`, `to`, and `limit=200`. The chart plots only returned snapshots, sorts them by `asOf`, marks returned transitions at their persisted `at` times, and has a data table with date, score, state, and as-of. Zero and one snapshot produce explicit messages rather than a fabricated line. The maximum-returned label states the 200-item cap.
+The 30-day, 90-day, and maximum-returned history views use `from`, `to`, and `limit=200`. The chart plots only returned snapshots as discrete points, sorts them by `asOf`, marks returned transitions at their persisted `at` times, and has a data table with date, score, state, and as-of. It draws no value between sparse observations. Zero and one snapshot produce explicit messages rather than a fabricated line. The maximum-returned label states the 200-item cap. A separate history request sequence prevents a late response from an earlier range selection from replacing the current range.
 
 The “Why this state?” panel displays reconstructed drivers, directional/directness summaries, and collapsed scoring factors only for `RECONSTRUCTED_SCORE_MATCH`. It states that snapshot rows did not retain the original driver list. `SCORE_MISMATCH` and `VERSION_MISMATCH` suppress those details and explain that attribution is unavailable. The current normalized company score and raw event contribution remain separately labeled.
 
@@ -16,6 +16,7 @@ The company event feed groups loaded records by `clusterId`, with unclustered re
 2. Implemented the company panels, history chart/table, reconstructed explanation, safe source links, and clustered event feed. The suite reached 23 passes and one event-load failure; fixing the load-button state brought it to 24 passes.
 3. Added two more tests for retaining loaded events after a cursor-page failure and preserving returned factor precision. Both failed before the refinements. The final run passed all 26 tests.
 4. `git diff --check` reported no whitespace errors. Git printed only LF/CRLF conversion notices on Windows.
+5. Follow-up review added a deferred timeline-response regression and a multi-snapshot no-polyline assertion. Both failed against the original chart/range behavior. After the fix, `node --test ui/app.test.js` passed 27 tests, `node --check ui/app.js` passed, and `git diff --check` passed with Windows LF/CRLF notices only.
 
 ## Limits
 

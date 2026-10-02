@@ -16,6 +16,7 @@
   var discoveryRequest = 0;
   var discoveryLoading = false;
   var companyRequest = 0;
+  var historyRequest = 0;
   var currentCompany = '';
   var companyEvents = [];
   var companyNextCursor = null;
@@ -281,9 +282,8 @@
       var maxTime = new Date(snapshots[snapshots.length - 1].asOf).getTime();
       var x = function (at) { return 30 + 540 * (new Date(at).getTime() - minTime) / (maxTime - minTime || 1); };
       var y = function (score) { return 130 - Math.max(0, Math.min(100, Number(score))) * 1.1; };
-      chart = '<svg viewBox="0 0 600 150" role="img" aria-label="Stored catalyst score snapshots and state transitions; data table follows">' +
+      chart = '<p class="muted small">Only stored snapshot points are shown; gaps have no implied values.</p><svg viewBox="0 0 600 150" role="img" aria-label="Stored catalyst score snapshot points and state transitions; data table follows">' +
         '<line x1="30" y1="130" x2="570" y2="130" class="axis"/><line x1="30" y1="20" x2="30" y2="130" class="axis"/>' +
-        '<polyline class="score-line" points="' + snapshots.map(function (s) { return x(s.asOf) + ',' + y(s.score); }).join(' ') + '"/>' +
         snapshots.map(function (s) { return '<circle class="score-point" cx="' + x(s.asOf) + '" cy="' + y(s.score) + '" r="4"><title>' + esc(s.asOf) + ' · ' + esc(fmtScore(s.score)) + ' · ' + esc(s.state) + '</title></circle>'; }).join('') +
         transitions.filter(function (t) { return new Date(t.at).getTime() >= minTime && new Date(t.at).getTime() <= maxTime; }).map(function (t) { return '<path class="transition-mark" d="M' + x(t.at) + ' 20V130"><title>' + esc(t.at) + ' · ' + esc(t.from) + ' → ' + esc(t.to) + '</title></path>'; }).join('') + '</svg>';
     } else chart = '<p>Insufficient history for a line chart. One stored snapshot is available.</p>';
@@ -341,15 +341,17 @@
   }
 
   async function loadCompanyHistory(ticker, request) {
+    var sequence = ++historyRequest;
     $('companyHistory').textContent = 'Loading score history…';
     try {
       var data = await api(companyPath(ticker, '/timeline', historyQuery()));
-      if (request === companyRequest) renderHistory(data);
-    } catch (_) { if (request === companyRequest) companyPanelError('companyHistory', 'score history'); }
+      if (request === companyRequest && sequence === historyRequest) renderHistory(data);
+    } catch (_) { if (request === companyRequest && sequence === historyRequest) companyPanelError('companyHistory', 'score history'); }
   }
 
   function refreshCompany(ticker) {
     var request = ++companyRequest;
+    historyRequest++;
     currentCompany = ticker;
     companyEvents = [];
     companyNextCursor = null;
@@ -447,6 +449,7 @@
       if (route.get('ticker') !== currentCompany) refreshCompany(route.get('ticker'));
     } else {
       companyRequest++;
+      historyRequest++;
       currentCompany = '';
     }
     if (moveFocus) {

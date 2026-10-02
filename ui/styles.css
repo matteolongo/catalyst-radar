@@ -61,7 +61,6 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .company-panel details { margin-top: 0.75rem; }
 .company-panel summary { cursor: pointer; color: var(--accent); }
 .company-panel svg { display: block; width: 100%; max-height: 14rem; }
-.score-line { fill: none; stroke: var(--accent); stroke-width: 2; }
 .score-point { fill: var(--accent); }
 .axis { stroke: var(--muted); stroke-width: 1; }
 .transition-mark { stroke: var(--warn); stroke-width: 1; stroke-dasharray: 4 3; }

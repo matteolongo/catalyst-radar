@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const app = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
-function startDashboard({ search = '', stored = {}, origin = 'https://ops.example', discovery, company = {}, deferDiscovery = false, deferAdmin = false } = {}) {
+function startDashboard({ search = '', stored = {}, origin = 'https://ops.example', discovery, company = {}, deferDiscovery = false, deferAdmin = false, deferTimeline = false } = {}) {
   const requests = [];
   const values = new Map(Object.entries(stored));
   const elements = new Map();
@@ -17,6 +17,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   const windowHandlers = {};
   const discoveryResolvers = [];
   const adminResolvers = [];
+  const timelineResolvers = [];
   const document = {
     activeElement: null,
     getElementById(id) {
@@ -55,6 +56,9 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   async function fetch(url, options) {
     requests.push({ url, headers: options.headers });
     const route = new URL(url).pathname;
+    if (route.endsWith('/timeline') && deferTimeline) {
+      return new Promise((resolve) => timelineResolvers.push((body) => resolve({ ok: true, status: 200, json: async () => body })));
+    }
     if (route.startsWith('/v1/companies/')) {
       const suffix = route.replace('/v1/companies/DELL', '') || 'metadata';
       const answer = typeof company[suffix] === 'function' ? company[suffix](new URL(url)) : company[suffix];
@@ -108,6 +112,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   return {
     requests, elements, values, window, document,
     resolveDiscovery(index, body) { discoveryResolvers[index](body); },
+    resolveTimeline(index, body) { timelineResolvers[index](body); },
     resolveAdmin(index) { adminResolvers[index](); },
     popstate(search) { window.location.search = search; windowHandlers.popstate(); },
     get reloads() { return reloads; },
@@ -416,7 +421,8 @@ test('history sorts actual snapshots, labels transitions, and requests capped ra
   assert.ok(chart.indexOf('2026-09-30') < chart.indexOf('2026-10-02'));
   assert.match(chart, /WATCH → CATALYZED/);
   assert.match(chart, /<table/);
-  assert.match(chart, /<polyline/);
+  assert.equal((chart.match(/class="score-point"/g) || []).length, 2);
+  assert.doesNotMatch(chart, /<polyline|class="score-line"/);
   const timeline = dashboard.requests.find(({ url }) => new URL(url).pathname.endsWith('/timeline'));
   assert.equal(new URL(timeline.url).searchParams.get('limit'), '200');
   dashboard.elements.get('historyRange').value = 'max';
@@ -425,6 +431,20 @@ test('history sorts actual snapshots, labels transitions, and requests capped ra
   assert.equal(max.searchParams.get('from'), null);
   assert.equal(max.searchParams.get('limit'), '200');
   assert.match(dashboard.elements.get('historyRangeNote').textContent, /capped at 200/i);
+});
+
+test('an earlier history range response cannot replace the newest selected range', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', deferTimeline: true });
+  await waitForRequests(dashboard.requests, 6);
+  dashboard.elements.get('historyRange').value = 'max';
+  dashboard.elements.get('historyRange').trigger('change');
+  await waitForRequests(dashboard.requests, 7);
+  dashboard.resolveTimeline(1, { ticker: 'DELL', snapshots: [{ score: 90, state: 'HIGH', asOf: '2026-10-02T12:00:00Z' }], transitions: [] });
+  await new Promise(setImmediate);
+  dashboard.resolveTimeline(0, { ticker: 'DELL', snapshots: [{ score: 10, state: 'NORMAL', asOf: '2026-09-01T12:00:00Z' }], transitions: [] });
+  await new Promise(setImmediate);
+  assert.match(dashboard.elements.get('companyHistory').innerHTML, /90\.0/);
+  assert.doesNotMatch(dashboard.elements.get('companyHistory').innerHTML, /10\.0|2026-09-01/);
 });
 
 test('mismatched explanations suppress attribution and unsafe source URLs stay plain text', async () => {
