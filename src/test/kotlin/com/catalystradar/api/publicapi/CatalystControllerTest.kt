@@ -124,13 +124,13 @@ class CatalystControllerTest {
             )),
             scoreVersion = "score-v1", taxonomyVersion = "taxonomy-v1", asOf = t0,
             scoreCalculation = calculated,
-            explanationStatus = ExplanationStatus.MATCHED,
+            explanationStatus = ExplanationStatus.RECONSTRUCTED_SCORE_MATCH,
         ))
 
         mockMvc.get("/v1/companies/DELL/catalyst").andExpect {
             status { isOk() }
             jsonPath("$.scoreCalculation.contributionSum") { value(9.0) }
-            jsonPath("$.explanationStatus") { value("MATCHED") }
+            jsonPath("$.explanationStatus") { value("RECONSTRUCTED_SCORE_MATCH") }
             jsonPath("$.scoreCalculation.familyCount") { value(1) }
             jsonPath("$.scoreCalculation.convergenceMultiplier") { value(1.0) }
             jsonPath("$.scoreCalculation.rawScore") { value(9.0) }

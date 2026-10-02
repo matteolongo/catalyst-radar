@@ -10,6 +10,7 @@ import com.catalystradar.persistence.catalyst.StateTransitionRecord
 import java.time.Instant
 import java.util.UUID
 
+/** Reconstructed canonical drivers; snapshot rows do not store their original event IDs. */
 data class EventDriverResponse(
     val eventId: UUID,
     val type: String,
@@ -61,6 +62,7 @@ data class StateBandResponse(
     val maxInclusive: Boolean,
 )
 
+/** `RECONSTRUCTED_SCORE_MATCH` confirms score/version agreement, not original driver membership. */
 data class CatalystResponse(
     val ticker: String,
     val score: Double,

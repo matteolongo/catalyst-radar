@@ -149,7 +149,20 @@ class CatalystViewServiceTest : PostgresIntegrationTest() {
         assertEquals(1, view.topDrivers.size)
         assertEquals(first.id, view.topDrivers.single().eventId)
         assertEquals(9.0, assertNotNull(view.scoreCalculation).rawScore, 1e-9)
-        assertEquals(ExplanationStatus.MATCHED, view.explanationStatus)
+        assertEquals(ExplanationStatus.RECONSTRUCTED_SCORE_MATCH, view.explanationStatus)
+    }
+
+    @Test
+    fun `zero score agreement is labelled as reconstruction`() {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell"))
+        events.save(raise(company.id, EventType.EARNINGS_MISS).copy(direction = Direction.NEGATIVE))
+        catalyst.recalculate(company.id, t0)
+
+        val view = views.view("DELL")
+
+        assertEquals(0.0, view.score)
+        assertEquals(ExplanationStatus.RECONSTRUCTED_SCORE_MATCH, view.explanationStatus)
+        assertEquals(Direction.NEGATIVE.name, view.topDrivers.single().direction)
     }
 
     @Test

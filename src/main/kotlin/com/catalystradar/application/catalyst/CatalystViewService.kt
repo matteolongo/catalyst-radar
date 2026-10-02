@@ -18,7 +18,8 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.math.abs
 
-enum class ExplanationStatus { MATCHED, SCORE_MISMATCH, VERSION_MISMATCH }
+/** A score match verifies recomputation and versions, not original snapshot event membership. */
+enum class ExplanationStatus { RECONSTRUCTED_SCORE_MATCH, SCORE_MISMATCH, VERSION_MISMATCH }
 
 data class EventDriver(
     val eventId: UUID,
@@ -84,7 +85,7 @@ class CatalystViewService(
                 canonical.any { it.taxonomyVersion != snapshot.taxonomyVersion } -> ExplanationStatus.VERSION_MISMATCH
             abs(snapshot.score.value - calculated.score.value) > 1e-9 ||
                 snapshot.state != stateForScore(snapshot.score.value) -> ExplanationStatus.SCORE_MISMATCH
-            else -> ExplanationStatus.MATCHED
+            else -> ExplanationStatus.RECONSTRUCTED_SCORE_MATCH
         }
         val byId = canonical.associateBy { it.id }
         val rawFor = { predicate: (CatalystEvent) -> Boolean ->
@@ -111,7 +112,7 @@ class CatalystViewService(
                         source = detailsById[it.id]?.source,
                     )
                 }
-            }.takeIf { explanationStatus == ExplanationStatus.MATCHED } ?: emptyList()
+            }.takeIf { explanationStatus == ExplanationStatus.RECONSTRUCTED_SCORE_MATCH } ?: emptyList()
         val weekAgo = snapshot.asOf.minusSeconds(7L * 86_400)
         return CatalystView(
             ticker = company.ticker,
@@ -130,7 +131,7 @@ class CatalystViewService(
             scoreVersion = snapshot.score.version,
             taxonomyVersion = snapshot.taxonomyVersion,
             asOf = snapshot.asOf,
-            scoreCalculation = calculated.takeIf { explanationStatus == ExplanationStatus.MATCHED },
+            scoreCalculation = calculated.takeIf { explanationStatus == ExplanationStatus.RECONSTRUCTED_SCORE_MATCH },
             explanationStatus = explanationStatus,
         )
     }
