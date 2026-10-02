@@ -76,6 +76,40 @@ class CatalystMetricsTest {
     }
 
     @Test
+    fun `counts document outcomes, retries, daily snapshots, and replay inputs`() {
+        metrics.documentProcessing("completed")
+        metrics.documentProcessing("retryable_error")
+        metrics.documentRetryAttempt()
+        metrics.dailySnapshotCycle("success")
+        metrics.replayInputs(documentsConsidered = 3, documentsSkipped = 1, candidatesAccepted = 2)
+
+        assertEquals(
+            1.0,
+            registry.counter("catalyst_document_processing_outcomes_total", "status", "completed").count(),
+        )
+        assertEquals(
+            1.0,
+            registry.counter("catalyst_document_processing_retry_attempts_total").count(),
+        )
+        assertEquals(
+            1.0,
+            registry.counter("catalyst_daily_snapshot_cycles_total", "status", "success").count(),
+        )
+        assertEquals(
+            3.0,
+            registry.counter("catalyst_replay_documents_total", "outcome", "considered").count(),
+        )
+        assertEquals(
+            1.0,
+            registry.counter("catalyst_replay_documents_total", "outcome", "skipped").count(),
+        )
+        assertEquals(
+            2.0,
+            registry.counter("catalyst_replay_candidates_total", "outcome", "accepted").count(),
+        )
+    }
+
+    @Test
     fun `tags are stable objects`() {
         // Guard against tag-order churn in dashboards: same call twice, one meter.
         metrics.documentIngested("polygon", "new")

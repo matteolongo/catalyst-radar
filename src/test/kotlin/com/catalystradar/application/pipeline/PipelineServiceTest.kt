@@ -101,7 +101,8 @@ class PipelineServiceTest : PostgresIntegrationTest() {
     @Autowired
     private lateinit var catalyst: CatalystService
 
-    private val metrics = CatalystMetrics(SimpleMeterRegistry())
+    private val meterRegistry = SimpleMeterRegistry()
+    private val metrics = CatalystMetrics(meterRegistry)
 
     private fun pipeline(
         providers: List<NewsProvider> = listOf(polygon()),
@@ -216,6 +217,18 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         assertEquals("PARTIAL", first.status)
         assertEquals(1, first.documentsRetryScheduled)
         assertEquals(DocumentProcessingStatus.RETRYABLE_ERROR, processing.findBySourceDocumentId(document.id)?.status)
+        assertEquals(
+            1.0,
+            meterRegistry.counter(
+                "catalyst_document_processing_outcomes_total",
+                "status",
+                "retryable_error",
+            ).count(),
+        )
+        assertEquals(
+            1.0,
+            meterRegistry.counter("catalyst_document_processing_retry_attempts_total").count(),
+        )
         unavailable = false
 
         val second = pipeline.runCycle(now.plusSeconds(10))

@@ -75,4 +75,40 @@ class CatalystMetrics(private val registry: MeterRegistry) {
             listOf(Tag.of("status", status)),
         ).increment()
     }
+
+    fun documentProcessing(status: String) {
+        registry.counter(
+            "catalyst_document_processing_outcomes_total",
+            listOf(Tag.of("status", status)),
+        ).increment()
+    }
+
+    fun documentRetryAttempt() {
+        registry.counter("catalyst_document_processing_retry_attempts_total").increment()
+    }
+
+    fun dailySnapshotCycle(status: String) {
+        registry.counter(
+            "catalyst_daily_snapshot_cycles_total",
+            listOf(Tag.of("status", status)),
+        ).increment()
+    }
+
+    fun replayInputs(documentsConsidered: Int, documentsSkipped: Int, candidatesAccepted: Int) {
+        require(documentsConsidered >= 0) { "documents considered must not be negative" }
+        require(documentsSkipped >= 0) { "documents skipped must not be negative" }
+        require(candidatesAccepted >= 0) { "candidates accepted must not be negative" }
+        registry.counter(
+            "catalyst_replay_documents_total",
+            listOf(Tag.of("outcome", "considered")),
+        ).increment(documentsConsidered.toDouble())
+        registry.counter(
+            "catalyst_replay_documents_total",
+            listOf(Tag.of("outcome", "skipped")),
+        ).increment(documentsSkipped.toDouble())
+        registry.counter(
+            "catalyst_replay_candidates_total",
+            listOf(Tag.of("outcome", "accepted")),
+        ).increment(candidatesAccepted.toDouble())
+    }
 }

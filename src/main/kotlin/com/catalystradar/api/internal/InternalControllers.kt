@@ -17,6 +17,8 @@ import com.catalystradar.application.replay.ReplayService
 import com.catalystradar.ports.EventExtractionProvider
 import com.catalystradar.security.ApiKeyService
 import kotlinx.coroutines.runBlocking
+import org.springframework.http.CacheControl
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -78,8 +80,10 @@ class InternalCompanyController(
 class InternalApiClientController(private val keys: ApiKeyService) {
 
     @PostMapping
-    fun create(@RequestBody request: CreateApiClientRequest): CreatedApiClientResponse {
+    fun create(@RequestBody request: CreateApiClientRequest): ResponseEntity<CreatedApiClientResponse> {
         require(request.name.isNotBlank()) { "name must not be blank" }
-        return keys.create(request.name.trim()).toResponse()
+        return ResponseEntity.ok()
+            .cacheControl(CacheControl.noStore())
+            .body(keys.create(request.name.trim()).toResponse())
     }
 }
