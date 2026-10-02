@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CatalystRadar Ops</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>CatalystRadar Ops</h1>
+      <p class="subtitle">Pipeline health and catalyst intelligence</p>
+    </div>
+    <div class="header-right">
+      <span id="health" class="pill unknown" title="API health">checking…</span>
+      <label class="key-field">Admin key
+        <input id="adminKey" type="password" autocomplete="off" placeholder="local-dev-secret">
+      </label>
+      <button id="saveKey" type="button">Save</button>
+      <button id="clearKey" type="button" class="ghost">Clear</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner hidden" role="alert"></div>
+
+  <main>
+    <section class="card">
+      <div class="card-head">
+        <h2>Pipeline</h2>
+        <div>
+          <button id="runNow" type="button">Run pipeline now</button>
+          <button id="refresh" type="button" class="ghost">Refresh</button>
+          <label class="poll"><input id="autoRefresh" type="checkbox" checked> auto-refresh 30s</label>
+        </div>
+      </div>
+      <p id="pipelineStatus" class="muted">Idle.</p>
+      <h3>Ingestion runs</h3>
+      <table>
+        <thead>
+          <tr><th>Started</th><th>Provider</th><th>Status</th><th>Fetched</th><th>New</th><th>Dups</th><th>Error</th></tr>
+        </thead>
+        <tbody id="ingestionRows">
+          <tr><td colspan="7" class="muted">Loading…</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>Model runs <span class="muted small">tokens, latency, cost</span></h2>
+      <table>
+        <thead>
+          <tr><th>Created</th><th>Op</th><th>Model</th><th>In</th><th>Out</th><th>Latency</th><th>Cost USD</th><th>OK</th><th>Error</th></tr>
+        </thead>
+        <tbody id="modelRows">
+          <tr><td colspan="9" class="muted">Loading…</td></tr>
+        </tbody>
+        <tfoot>
+          <tr><td colspan="3">Page totals</td><td id="totalIn" class="num">–</td><td id="totalOut" class="num">–</td><td></td><td id="totalCost" class="num">–</td><td colspan="2"></td></tr>
+        </tfoot>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>Current leaders <span class="muted small">discovery, by score</span></h2>
+      <table>
+        <thead>
+          <tr><th>Ticker</th><th>Score</th><th>State</th><th>Vel 7d</th><th>Events 7d</th><th>As of</th></tr>
+        </thead>
+        <tbody id="leaderRows">
+          <tr><td colspan="6" class="muted">Loading…</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer class="muted small">
+    Admin key lives in session storage only. API docs at <a id="apiDocs" href="http://localhost:8080/swagger-ui.html">swagger-ui</a>.
+  </footer>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
