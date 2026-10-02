@@ -5,14 +5,16 @@ const test = require('node:test');
 const vm = require('node:vm');
 
 const app = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
-function startDashboard({ search = '', stored = {}, origin = 'https://ops.example' } = {}) {
+function startDashboard({ search = '', stored = {}, origin = 'https://ops.example', discovery } = {}) {
   const requests = [];
   const values = new Map(Object.entries(stored));
   const elements = new Map();
   let reloads = 0;
   let completePipeline;
   let ready;
+  const windowHandlers = {};
   const document = {
     getElementById(id) {
       if (!elements.has(id)) {
@@ -20,10 +22,13 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
         elements.set(id, {
           innerHTML: '', textContent: '', value: '', checked: false,
           disabled: false, href: '', className: '',
-          classList: { add() {}, remove() {} },
+          classList: { add(name) { this.owner.hidden = name === 'hidden'; }, remove() { this.owner.hidden = false; } },
+          setAttribute(name, value) { this[name] = value; },
+          removeAttribute(name) { delete this[name]; },
           addEventListener(name, handler) { handlers[name] = handler; },
-          trigger(name) { return handlers[name](); },
+          trigger(name, event = {}) { return handlers[name](event); },
         });
+        elements.get(id).classList.owner = elements.get(id);
       }
       return elements.get(id);
     },
@@ -33,6 +38,8 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   };
   const window = {
     location: { origin, search, reload() { reloads++; } },
+    history: { pushState(_state, _title, url) { window.location.search = new URL(url, origin).search; } },
+    addEventListener(name, handler) { windowHandlers[name] = handler; },
     sessionStorage: {
       getItem(key) { return values.get(key) || null; },
       setItem(key, value) { values.set(key, value); },
@@ -57,6 +64,9 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
     if (route.startsWith('/internal/') && options.headers['X-Admin-Key'] !== 'admin-secret') {
       return { ok: false, status: 403, json: async () => ({ detail: 'Admin key required' }) };
     }
+    if (route === '/v1/discovery/catalyzed' && discovery === 'error') {
+      return { ok: false, status: 503, json: async () => ({ detail: 'Discovery unavailable' }) };
+    }
     const body = route === '/actuator/health' ? { status: 'UP' }
       : route === '/internal/ingestion/runs' ? { runs: [{
         id: 'a7f2cd30-6717-4e3a-8870-4bdba9d7af95', provider: 'polygon', status: 'SUCCESS',
@@ -68,7 +78,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
         sourceDocumentId: null, inputTokens: 10, outputTokens: 2, latencyMs: 100,
         estimatedCost: 0.01, success: true, error: null, createdAt: '2026-10-02T12:01:00Z',
       }] }
-      : { asOf: '2026-10-02T12:02:00Z', total: 1, limit: 5, offset: 0, results: [{
+      : discovery || { asOf: '2026-10-02T12:02:00Z', total: 1, limit: 20, offset: 0, results: [{
         ticker: 'DELL', name: 'Dell', sector: 'Technology', score: 30, state: 'WATCH',
         velocity7d: 1, events7d: 1, scoreVersion: 'score-v1', taxonomyVersion: 'taxonomy-v1',
         asOf: '2026-10-02T12:00:00Z',
@@ -78,7 +88,8 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   vm.runInNewContext(app, { window, document, fetch, URLSearchParams });
   ready();
   return {
-    requests, elements, values,
+    requests, elements, values, window,
+    popstate(search) { window.location.search = search; windowHandlers.popstate(); },
     get reloads() { return reloads; },
     completePipeline() { completePipeline(); },
   };
@@ -137,4 +148,74 @@ test('refreshing while a pipeline run is pending keeps the run button disabled',
   dashboard.elements.get('refresh').trigger('click');
   assert.equal(button.disabled, true);
   dashboard.completePipeline();
+});
+
+test('initial load shows Discover with an accessible destination navigation', async () => {
+  const dashboard = startDashboard();
+  await waitForRequests(dashboard.requests, 2);
+  assert.match(html, /<nav[^>]+aria-label="Main navigation"/);
+  assert.match(html, /id="discoverView"/);
+  assert.match(html, /id="eventsView"/);
+  assert.match(html, /id="operationsView"/);
+  assert.equal(dashboard.elements.get('discoverView').hidden, false);
+  assert.equal(dashboard.elements.get('operationsView').hidden, true);
+  assert.match(dashboard.elements.get('discoveryResults').innerHTML, /DELL/);
+});
+
+test('a discovery ticker opens a company route and browser back restores Discover', async () => {
+  const dashboard = startDashboard();
+  await waitForRequests(dashboard.requests, 2);
+  dashboard.elements.get('discoveryResults').trigger('click', { target: { closest: () => ({ dataset: { ticker: 'DELL' } }) } });
+  assert.equal(dashboard.window.location.search, '?view=company&ticker=DELL');
+  assert.equal(dashboard.elements.get('companyView').hidden, false);
+  dashboard.popstate('');
+  assert.equal(dashboard.elements.get('discoverView').hidden, false);
+});
+
+test('discovery filters serialize repeated states and zero velocity', async () => {
+  const dashboard = startDashboard();
+  await waitForRequests(dashboard.requests, 2);
+  dashboard.elements.get('discoveryStates').selectedOptions = [{ value: 'CATALYZED' }, { value: 'HIGH' }];
+  dashboard.elements.get('minScore').value = '65';
+  dashboard.elements.get('minVelocity7d').value = '0';
+  dashboard.elements.get('sector').value = 'Technology';
+  dashboard.elements.get('discoverySort').value = 'VELOCITY';
+  await dashboard.elements.get('discoveryFilters').trigger('submit', { preventDefault() {} });
+  assert.equal(new URL(dashboard.requests.at(-1).url).pathname + new URL(dashboard.requests.at(-1).url).search,
+    '/v1/discovery/catalyzed?state=CATALYZED&state=HIGH&minScore=65&minVelocity7d=0&sector=Technology&sort=VELOCITY&limit=20&offset=0');
+});
+
+test('next page preserves filters and advances offset', async () => {
+  const dashboard = startDashboard({ discovery: { asOf: '2026-10-02T12:02:00Z', total: 44, limit: 20, offset: 0, results: [{ ticker: 'DELL', name: 'Dell', sector: 'Technology', score: 30, state: 'WATCH', velocity7d: 1, events7d: 1, scoreVersion: 'score-v1', asOf: '2026-10-02T12:00:00Z' }] } });
+  await waitForRequests(dashboard.requests, 2);
+  dashboard.elements.get('sector').value = 'Technology';
+  await dashboard.elements.get('discoveryFilters').trigger('submit', { preventDefault() {} });
+  await dashboard.elements.get('nextPage').trigger('click');
+  const query = new URL(dashboard.requests.at(-1).url).searchParams;
+  assert.equal(query.get('sector'), 'Technology');
+  assert.equal(query.get('limit'), '20');
+  assert.equal(query.get('offset'), '20');
+});
+
+test('an empty discovery page gives a clear empty state and disables paging', async () => {
+  const dashboard = startDashboard({ discovery: { asOf: '2026-10-02T12:02:00Z', total: 0, limit: 20, offset: 0, results: [] } });
+  await waitForRequests(dashboard.requests, 2);
+  assert.match(dashboard.elements.get('discoveryStatus').textContent, /No companies match/);
+  assert.equal(dashboard.elements.get('nextPage').disabled, true);
+});
+
+test('a discovery API failure gives an error state', async () => {
+  const dashboard = startDashboard({ discovery: 'error' });
+  await waitForRequests(dashboard.requests, 2);
+  assert.match(dashboard.elements.get('discoveryStatus').textContent, /Unable to load/);
+  assert.match(dashboard.elements.get('banner').textContent, /Discovery unavailable/);
+});
+
+test('discovery shows score metadata and separate query and company timestamps', async () => {
+  const dashboard = startDashboard();
+  await waitForRequests(dashboard.requests, 2);
+  assert.match(dashboard.elements.get('discoveryResults').innerHTML, /Technology/);
+  assert.match(dashboard.elements.get('discoveryResults').innerHTML, /score-v1/);
+  assert.match(dashboard.elements.get('discoveryResults').innerHTML, /Company as of/);
+  assert.match(dashboard.elements.get('discoveryAsOf').textContent, /Discovery query as of/);
 });
