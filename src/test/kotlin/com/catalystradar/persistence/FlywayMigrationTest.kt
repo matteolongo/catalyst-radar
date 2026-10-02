@@ -16,14 +16,15 @@ class FlywayMigrationTest : PostgresIntegrationTest() {
     private lateinit var jdbc: JdbcClient
 
     @Test
-    fun `applies initial schema from empty database`() {
+    fun `applies all POC schema migrations from an empty database`() {
         val applied = flyway.info().applied()
 
         assertTrue(applied.any { it.version.version == "1" }, "V1 migration not applied: $applied")
+        assertTrue(applied.any { it.version.version == "2" }, "V2 migration not applied: $applied")
     }
 
     @Test
-    fun `creates expected v1 tables`() {
+    fun `creates expected POC tables`() {
         val tables = jdbc.sql(
             "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
         ).query(String::class.java).list().toSet()
@@ -33,6 +34,8 @@ class FlywayMigrationTest : PostgresIntegrationTest() {
                 "companies",
                 "company_aliases",
                 "source_documents",
+                "source_document_companies",
+                "document_processing",
                 "event_clusters",
                 "events",
                 "catalyst_snapshots",

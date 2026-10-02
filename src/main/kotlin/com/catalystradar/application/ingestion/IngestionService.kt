@@ -2,10 +2,8 @@ package com.catalystradar.application.ingestion
 
 import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.company.CompanyStore
-import com.catalystradar.persistence.document.SourceDocumentStore
 import com.catalystradar.persistence.ingestion.IngestionRunRecord
 import com.catalystradar.persistence.ingestion.IngestionRunStore
-import com.catalystradar.persistence.jdbc.toJsonB
 import com.catalystradar.ports.NewsFetchRequest
 import com.catalystradar.ports.NewsProvider
 import com.catalystradar.ports.ProviderException
@@ -39,7 +37,7 @@ class IngestionService(
     providers: List<NewsProvider>,
     private val properties: IngestionProperties,
     private val companies: CompanyStore,
-    private val documents: SourceDocumentStore,
+    private val registrations: SourceDocumentRegistrationService,
     private val runs: IngestionRunStore,
     private val metrics: CatalystMetrics,
 ) {
@@ -106,7 +104,7 @@ class IngestionService(
                 fetched += page.articles.size
                 for (article in page.articles) {
                     try {
-                        val freshId = persistIfNew(provider.name, article, now)
+                        val freshId = registrations.registerIfNew(provider.name, article, now)
                         if (freshId != null) {
                             added++
                             fresh += NewDocument(freshId, article.tickers)
@@ -139,21 +137,6 @@ class IngestionService(
     }
 
     private fun elapsedMs(started: Long): Long = (System.nanoTime() - started) / 1_000_000
-
-    private fun persistIfNew(provider: String, article: RawArticle, now: Instant): UUID? {
-        val normalized = normalizeArticle(article, now)
-        val known = normalized.providerDocumentId
-            ?.let { documents.findByProviderAndProviderDocumentId(provider, it) }
-            ?: documents.findByContentHash(normalized.contentHash)
-        if (known != null) return null
-        return documents.save(
-            normalized.toDocument(),
-            rawPayload = mapOf(
-                "provider" to article.provider,
-                "tickers" to article.tickers.joinToString(","),
-            ).toJsonB(),
-        ).id
-    }
 
     private fun finish(
         runId: java.util.UUID,
