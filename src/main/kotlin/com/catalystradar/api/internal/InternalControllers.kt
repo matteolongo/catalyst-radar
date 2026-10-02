@@ -3,13 +3,18 @@ package com.catalystradar.api.internal
 import com.catalystradar.api.dto.CatalystResponse
 import com.catalystradar.api.dto.CreateApiClientRequest
 import com.catalystradar.api.dto.CreatedApiClientResponse
+import com.catalystradar.api.dto.InternalReplayRequest
 import com.catalystradar.api.dto.PipelineResultResponse
+import com.catalystradar.api.dto.ReplayResponse
 import com.catalystradar.api.dto.toResponse
 import com.catalystradar.application.catalyst.CatalystService
 import com.catalystradar.application.catalyst.CatalystViewService
 import com.catalystradar.application.company.CompanyNotFoundException
 import com.catalystradar.application.company.CompanyService
 import com.catalystradar.application.pipeline.PipelineService
+import com.catalystradar.application.replay.ReplayRequest
+import com.catalystradar.application.replay.ReplayService
+import com.catalystradar.ports.EventExtractionProvider
 import com.catalystradar.security.ApiKeyService
 import kotlinx.coroutines.runBlocking
 import org.springframework.web.bind.annotation.PathVariable
@@ -17,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import java.time.Instant
 
 /**
  * Protected operations. Every route here requires the admin key (see
@@ -29,6 +35,26 @@ class InternalPipelineController(private val pipeline: PipelineService) {
     @PostMapping("/runs")
     fun runIngestion(): PipelineResultResponse =
         runBlocking { pipeline.runCycle().toResponse() }
+}
+
+@RestController
+@RequestMapping("/internal/replays")
+class InternalReplayController(
+    private val replay: ReplayService,
+    private val extraction: EventExtractionProvider,
+) {
+
+    @PostMapping
+    fun replay(@RequestBody request: InternalReplayRequest): ReplayResponse {
+        require(request.ticker.isNotBlank()) { "ticker must not be blank" }
+        require(!request.cutoff.isAfter(Instant.now())) { "cutoff must not be in the future" }
+        return runBlocking {
+            replay.replay(
+                ReplayRequest(ticker = request.ticker.trim(), cutoff = request.cutoff),
+                extraction,
+            ).toResponse()
+        }
+    }
 }
 
 @RestController

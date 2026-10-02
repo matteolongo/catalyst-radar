@@ -6,8 +6,11 @@ import com.catalystradar.application.catalyst.CatalystViewService
 import com.catalystradar.application.company.CompanyService
 import com.catalystradar.application.pipeline.PipelineResult
 import com.catalystradar.application.pipeline.PipelineService
+import com.catalystradar.application.replay.ReplayResult
+import com.catalystradar.application.replay.ReplayService
 import com.catalystradar.domain.catalyst.CatalystState
 import com.catalystradar.domain.company.Company
+import com.catalystradar.ports.EventExtractionProvider
 import com.catalystradar.security.ApiKeyService
 import com.catalystradar.security.CreatedApiKey
 import kotlinx.coroutines.test.runTest
@@ -29,6 +32,7 @@ import java.util.UUID
     InternalPipelineController::class,
     InternalCompanyController::class,
     InternalApiClientController::class,
+    InternalReplayController::class,
     properties = ["catalyst.internal.admin-key=test-admin"],
 )
 class InternalControllersTest {
@@ -38,6 +42,12 @@ class InternalControllersTest {
 
     @MockitoBean
     private lateinit var pipeline: PipelineService
+
+    @MockitoBean
+    private lateinit var replay: ReplayService
+
+    @MockitoBean
+    private lateinit var extraction: EventExtractionProvider
 
     @MockitoBean
     private lateinit var catalyst: CatalystService
@@ -74,6 +84,54 @@ class InternalControllersTest {
         }.andExpect {
             status { isForbidden() }
             jsonPath("$.code") { value("FORBIDDEN") }
+        }
+    }
+
+    @Test
+    fun `replays a company at a cutoff with the admin key`() = runTest {
+        whenever(replay.replay(any(), eq(extraction))).thenReturn(
+            ReplayResult(
+                ticker = "DELL",
+                asOf = t0,
+                score = 46.6,
+                state = CatalystState.BUILDING,
+                velocity1d = 1.2,
+                velocity3d = 3.4,
+                velocity7d = 5.6,
+                eventCount = 2,
+                scoreVersion = "score-v1",
+                taxonomyVersion = "taxonomy-v1",
+                extractorVersion = "event-extractor-v1",
+                documentsConsidered = 3,
+                documentsSkipped = 1,
+                candidatesAccepted = 2,
+            ),
+        )
+
+        mockMvc.post("/internal/replays") {
+            accept = MediaType.APPLICATION_JSON
+            contentType = MediaType.APPLICATION_JSON
+            header("X-Admin-Key", "test-admin")
+            content = """{"ticker":"DELL","cutoff":"2026-09-16T10:00:00Z"}"""
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.ticker") { value("DELL") }
+            jsonPath("$.eventCount") { value(2) }
+            jsonPath("$.documentsConsidered") { value(3) }
+            jsonPath("$.documentsSkipped") { value(1) }
+        }
+    }
+
+    @Test
+    fun `rejects a replay cutoff in the future`() = runTest {
+        mockMvc.post("/internal/replays") {
+            accept = MediaType.APPLICATION_JSON
+            contentType = MediaType.APPLICATION_JSON
+            header("X-Admin-Key", "test-admin")
+            content = """{"ticker":"DELL","cutoff":"2999-01-01T00:00:00Z"}"""
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_REQUEST") }
         }
     }
 

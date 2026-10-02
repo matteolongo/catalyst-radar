@@ -12,9 +12,12 @@ import com.catalystradar.domain.event.SourceDocument
 import com.catalystradar.domain.event.SourceQuality
 import com.catalystradar.persistence.PostgresIntegrationTest
 import com.catalystradar.persistence.company.CompanyStore
+import com.catalystradar.persistence.document.SourceDocumentCompanyStore
 import com.catalystradar.persistence.document.SourceDocumentStore
 import com.catalystradar.persistence.event.EventStore
 import com.catalystradar.ports.DailyBar
+import com.catalystradar.ports.Embedding
+import com.catalystradar.ports.EmbeddingProvider
 import com.catalystradar.ports.EventExtractionProvider
 import com.catalystradar.ports.EvidenceSpan
 import com.catalystradar.ports.ExtractedEvent
@@ -23,7 +26,10 @@ import com.catalystradar.ports.ExtractionResult
 import com.catalystradar.ports.MarketDataProvider
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.any
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import java.time.LocalDate
@@ -41,15 +47,24 @@ class BenchmarkRunnerTest : PostgresIntegrationTest() {
     private lateinit var documents: SourceDocumentStore
 
     @Autowired
+    private lateinit var documentCompanies: SourceDocumentCompanyStore
+
+    @Autowired
     private lateinit var events: EventStore
 
     @Autowired
     private lateinit var replay: com.catalystradar.application.replay.ReplayService
 
+    @MockitoBean
+    private lateinit var embeddings: EmbeddingProvider
+
     private fun runner() = BenchmarkRunner(replay, FixedMarketData)
 
     @Test
     fun `separates movers from controls`() = runTest {
+        whenever(embeddings.embed(any())).thenReturn(
+            Embedding(List(1536) { if (it == 0) 1f else 0f }, "fake"),
+        )
         val t0 = LocalDate.parse("2026-09-10")
         val dell = companies.save(Company(ticker = "DELL", name = "Dell"))
         companies.save(Company(ticker = "HPQ", name = "HP"))
@@ -100,6 +115,7 @@ class BenchmarkRunnerTest : PostgresIntegrationTest() {
                     discoveredAt = Instant.parse(at),
                 ),
             )
+            documentCompanies.link(document.id, companyId)
             events.save(
                 CatalystEvent(
                     companyId = companyId,
