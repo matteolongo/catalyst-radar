@@ -35,7 +35,7 @@
 
   <main>
     <section id="discoverView" class="card view">
-      <div class="card-head"><div><h2>Discover</h2><p class="muted">Find companies by their current catalyst profile.</p></div></div>
+      <div class="card-head"><div><h2 id="discoverTitle" tabindex="-1">Discover</h2><p class="muted">Find companies by their current catalyst profile.</p></div></div>
       <form id="discoveryFilters" class="filter-grid">
         <label>States
           <select id="discoveryStates" multiple size="5" aria-describedby="stateHelp">
@@ -57,7 +57,7 @@
     </section>
     <section id="companyView" class="card view hidden" aria-labelledby="companyTitle">
       <button id="backToResults" type="button" class="ghost">← Return to results</button>
-      <h2 id="companyTitle">Company analysis</h2>
+      <h2 id="companyTitle" tabindex="-1">Company analysis</h2>
       <p class="muted">Company analysis will appear here.</p>
     </section>
     <section id="eventsView" class="card view hidden"><h2>Events</h2><p class="muted">Event search will appear here.</p></section>

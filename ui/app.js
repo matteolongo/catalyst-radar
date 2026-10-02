@@ -12,6 +12,8 @@
   var discoveryOffset = 0;
   var discoveryTotal = 0;
   var discoveryLimit = 20;
+  var discoveryRequest = 0;
+  var discoveryLoading = false;
 
   function $(id) { return document.getElementById(id); }
 
@@ -158,10 +160,19 @@
 
   async function refreshDiscovery() {
     var page;
+    var request = ++discoveryRequest;
+    var path = discoveryPath();
+    var requestOffset = discoveryOffset;
+    var requestLimit = discoveryLimit;
+    discoveryLoading = true;
     $('discoveryStatus').textContent = 'Loading results…';
+    $('previousPage').disabled = true;
+    $('nextPage').disabled = true;
     try {
-      page = await api(discoveryPath());
+      page = await api(path);
     } catch (err) {
+      if (request !== discoveryRequest) return;
+      discoveryLoading = false;
       $('discoveryResults').innerHTML = '';
       $('discoveryStatus').textContent = 'Unable to load discovery results.';
       $('discoveryAsOf').textContent = '';
@@ -170,12 +181,14 @@
       showError('Discovery: ' + err.message);
       return;
     }
+    if (request !== discoveryRequest) return;
+    discoveryLoading = false;
     discoveryTotal = page.total;
     $('discoveryAsOf').textContent = 'Discovery query as of ' + fmtTime(page.asOf);
     $('pageSummary').textContent = page.total ?
-      'Results ' + (discoveryOffset + 1) + '–' + (discoveryOffset + page.results.length) + ' of ' + page.total : '0 results';
-    $('previousPage').disabled = discoveryOffset === 0;
-    $('nextPage').disabled = discoveryOffset + discoveryLimit >= discoveryTotal;
+      'Results ' + (requestOffset + 1) + '–' + (requestOffset + page.results.length) + ' of ' + page.total : '0 results';
+    $('previousPage').disabled = requestOffset === 0;
+    $('nextPage').disabled = requestOffset + requestLimit >= discoveryTotal;
     if (!page.results.length) {
       $('discoveryStatus').textContent = 'No companies match these filters.';
       $('discoveryResults').innerHTML = '';
@@ -194,7 +207,7 @@
     }).join('');
   }
 
-  function showView() {
+  function showView(moveFocus) {
     var route = new URLSearchParams(window.location.search);
     var view = route.get('view') || 'discover';
     if (!['discover', 'company', 'events', 'operations'].includes(view) || (view === 'company' && !route.get('ticker'))) view = 'discover';
@@ -209,11 +222,16 @@
       else link.removeAttribute('aria-current');
     });
     if (view === 'company') $('companyTitle').textContent = route.get('ticker') + ' analysis';
+    if (moveFocus) {
+      if (view === 'company') $('companyTitle').focus();
+      else if (view === 'discover') $('discoverTitle').focus();
+      else $('nav' + view.charAt(0).toUpperCase() + view.slice(1)).focus();
+    }
   }
 
   function navigate(search) {
     window.history.pushState({}, '', search);
-    showView();
+    showView(true);
   }
 
   function requireAdminKey() {
@@ -232,12 +250,13 @@
   async function refreshAll() {
     clearError();
     var hasAdminKey = requireAdminKey();
+    var discovery = refreshDiscovery();
     await refreshHealth();
     if (hasAdminKey) {
       await refreshIngestionRuns();
       await refreshModelRuns();
     }
-    await refreshDiscovery();
+    await discovery;
   }
 
   async function runPipelineNow() {
@@ -303,11 +322,12 @@
       return refreshDiscovery();
     });
     $('previousPage').addEventListener('click', function () {
+      if (discoveryLoading || discoveryOffset === 0) return;
       discoveryOffset = Math.max(0, discoveryOffset - discoveryLimit);
       return refreshDiscovery();
     });
     $('nextPage').addEventListener('click', function () {
-      if (discoveryOffset + discoveryLimit >= discoveryTotal) return;
+      if (discoveryLoading || discoveryOffset + discoveryLimit >= discoveryTotal) return;
       discoveryOffset += discoveryLimit;
       return refreshDiscovery();
     });
@@ -324,7 +344,7 @@
         navigate('?view=' + name.toLowerCase());
       });
     });
-    window.addEventListener('popstate', showView);
+    window.addEventListener('popstate', function () { showView(true); });
     showView();
     setPolling($('autoRefresh').checked);
     refreshAll();

@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const app = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
-function startDashboard({ search = '', stored = {}, origin = 'https://ops.example', discovery } = {}) {
+function startDashboard({ search = '', stored = {}, origin = 'https://ops.example', discovery, deferDiscovery = false, deferAdmin = false } = {}) {
   const requests = [];
   const values = new Map(Object.entries(stored));
   const elements = new Map();
@@ -15,7 +15,10 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   let completePipeline;
   let ready;
   const windowHandlers = {};
+  const discoveryResolvers = [];
+  const adminResolvers = [];
   const document = {
+    activeElement: null,
     getElementById(id) {
       if (!elements.has(id)) {
         const handlers = {};
@@ -25,6 +28,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
           classList: { add(name) { this.owner.hidden = name === 'hidden'; }, remove() { this.owner.hidden = false; } },
           setAttribute(name, value) { this[name] = value; },
           removeAttribute(name) { delete this[name]; },
+          focus() { document.activeElement = this; },
           addEventListener(name, handler) { handlers[name] = handler; },
           trigger(name, event = {}) { return handlers[name](event); },
         });
@@ -51,6 +55,12 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   async function fetch(url, options) {
     requests.push({ url, headers: options.headers });
     const route = new URL(url).pathname;
+    if (route === '/v1/discovery/catalyzed' && deferDiscovery) {
+      return new Promise((resolve) => discoveryResolvers.push((body) => resolve({ ok: true, status: 200, json: async () => body })));
+    }
+    if (route.startsWith('/internal/') && deferAdmin && options.method !== 'POST') {
+      return new Promise((resolve) => adminResolvers.push(() => resolve({ ok: true, status: 200, json: async () => ({ runs: [] }) })));
+    }
     if (route === '/internal/ingestion/runs' && options.method === 'POST') {
       return new Promise((resolve) => {
         completePipeline = () => resolve({ ok: true, status: 200, json: async () => ({
@@ -88,7 +98,9 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   vm.runInNewContext(app, { window, document, fetch, URLSearchParams });
   ready();
   return {
-    requests, elements, values, window,
+    requests, elements, values, window, document,
+    resolveDiscovery(index, body) { discoveryResolvers[index](body); },
+    resolveAdmin(index) { adminResolvers[index](); },
     popstate(search) { window.location.search = search; windowHandlers.popstate(); },
     get reloads() { return reloads; },
     completePipeline() { completePipeline(); },
@@ -100,7 +112,15 @@ async function waitForRequests(requests, count) {
     await new Promise(setImmediate);
   }
   assert.equal(requests.length, count);
+  await new Promise(setImmediate);
 }
+
+const discoveryPage = (ticker, total = 1, offset = 0) => ({
+  asOf: '2026-10-02T12:02:00Z', total, limit: 20, offset,
+  results: [{ ticker, name: ticker + ' Corp', sector: 'Technology', score: 30,
+    state: 'WATCH', velocity7d: 1, events7d: 1, scoreVersion: 'score-v1',
+    taxonomyVersion: 'taxonomy-v1', asOf: '2026-10-02T12:00:00Z' }],
+});
 
 test('the dashboard sends requests only to the origin serving it', async () => {
   const dashboard = startDashboard({
@@ -218,4 +238,60 @@ test('discovery shows score metadata and separate query and company timestamps',
   assert.match(dashboard.elements.get('discoveryResults').innerHTML, /score-v1/);
   assert.match(dashboard.elements.get('discoveryResults').innerHTML, /Company as of/);
   assert.match(dashboard.elements.get('discoveryAsOf').textContent, /Discovery query as of/);
+});
+
+test('older discovery responses cannot replace the latest filtered results or page summary', async () => {
+  const dashboard = startDashboard({ deferDiscovery: true });
+  await waitForRequests(dashboard.requests, 2);
+  dashboard.elements.get('sector').value = 'Old';
+  dashboard.elements.get('discoveryFilters').trigger('submit', { preventDefault() {} });
+  dashboard.elements.get('sector').value = 'New';
+  dashboard.elements.get('discoveryFilters').trigger('submit', { preventDefault() {} });
+  await waitForRequests(dashboard.requests, 4);
+
+  dashboard.resolveDiscovery(2, discoveryPage('NEW', 21));
+  await new Promise(setImmediate);
+  dashboard.resolveDiscovery(1, discoveryPage('OLD', 2));
+  dashboard.resolveDiscovery(0, discoveryPage('INITIAL', 1));
+  await new Promise(setImmediate);
+  assert.match(dashboard.elements.get('discoveryResults').innerHTML, /NEW/);
+  assert.doesNotMatch(dashboard.elements.get('discoveryResults').innerHTML, /OLD|INITIAL/);
+  assert.equal(dashboard.elements.get('pageSummary').textContent, 'Results 1–1 of 21');
+});
+
+test('page controls stay disabled during a discovery request', async () => {
+  const dashboard = startDashboard({ deferDiscovery: true });
+  await waitForRequests(dashboard.requests, 2);
+  dashboard.resolveDiscovery(0, discoveryPage('FIRST', 44));
+  await new Promise(setImmediate);
+  dashboard.elements.get('nextPage').trigger('click');
+  await waitForRequests(dashboard.requests, 3);
+  assert.equal(dashboard.elements.get('nextPage').disabled, true);
+  dashboard.elements.get('nextPage').trigger('click');
+  assert.equal(dashboard.requests.length, 3);
+  dashboard.resolveDiscovery(1, discoveryPage('SECOND', 44, 20));
+});
+
+test('company navigation, return, and popstate move focus into the visible view', async () => {
+  const dashboard = startDashboard();
+  await waitForRequests(dashboard.requests, 2);
+  const tickerLink = { dataset: { ticker: 'DELL' }, focus() { dashboard.document.activeElement = this; } };
+  tickerLink.focus();
+  dashboard.elements.get('discoveryResults').trigger('click', { target: { closest: () => tickerLink } });
+  assert.equal(dashboard.document.activeElement, dashboard.elements.get('companyTitle'));
+  dashboard.elements.get('backToResults').focus();
+  dashboard.elements.get('backToResults').trigger('click');
+  assert.equal(dashboard.document.activeElement, dashboard.elements.get('discoverTitle'));
+  dashboard.popstate('?view=company&ticker=DELL');
+  assert.equal(dashboard.document.activeElement, dashboard.elements.get('companyTitle'));
+  dashboard.popstate('');
+  assert.equal(dashboard.document.activeElement, dashboard.elements.get('discoverTitle'));
+});
+
+test('discovery starts without waiting for slow Operations requests', async () => {
+  const dashboard = startDashboard({ stored: { 'catalyst-admin-key': 'admin-secret' }, deferAdmin: true });
+  await new Promise(setImmediate);
+  await new Promise(setImmediate);
+  assert.ok(dashboard.requests.some((request) => new URL(request.url).pathname === '/v1/discovery/catalyzed'));
+  assert.match(dashboard.elements.get('discoveryResults').innerHTML, /DELL/);
 });
