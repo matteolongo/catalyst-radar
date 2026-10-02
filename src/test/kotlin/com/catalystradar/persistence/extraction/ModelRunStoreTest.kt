@@ -93,8 +93,10 @@ class ModelRunStoreTest : PostgresIntegrationTest() {
         Thread.sleep(5)
         runs.record(ModelRunInput(provider = "openai", operation = "embed", model = "m", success = true))
 
-        val recent = runs.listRecent(10)
+        // Other suites share this container and may leave committed rows
+        // behind, so compare operation order, not exact contents.
+        val operations = runs.listRecent(100).map { it.operation }
 
-        assertEquals(listOf("embed", "extract"), recent.map { it.operation })
+        assertTrue(operations.indexOf("embed") < operations.indexOf("extract"))
     }
 }

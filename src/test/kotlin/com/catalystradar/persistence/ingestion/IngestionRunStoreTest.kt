@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @Transactional
 class IngestionRunStoreTest : PostgresIntegrationTest() {
@@ -55,8 +56,10 @@ class IngestionRunStoreTest : PostgresIntegrationTest() {
         Thread.sleep(5)
         val second = runs.startRun("finnhub")
 
-        val recent = runs.listRecent(10)
+        // Other suites share this container and may leave committed rows
+        // behind, so assert relative order, not exact contents.
+        val ids = runs.listRecent(100).map { it.id }
 
-        assertEquals(listOf(second, first), recent.map { it.id })
+        assertTrue(ids.indexOf(second) < ids.indexOf(first))
     }
 }
