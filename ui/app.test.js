@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const app = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
-function startDashboard({ search = '', stored = {}, origin = 'https://ops.example', discovery, deferDiscovery = false, deferAdmin = false } = {}) {
+function startDashboard({ search = '', stored = {}, origin = 'https://ops.example', discovery, company = {}, deferDiscovery = false, deferAdmin = false } = {}) {
   const requests = [];
   const values = new Map(Object.entries(stored));
   const elements = new Map();
@@ -55,6 +55,12 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   async function fetch(url, options) {
     requests.push({ url, headers: options.headers });
     const route = new URL(url).pathname;
+    if (route.startsWith('/v1/companies/')) {
+      const suffix = route.replace('/v1/companies/DELL', '') || 'metadata';
+      const answer = typeof company[suffix] === 'function' ? company[suffix](new URL(url)) : company[suffix];
+      return answer === 'error' ? { ok: false, status: 404, json: async () => ({ detail: 'Company not found' }) }
+        : { ok: true, status: 200, json: async () => answer || companyFixture[suffix] };
+    }
     if (route === '/v1/discovery/catalyzed' && deferDiscovery) {
       return new Promise((resolve) => discoveryResolvers.push((body) => resolve(body === 'error'
         ? { ok: false, status: 503, json: async () => ({ detail: 'Discovery unavailable' }) }
@@ -97,7 +103,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
       }] };
     return { ok: true, status: 200, json: async () => body };
   }
-  vm.runInNewContext(app, { window, document, fetch, URLSearchParams });
+  vm.runInNewContext(app, { window, document, fetch, URLSearchParams, URL });
   ready();
   return {
     requests, elements, values, window, document,
@@ -116,6 +122,31 @@ async function waitForRequests(requests, count) {
   assert.equal(requests.length, count);
   await new Promise(setImmediate);
 }
+
+const companyFixture = {
+  metadata: { ticker: 'DELL', name: 'Dell Technologies', exchange: 'NYSE', sector: 'Technology', industry: 'Hardware', country: 'US', active: true },
+  '/catalyst': {
+    ticker: 'DELL', score: 68, state: 'CATALYZED', velocity1d: 2, velocity3d: 3, velocity7d: 5,
+    positiveScore: 72, negativeScore: 4, directScore: 60, inferredScore: 8,
+    totalEvents: 12, events7d: 3, scoreVersion: 'score-v1', taxonomyVersion: 'taxonomy-v1',
+    asOf: '2026-10-02T12:00:00Z', stateBand: { state: 'CATALYZED', minScore: 65, maxScore: 80, maxInclusive: false },
+    explanationStatus: 'RECONSTRUCTED_SCORE_MATCH',
+    scoreCalculation: { contributionSum: 11, familyCount: 2, convergenceMultiplier: 1.1, rawScore: 12.1, normalizationScale: 5, contributionCutoff: 0.1 },
+    topDrivers: [{ eventId: 'event-1', type: 'GUIDANCE_RAISE', family: 'GUIDANCE', direction: 'POSITIVE', contribution: 8,
+      eventTimestamp: '2026-09-30T09:00:00Z', discoveredAt: '2026-10-01T10:00:00Z', clusterId: 'cluster-1',
+      factors: { sign: 1, baseWeight: 10, confidence: 0.9, materialityFactor: 1, surpriseFactor: 1, sourceQualityFactor: 1, directnessFactor: 1, timeDecayFactor: 0.9, value: 8 },
+      evidence: [{ quoteOrFact: 'Raised guidance <script>alert(1)</script>', sourceOffsetHint: null }],
+      source: { sourceDocumentId: 'source-1', title: 'Quarterly update', provider: 'polygon', publishedAt: '2026-09-30T11:00:00Z', canonicalUrl: 'https://example.com/story' } }],
+  },
+  '/timeline': { ticker: 'DELL', snapshots: [
+    { score: 68, state: 'CATALYZED', asOf: '2026-10-02T12:00:00Z' },
+    { score: 44, state: 'WATCH', asOf: '2026-09-30T12:00:00Z' },
+  ], transitions: [{ from: 'WATCH', to: 'CATALYZED', score: 68, scoreVersion: 'score-v1', at: '2026-10-02T12:00:00Z' }] },
+  '/events': { events: [{ id: 'event-1', type: 'GUIDANCE_RAISE', family: 'GUIDANCE', direction: 'POSITIVE',
+    eventTimestamp: '2026-09-30T09:00:00Z', discoveredAt: '2026-10-01T10:00:00Z', clusterId: 'cluster-1',
+    evidence: [{ quoteOrFact: 'Raised guidance', sourceOffsetHint: null }],
+    source: { sourceDocumentId: 'source-1', title: 'Quarterly update', provider: 'polygon', publishedAt: '2026-09-30T11:00:00Z', canonicalUrl: 'https://example.com/story' } }], nextCursor: null },
+};
 
 const discoveryPage = (ticker, total = 1, offset = 0) => ({
   asOf: '2026-10-02T12:02:00Z', total, limit: 20, offset,
@@ -332,4 +363,111 @@ test('discovery failure clears the previous page range', async () => {
   dashboard.resolveDiscovery(1, 'error');
   await new Promise(setImmediate);
   assert.equal(dashboard.elements.get('pageSummary').textContent, '');
+});
+
+test('company route renders metadata, current metrics, reconstructed evidence, and distinct dates', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL' });
+  await waitForRequests(dashboard.requests, 6);
+  assert.match(dashboard.elements.get('companyTitle').textContent, /Dell Technologies.*DELL/);
+  assert.match(dashboard.elements.get('companyOverview').innerHTML, /NYSE.*Technology.*Hardware/s);
+  const score = dashboard.elements.get('companyScore').innerHTML;
+  assert.match(score, /68\.0.*CATALYZED.*65.*80/s);
+  assert.match(score, /1-day velocity.*3-day velocity.*7-day velocity.*Total events.*Events 7d.*score-v1.*taxonomy-v1/s);
+  const why = dashboard.elements.get('companyExplanation').innerHTML;
+  assert.match(why, /reconstructed/i);
+  assert.match(why, /original driver list/i);
+  assert.match(why, /Raised guidance &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(why, /Event date.*First captured.*Source publication date/s);
+  assert.match(why, /https:\/\/example.com\/story.*noopener noreferrer/s);
+  assert.match(why, /Scoring details/);
+  assert.match(dashboard.elements.get('companyEvents').innerHTML, /GUIDANCE_RAISE/);
+});
+
+test('unknown ticker reports a company error while independent panels remain visible', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { metadata: 'error' } });
+  await waitForRequests(dashboard.requests, 6);
+  assert.match(dashboard.elements.get('companyOverview').textContent, /Unable to load company/);
+  assert.match(dashboard.elements.get('companyScore').innerHTML, /68\.0/);
+  assert.match(dashboard.elements.get('companyEvents').innerHTML, /GUIDANCE_RAISE/);
+});
+
+test('one failed company endpoint leaves the other panels usable', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/timeline': 'error' } });
+  await waitForRequests(dashboard.requests, 6);
+  assert.match(dashboard.elements.get('companyHistory').textContent, /Unable to load score history/);
+  assert.match(dashboard.elements.get('companyScore').innerHTML, /68\.0/);
+  assert.match(dashboard.elements.get('companyEvents').innerHTML, /GUIDANCE_RAISE/);
+});
+
+test('history shows zero and one snapshot without inventing a line', async () => {
+  for (const snapshots of [[], [{ score: 44, state: 'WATCH', asOf: '2026-09-30T12:00:00Z' }]]) {
+    const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/timeline': { ticker: 'DELL', snapshots, transitions: [] } } });
+    await waitForRequests(dashboard.requests, 6);
+    const chart = dashboard.elements.get('companyHistory').innerHTML;
+    assert.match(chart, snapshots.length ? /Insufficient history.*44/s : /No score history/);
+    assert.doesNotMatch(chart, /<polyline/);
+  }
+});
+
+test('history sorts actual snapshots, labels transitions, and requests capped ranges', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL' });
+  await waitForRequests(dashboard.requests, 6);
+  const chart = dashboard.elements.get('companyHistory').innerHTML;
+  assert.ok(chart.indexOf('2026-09-30') < chart.indexOf('2026-10-02'));
+  assert.match(chart, /WATCH → CATALYZED/);
+  assert.match(chart, /<table/);
+  assert.match(chart, /<polyline/);
+  const timeline = dashboard.requests.find(({ url }) => new URL(url).pathname.endsWith('/timeline'));
+  assert.equal(new URL(timeline.url).searchParams.get('limit'), '200');
+  dashboard.elements.get('historyRange').value = 'max';
+  await dashboard.elements.get('historyRange').trigger('change');
+  const max = new URL(dashboard.requests.at(-1).url);
+  assert.equal(max.searchParams.get('from'), null);
+  assert.equal(max.searchParams.get('limit'), '200');
+  assert.match(dashboard.elements.get('historyRangeNote').textContent, /capped at 200/i);
+});
+
+test('mismatched explanations suppress attribution and unsafe source URLs stay plain text', async () => {
+  for (const status of ['SCORE_MISMATCH', 'VERSION_MISMATCH']) {
+    const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: {
+      '/catalyst': { ...companyFixture['/catalyst'], explanationStatus: status },
+      '/events': { events: [{ ...companyFixture['/events'].events[0], source: { ...companyFixture['/events'].events[0].source, canonicalUrl: 'javascript:alert(1)' } }], nextCursor: null },
+    } });
+    await waitForRequests(dashboard.requests, 6);
+    const why = dashboard.elements.get('companyExplanation').innerHTML;
+    assert.match(why, /explanation unavailable/i);
+    assert.doesNotMatch(why, /Raised guidance|Scoring details|Positive summary/);
+    assert.doesNotMatch(dashboard.elements.get('companyEvents').innerHTML, /href="javascript:/);
+  }
+});
+
+test('event cursor appends a later report into its loaded cluster', async () => {
+  const second = { ...companyFixture['/events'].events[0], id: 'event-2', evidence: [{ quoteOrFact: 'Second report', sourceOffsetHint: null }] };
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/events': (url) =>
+    url.searchParams.has('cursor') ? { events: [second], nextCursor: null }
+      : { ...companyFixture['/events'], nextCursor: 'event-1' } } });
+  await waitForRequests(dashboard.requests, 6);
+  assert.equal(dashboard.elements.get('loadCompanyEvents').disabled, false);
+  await dashboard.elements.get('loadCompanyEvents').trigger('click');
+  const feed = dashboard.elements.get('companyEvents').innerHTML;
+  assert.equal((feed.match(/class="event-cluster"/g) || []).length, 1);
+  assert.match(feed, /Raised guidance.*Second report/s);
+  assert.equal(new URL(dashboard.requests.at(-1).url).searchParams.get('cursor'), 'event-1');
+});
+
+test('a failed next event page keeps loaded evidence and allows retry', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/events': (url) =>
+    url.searchParams.has('cursor') ? 'error' : { ...companyFixture['/events'], nextCursor: 'event-1' } } });
+  await waitForRequests(dashboard.requests, 6);
+  await dashboard.elements.get('loadCompanyEvents').trigger('click');
+  assert.match(dashboard.elements.get('companyEvents').innerHTML, /Raised guidance/);
+  assert.match(dashboard.elements.get('companyEventsStatus').textContent, /Unable to load more events/);
+  assert.equal(dashboard.elements.get('loadCompanyEvents').disabled, false);
+});
+
+test('scoring details retain the returned numeric factor precision', async () => {
+  const driver = { ...companyFixture['/catalyst'].topDrivers[0], factors: { ...companyFixture['/catalyst'].topDrivers[0].factors, confidence: 0.9876 } };
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/catalyst': { ...companyFixture['/catalyst'], topDrivers: [driver] } } });
+  await waitForRequests(dashboard.requests, 6);
+  assert.match(dashboard.elements.get('companyExplanation').innerHTML, /0\.9876/);
 });

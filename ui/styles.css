@@ -44,6 +44,31 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .discovery-card dt { color: var(--muted); font-size: 0.8rem; }
 .discovery-card dd { margin: 0; overflow-wrap: anywhere; }
 .pager { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap; }
+.company-panel { border-top: 1px solid var(--line); margin-top: 1.25rem; padding-top: 0.8rem; min-width: 0; }
+.company-panel h3 { margin-top: 0; }
+.company-panel p, .company-panel blockquote, .company-panel dd { overflow-wrap: anywhere; }
+.fact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 0.65rem; margin: 0.7rem 0; }
+.fact-grid dt { color: var(--muted); font-size: 0.82rem; }
+.fact-grid dd { margin: 0; font-variant-numeric: tabular-nums; }
+.score-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.7rem; }
+.score-number { font-size: 2.2rem; font-variant-numeric: tabular-nums; }
+.driver, .event-cluster { border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.8rem; margin: 0.7rem 0; }
+.driver h4, .event-cluster h4 { margin: 0; }
+.event-report + .event-report { border-top: 1px solid var(--line); margin-top: 0.8rem; padding-top: 0.6rem; }
+.source-date { display: block; color: var(--muted); }
+.evidence-list { padding-left: 1.2rem; }
+.evidence-list blockquote { margin: 0.3rem 0; }
+.company-panel details { margin-top: 0.75rem; }
+.company-panel summary { cursor: pointer; color: var(--accent); }
+.company-panel svg { display: block; width: 100%; max-height: 14rem; }
+.score-line { fill: none; stroke: var(--accent); stroke-width: 2; }
+.score-point { fill: var(--accent); }
+.axis { stroke: var(--muted); stroke-width: 1; }
+.transition-mark { stroke: var(--warn); stroke-width: 1; stroke-dasharray: 4 3; }
+.history-table { overflow-x: auto; }
+.history-table table { min-width: 26rem; }
+.history-table caption { text-align: left; font-weight: 600; }
+.panel-error { color: var(--bad); }
 
 header {
   display: flex;
@@ -154,4 +179,6 @@ footer a { color: var(--accent); }
   .app-nav { overflow-x: auto; }
   .key-field input { width: min(11rem, 100%); }
   .card { padding: 0.8rem; }
+  #companyView { overflow-wrap: anywhere; }
+  .score-header { align-items: flex-start; }
 }

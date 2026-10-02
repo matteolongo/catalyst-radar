@@ -15,6 +15,11 @@
   var appliedDiscoveryFilters;
   var discoveryRequest = 0;
   var discoveryLoading = false;
+  var companyRequest = 0;
+  var currentCompany = '';
+  var companyEvents = [];
+  var companyNextCursor = null;
+  var companyEventsLoading = false;
 
   function $(id) { return document.getElementById(id); }
 
@@ -157,6 +162,217 @@
     return query;
   }
 
+  function fmtScore(value) {
+    return value === null || value === undefined || !Number.isFinite(Number(value)) ? '–' : Number(value).toFixed(1);
+  }
+
+  function fmtFactor(value) {
+    return value === null || value === undefined || !Number.isFinite(Number(value)) ? '–' : String(value);
+  }
+
+  function timeLabel(value) {
+    return '<time datetime="' + esc(value || '') + '">' + esc(fmtTime(value)) + '</time>';
+  }
+
+  function sourceLabel(source) {
+    if (!source) return '<span class="muted">Source unavailable</span>';
+    var label = esc(source.title || 'Untitled source') + ' · ' + esc(source.provider || 'Unknown provider');
+    var safeUrl = '';
+    try {
+      var parsed = new URL(source.canonicalUrl);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') safeUrl = parsed.href;
+    } catch (_) { /* Missing or invalid source URL stays plain text. */ }
+    return (safeUrl ? '<a href="' + esc(safeUrl) + '" target="_blank" rel="noopener noreferrer">' + label + '</a>' : label) +
+      '<span class="source-date">Source publication date: ' + timeLabel(source.publishedAt) + '</span>';
+  }
+
+  function evidenceList(evidence) {
+    if (!Array.isArray(evidence) || !evidence.length) return '<p class="muted">No evidence quote available.</p>';
+    return '<ul class="evidence-list">' + evidence.map(function (item) {
+      return '<li><blockquote>' + esc(item.quoteOrFact) + '</blockquote></li>';
+    }).join('') + '</ul>';
+  }
+
+  function companyPath(ticker, suffix, query) {
+    return '/v1/companies/' + encodeURIComponent(ticker) + suffix + (query ? '?' + query.toString() : '');
+  }
+
+  function companyPanelError(id, message) {
+    $(id).textContent = 'Unable to load ' + message + '.';
+  }
+
+  function renderCompanyOverview(company) {
+    $('companyTitle').textContent = company.name + ' (' + company.ticker + ')';
+    $('companyOverview').innerHTML = '<p class="muted">' + [company.exchange, company.sector, company.industry, company.country].filter(Boolean).map(esc).join(' · ') +
+      ' · ' + (company.active ? 'Active' : 'Inactive') + '</p>';
+  }
+
+  function factorDetails(driver) {
+    if (!driver.factors) return '';
+    var fields = ['sign', 'baseWeight', 'confidence', 'materialityFactor', 'surpriseFactor', 'sourceQualityFactor', 'directnessFactor', 'timeDecayFactor', 'value'];
+    return '<dl class="fact-grid">' + fields.map(function (key) {
+      return '<div><dt>' + esc(key) + '</dt><dd>' + esc(fmtFactor(driver.factors[key])) + '</dd></div>';
+    }).join('') + '</dl>';
+  }
+
+  function renderCatalyst(data) {
+    var band = data.stateBand || {};
+    $('companyScore').innerHTML = '<div class="score-header"><strong class="score-number">' + esc(fmtScore(data.score)) + '</strong>' + statusPill(data.state) +
+      '<span>State range: ' + esc(fmtScore(band.minScore)) + '–' + esc(fmtScore(band.maxScore)) + (band.maxInclusive ? ' inclusive' : ' exclusive upper bound') + '</span></div>' +
+      '<dl class="fact-grid"><div><dt>1-day velocity</dt><dd>' + esc(fmtScore(data.velocity1d)) + '</dd></div>' +
+      '<div><dt>3-day velocity</dt><dd>' + esc(fmtScore(data.velocity3d)) + '</dd></div>' +
+      '<div><dt>7-day velocity</dt><dd>' + esc(fmtScore(data.velocity7d)) + '</dd></div>' +
+      '<div><dt>Total events</dt><dd>' + esc(fmtInt(data.totalEvents)) + '</dd></div>' +
+      '<div><dt>Events 7d</dt><dd>' + esc(fmtInt(data.events7d)) + '</dd></div>' +
+      '<div><dt>As of</dt><dd>' + timeLabel(data.asOf) + '</dd></div>' +
+      '<div><dt>Score version</dt><dd>' + esc(data.scoreVersion) + '</dd></div>' +
+      '<div><dt>Taxonomy version</dt><dd>' + esc(data.taxonomyVersion) + '</dd></div></dl>';
+    if (data.explanationStatus !== 'RECONSTRUCTED_SCORE_MATCH') {
+      $('companyExplanation').innerHTML = '<p class="panel-error">Explanation unavailable: ' +
+        (data.explanationStatus === 'VERSION_MISMATCH' ? 'score or taxonomy versions differ from the saved snapshot.' :
+          'the reconstructed score does not match the saved snapshot.') + '</p>';
+      return;
+    }
+    var calculation = data.scoreCalculation || {};
+    var summary = '<dl class="fact-grid"><div><dt>Positive summary</dt><dd>' + esc(fmtScore(data.positiveScore)) + '</dd></div>' +
+      '<div><dt>Negative summary</dt><dd>' + esc(fmtScore(data.negativeScore)) + '</dd></div>' +
+      '<div><dt>Direct summary</dt><dd>' + esc(fmtScore(data.directScore)) + '</dd></div>' +
+      '<div><dt>Inferred summary</dt><dd>' + esc(fmtScore(data.inferredScore)) + '</dd></div></dl>';
+    var drivers = (data.topDrivers || []).slice(0, 3).map(function (driver) {
+      return '<article class="driver"><h4>' + esc(driver.direction) + ' · ' + esc(driver.family || 'Unclassified') + ' / ' + esc(driver.type) + '</h4>' +
+        '<p>Raw event contribution: ' + esc(fmtScore(driver.contribution)) + '</p>' +
+        '<p>Event date: ' + timeLabel(driver.eventTimestamp) + ' · First captured: ' + timeLabel(driver.discoveredAt) + '</p>' +
+        evidenceList(driver.evidence) + '<p>' + sourceLabel(driver.source) + '</p>' +
+        '<details><summary>Scoring details</summary><p>Score version: ' + esc(data.scoreVersion) + '</p>' + factorDetails(driver) + '</details></article>';
+    }).join('');
+    var calcFields = ['contributionSum', 'familyCount', 'convergenceMultiplier', 'rawScore', 'normalizationScale', 'contributionCutoff'];
+    $('companyExplanation').innerHTML = '<p class="muted">Reconstructed current explanation: the saved snapshot does not retain its original driver list. Matching score and versions do not prove original driver membership.</p>' +
+      summary + (drivers || '<p>No reconstructed drivers available.</p>') +
+      '<details><summary>Scoring details</summary><p>Score version: ' + esc(data.scoreVersion) + '</p><dl class="fact-grid">' +
+      calcFields.map(function (key) { return '<div><dt>' + esc(key) + '</dt><dd>' + esc(fmtFactor(calculation[key])) + '</dd></div>'; }).join('') + '</dl></details>';
+  }
+
+  function historyQuery() {
+    var query = new URLSearchParams();
+    var range = $('historyRange').value || '30';
+    if (range !== 'max') {
+      var to = new Date();
+      var from = new Date(to.getTime() - Number(range) * 86400000);
+      query.set('from', from.toISOString());
+      query.set('to', to.toISOString());
+    }
+    query.set('limit', '200');
+    $('historyRangeNote').textContent = range === 'max'
+      ? 'Maximum returned view is capped at 200 stored snapshots and 200 transitions.'
+      : 'Showing up to 200 stored snapshots and transitions from the last ' + range + ' days.';
+    return query;
+  }
+
+  function renderHistory(data) {
+    var snapshots = (data.snapshots || []).slice().sort(function (a, b) { return new Date(a.asOf) - new Date(b.asOf); });
+    var transitions = (data.transitions || []).slice().sort(function (a, b) { return new Date(a.at) - new Date(b.at); });
+    if (!snapshots.length) {
+      $('companyHistory').innerHTML = '<p>No score history in this range.</p>';
+      return;
+    }
+    var chart = '';
+    if (snapshots.length > 1) {
+      var minTime = new Date(snapshots[0].asOf).getTime();
+      var maxTime = new Date(snapshots[snapshots.length - 1].asOf).getTime();
+      var x = function (at) { return 30 + 540 * (new Date(at).getTime() - minTime) / (maxTime - minTime || 1); };
+      var y = function (score) { return 130 - Math.max(0, Math.min(100, Number(score))) * 1.1; };
+      chart = '<svg viewBox="0 0 600 150" role="img" aria-label="Stored catalyst score snapshots and state transitions; data table follows">' +
+        '<line x1="30" y1="130" x2="570" y2="130" class="axis"/><line x1="30" y1="20" x2="30" y2="130" class="axis"/>' +
+        '<polyline class="score-line" points="' + snapshots.map(function (s) { return x(s.asOf) + ',' + y(s.score); }).join(' ') + '"/>' +
+        snapshots.map(function (s) { return '<circle class="score-point" cx="' + x(s.asOf) + '" cy="' + y(s.score) + '" r="4"><title>' + esc(s.asOf) + ' · ' + esc(fmtScore(s.score)) + ' · ' + esc(s.state) + '</title></circle>'; }).join('') +
+        transitions.filter(function (t) { return new Date(t.at).getTime() >= minTime && new Date(t.at).getTime() <= maxTime; }).map(function (t) { return '<path class="transition-mark" d="M' + x(t.at) + ' 20V130"><title>' + esc(t.at) + ' · ' + esc(t.from) + ' → ' + esc(t.to) + '</title></path>'; }).join('') + '</svg>';
+    } else chart = '<p>Insufficient history for a line chart. One stored snapshot is available.</p>';
+    $('companyHistory').innerHTML = chart + '<div class="history-table"><table><caption>Stored score snapshots</caption><thead><tr><th>Date</th><th>Score</th><th>State</th><th>As of</th></tr></thead><tbody>' +
+      snapshots.map(function (s) { return '<tr><td>' + esc((s.asOf || '').slice(0, 10)) + '</td><td>' + esc(fmtScore(s.score)) + '</td><td>' + esc(s.state) + '</td><td>' + timeLabel(s.asOf) + '</td></tr>'; }).join('') +
+      '</tbody></table></div>' + (transitions.length ? '<p>State transitions at persisted times:</p><ul>' + transitions.map(function (t) {
+        return '<li>' + timeLabel(t.at) + ' · ' + esc(t.from) + ' → ' + esc(t.to) + ' · score ' + esc(fmtScore(t.score)) + '</li>';
+      }).join('') + '</ul>' : '');
+  }
+
+  function renderCompanyEvents() {
+    var groups = new Map();
+    companyEvents.forEach(function (event) {
+      var id = event.clusterId || event.id;
+      if (!groups.has(id)) groups.set(id, []);
+      groups.get(id).push(event);
+    });
+    $('companyEvents').innerHTML = companyEvents.length ? Array.from(groups.values()).map(function (group) {
+      return '<article class="event-cluster"><h4>' + (group.length > 1 ? 'Reports about one catalyst' : 'Event report') + '</h4>' + group.map(function (event) {
+        return '<div class="event-report"><strong>' + esc(event.direction) + ' · ' + esc(event.family) + ' / ' + esc(event.type) + '</strong>' +
+          '<p>Event date: ' + timeLabel(event.eventTimestamp) + ' · First captured: ' + timeLabel(event.discoveredAt) + '</p>' +
+          evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p></div>';
+      }).join('') + '</article>';
+    }).join('') : '<p>No company events found.</p>';
+    $('loadCompanyEvents').classList[companyNextCursor ? 'remove' : 'add']('hidden');
+    $('loadCompanyEvents').disabled = !companyNextCursor || companyEventsLoading;
+  }
+
+  async function loadCompanyEvents(ticker, request, reset) {
+    if (companyEventsLoading || (!reset && !companyNextCursor)) return;
+    companyEventsLoading = true;
+    $('companyEventsStatus').textContent = '';
+    if (reset) { companyEvents = []; companyNextCursor = null; $('companyEvents').textContent = 'Loading events…'; }
+    $('loadCompanyEvents').disabled = true;
+    var query = new URLSearchParams();
+    query.set('limit', '20');
+    if (!reset) query.set('cursor', companyNextCursor);
+    try {
+      var page = await api(companyPath(ticker, '/events', query));
+      if (request !== companyRequest) return;
+      companyEvents = companyEvents.concat(page.events || []);
+      companyNextCursor = page.nextCursor;
+      companyEventsLoading = false;
+      renderCompanyEvents();
+    } catch (_) {
+      if (request === companyRequest) {
+        companyEventsLoading = false;
+        if (reset) companyPanelError('companyEvents', 'company events');
+        else {
+          $('companyEventsStatus').textContent = 'Unable to load more events. Try again.';
+          renderCompanyEvents();
+        }
+      }
+    } finally { if (request === companyRequest) companyEventsLoading = false; }
+  }
+
+  async function loadCompanyHistory(ticker, request) {
+    $('companyHistory').textContent = 'Loading score history…';
+    try {
+      var data = await api(companyPath(ticker, '/timeline', historyQuery()));
+      if (request === companyRequest) renderHistory(data);
+    } catch (_) { if (request === companyRequest) companyPanelError('companyHistory', 'score history'); }
+  }
+
+  function refreshCompany(ticker) {
+    var request = ++companyRequest;
+    currentCompany = ticker;
+    companyEvents = [];
+    companyNextCursor = null;
+    companyEventsLoading = false;
+    $('companyTitle').textContent = ticker + ' analysis';
+    $('companyOverview').textContent = 'Loading company…';
+    $('companyScore').textContent = 'Loading current score…';
+    $('companyExplanation').textContent = 'Loading explanation…';
+    $('companyEvents').textContent = 'Loading events…';
+    $('companyEventsStatus').textContent = '';
+    $('loadCompanyEvents').classList.add('hidden');
+    api(companyPath(ticker, '')).then(function (company) {
+      if (request === companyRequest) renderCompanyOverview(company);
+    }).catch(function () { if (request === companyRequest) companyPanelError('companyOverview', 'company'); });
+    api(companyPath(ticker, '/catalyst')).then(function (data) {
+      if (request === companyRequest) renderCatalyst(data);
+    }).catch(function () {
+      if (request === companyRequest) { companyPanelError('companyScore', 'current score'); companyPanelError('companyExplanation', 'explanation'); }
+    });
+    loadCompanyHistory(ticker, request);
+    loadCompanyEvents(ticker, request, true);
+  }
+
   function discoveryPath() {
     var query = new URLSearchParams(appliedDiscoveryFilters);
     query.set('offset', String(discoveryOffset));
@@ -227,7 +443,12 @@
       if (name.toLowerCase() === view) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
     });
-    if (view === 'company') $('companyTitle').textContent = route.get('ticker') + ' analysis';
+    if (view === 'company') {
+      if (route.get('ticker') !== currentCompany) refreshCompany(route.get('ticker'));
+    } else {
+      companyRequest++;
+      currentCompany = '';
+    }
     if (moveFocus) {
       if (view === 'company') $('companyTitle').focus();
       else if (view === 'discover') $('discoverTitle').focus();
@@ -348,6 +569,12 @@
       navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker));
     });
     $('backToResults').addEventListener('click', function () { navigate('?view=discover'); });
+    $('historyRange').addEventListener('change', function () {
+      if (currentCompany) return loadCompanyHistory(currentCompany, companyRequest);
+    });
+    $('loadCompanyEvents').addEventListener('click', function () {
+      if (currentCompany) return loadCompanyEvents(currentCompany, companyRequest, false);
+    });
     ['Discover', 'Events', 'Operations'].forEach(function (name) {
       $('nav' + name).addEventListener('click', function (event) {
         event.preventDefault();
