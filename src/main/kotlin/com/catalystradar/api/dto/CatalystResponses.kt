@@ -2,6 +2,9 @@ package com.catalystradar.api.dto
 
 import com.catalystradar.application.catalyst.CatalystView
 import com.catalystradar.application.catalyst.EventDriver
+import com.catalystradar.application.scoring.CalculatedScore
+import com.catalystradar.application.scoring.EventContribution
+import com.catalystradar.domain.catalyst.CatalystState
 import com.catalystradar.domain.catalyst.CatalystSnapshot
 import com.catalystradar.persistence.catalyst.StateTransitionRecord
 import java.time.Instant
@@ -12,6 +15,50 @@ data class EventDriverResponse(
     val type: String,
     val direction: String,
     val contribution: Double,
+    val family: String?,
+    val eventTimestamp: Instant?,
+    val discoveredAt: Instant?,
+    val clusterId: UUID?,
+    val factors: EventContributionResponse?,
+    val evidence: List<EventEvidenceResponse>,
+    val source: SafeSourceResponse?,
+)
+
+data class EventContributionResponse(
+    val sign: Double,
+    val baseWeight: Double,
+    val confidence: Double,
+    val materialityFactor: Double,
+    val surpriseFactor: Double,
+    val sourceQualityFactor: Double,
+    val directnessFactor: Double,
+    val timeDecayFactor: Double,
+    val value: Double,
+)
+
+private fun EventContribution.toResponse() = EventContributionResponse(
+    sign, baseWeight, confidence, materialityFactor, surpriseFactor,
+    sourceQualityFactor, directnessFactor, timeDecayFactor, value,
+)
+
+data class ScoreCalculationResponse(
+    val contributionSum: Double,
+    val familyCount: Int,
+    val convergenceMultiplier: Double,
+    val rawScore: Double,
+    val normalizationScale: Double,
+    val contributionCutoff: Double,
+)
+
+private fun CalculatedScore.toResponse() = ScoreCalculationResponse(
+    contributionSum, familyCount, convergenceMultiplier, rawScore, normalizationScale, contributionCutoff,
+)
+
+data class StateBandResponse(
+    val state: String,
+    val minScore: Double,
+    val maxScore: Double,
+    val maxInclusive: Boolean,
 )
 
 data class CatalystResponse(
@@ -31,6 +78,8 @@ data class CatalystResponse(
     val scoreVersion: String,
     val taxonomyVersion: String,
     val asOf: Instant,
+    val stateBand: StateBandResponse,
+    val scoreCalculation: ScoreCalculationResponse?,
 )
 
 fun EventDriver.toResponse() = EventDriverResponse(
@@ -38,6 +87,13 @@ fun EventDriver.toResponse() = EventDriverResponse(
     type = type,
     direction = direction,
     contribution = contribution,
+    family = family,
+    eventTimestamp = eventTimestamp,
+    discoveredAt = discoveredAt,
+    clusterId = clusterId,
+    factors = factors?.toResponse(),
+    evidence = evidence.map { it.toResponse() },
+    source = source?.toResponse(),
 )
 
 fun CatalystView.toResponse() = CatalystResponse(
@@ -57,6 +113,9 @@ fun CatalystView.toResponse() = CatalystResponse(
     scoreVersion = scoreVersion,
     taxonomyVersion = taxonomyVersion,
     asOf = asOf,
+    stateBand = StateBandResponse(stateBand.state.name, stateBand.minScore, stateBand.maxScore,
+        stateBand.state == CatalystState.HIGH),
+    scoreCalculation = scoreCalculation?.toResponse(),
 )
 
 data class SnapshotResponse(

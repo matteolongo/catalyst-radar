@@ -100,4 +100,15 @@ fun CatalystEvent.toRow(
 data class EventWithSource(
     val event: CatalystEvent,
     val sourceDocumentId: UUID?,
+    val ticker: String? = null,
+    val companyName: String? = null,
+    val source: SafeSourceMetadata? = null,
+)
+
+data class SafeSourceMetadata(
+    val sourceDocumentId: UUID,
+    val title: String,
+    val provider: String,
+    val publishedAt: Instant?,
+    val canonicalUrl: String?,
 )
