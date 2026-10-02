@@ -4,6 +4,7 @@ import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.Directness
 import com.catalystradar.domain.event.Direction
 import com.catalystradar.domain.event.EventHorizon
+import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.EventType
 import com.catalystradar.domain.event.SourceQuality
 import com.catalystradar.persistence.event.EventSearch
@@ -51,6 +52,7 @@ class EventsControllerTest {
             status { isOk() }
             jsonPath("$.events.length()") { value(1) }
             jsonPath("$.events[0].type") { value("GUIDANCE_RAISE") }
+            jsonPath("$.events[0].evidence[0].quoteOrFact") { value("Dell raised its full-year outlook.") }
             jsonPath("$.nextCursor") { value("next") }
         }
     }
@@ -93,6 +95,7 @@ class EventsControllerTest {
             discoveredAt = at,
             taxonomyVersion = "taxonomy-v1",
             extractorVersion = "event-extractor-v1",
+            evidence = listOf(EventEvidence("Dell raised its full-year outlook.")),
         )
     }
 }

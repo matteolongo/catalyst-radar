@@ -1,6 +1,7 @@
 package com.catalystradar.api.dto
 
 import com.catalystradar.domain.event.CatalystEvent
+import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.persistence.event.EventWithSource
 import java.time.Instant
 import java.util.UUID
@@ -24,6 +25,17 @@ data class CatalystEventResponse(
     val sourceDocumentId: UUID?,
     val taxonomyVersion: String,
     val extractorVersion: String,
+    val evidence: List<EventEvidenceResponse>,
+)
+
+data class EventEvidenceResponse(
+    val quoteOrFact: String,
+    val sourceOffsetHint: String?,
+)
+
+private fun EventEvidence.toResponse() = EventEvidenceResponse(
+    quoteOrFact = quoteOrFact,
+    sourceOffsetHint = sourceOffsetHint,
 )
 
 fun EventWithSource.toResponse() = CatalystEventResponse(
@@ -45,6 +57,7 @@ fun EventWithSource.toResponse() = CatalystEventResponse(
     sourceDocumentId = sourceDocumentId,
     taxonomyVersion = event.taxonomyVersion,
     extractorVersion = event.extractorVersion,
+    evidence = event.evidence.map { it.toResponse() },
 )
 
 data class EventsFeedResponse(

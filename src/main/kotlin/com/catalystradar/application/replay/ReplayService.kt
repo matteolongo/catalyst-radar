@@ -84,7 +84,7 @@ class ReplayService(
             )
             if (!result.documentRelevant) return@flatMap emptyList()
             result.events.mapNotNull { candidate ->
-                val event = normalization.normalize(document, candidate) ?: return@mapNotNull null
+                val event = normalization.normalize(document, candidate, listOf(company)) ?: return@mapNotNull null
                 val cluster = live.firstOrNull { it.event.type == event.type }?.event?.clusterId
                 event to cluster
             }

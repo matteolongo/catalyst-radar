@@ -2,13 +2,13 @@ package com.catalystradar.application.event
 
 import com.catalystradar.application.extraction.ExtractionValidator
 import com.catalystradar.common.Versions
+import com.catalystradar.domain.company.Company
 import com.catalystradar.domain.company.normalizeTicker
 import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.SourceDocument
 import com.catalystradar.domain.event.SourceQuality
 import com.catalystradar.observability.CatalystMetrics
-import com.catalystradar.persistence.company.CompanyStore
 import com.catalystradar.persistence.event.EventStore
 import com.catalystradar.ports.ExtractedEvent
 import com.catalystradar.ports.ExtractionResult
@@ -19,24 +19,28 @@ import java.util.Locale
 
 /**
  * Turns validated extraction candidates for one stored document into
- * persisted catalyst events: resolves tickers against the supported
- * universe, normalizes timestamps down the event/published/discovered
+ * persisted catalyst events. It resolves tickers only against the companies
+ * linked to that document, then normalizes timestamps down the event/published/discovered
  * chain, assigns source quality from the provider tier, and links each
  * event to its source document. Cluster assignment follows in CR-11.
  */
 @Service
 class EventNormalizationService(
     private val validator: ExtractionValidator,
-    private val companies: CompanyStore,
     private val events: EventStore,
     private val metrics: CatalystMetrics,
 ) {
 
-    fun processDocument(document: SourceDocument, result: ExtractionResult): List<CatalystEvent> {
+    fun processDocument(
+        document: SourceDocument,
+        result: ExtractionResult,
+        allowedCompanies: Collection<Company>,
+    ): List<CatalystEvent> {
         val validated = validator.validate(result)
         if (!validated.documentRelevant) return emptyList()
+        val companiesByTicker = companiesByTicker(allowedCompanies)
         return validated.events.mapNotNull { candidate ->
-            normalize(document, candidate)?.let {
+            normalize(document, candidate, companiesByTicker)?.let {
                 val saved = events.saveIfAbsent(it, document.id, eventFingerprint(document.id, it))
                 if (saved.inserted) {
                     metrics.eventExtracted(it.family.name, it.type.name, it.direction.name)
@@ -51,14 +55,28 @@ class EventNormalizationService(
      * recompute history through this path while live storage stays
      * untouched.
      */
-    fun normalize(document: SourceDocument, candidate: ExtractedEvent): CatalystEvent? {
-        val companyId = try {
-            companies.findByTicker(normalizeTicker(candidate.ticker))?.id
+    fun normalize(
+        document: SourceDocument,
+        candidate: ExtractedEvent,
+        allowedCompanies: Collection<Company>,
+    ): CatalystEvent? = normalize(document, candidate, companiesByTicker(allowedCompanies))
+
+    private fun normalize(
+        document: SourceDocument,
+        candidate: ExtractedEvent,
+        companiesByTicker: Map<String, Company>,
+    ): CatalystEvent? {
+        val company = try {
+            companiesByTicker[normalizeTicker(candidate.ticker)]
         } catch (e: IllegalArgumentException) {
             null
         } ?: return null
+        val eventTimestamp = candidate.eventTimestamp
+            ?: document.publishedAt
+            ?: document.discoveredAt
+        if (eventTimestamp.isAfter(document.discoveredAt)) return null
         return CatalystEvent(
-            companyId = companyId,
+            companyId = company.id,
             type = candidate.type,
             direction = candidate.direction,
             confidence = candidate.confidence,
@@ -69,9 +87,7 @@ class EventNormalizationService(
             expectedHorizon = candidate.expectedHorizon,
             directness = candidate.directness,
             scheduled = false,
-            eventTimestamp = candidate.eventTimestamp
-                ?: document.publishedAt
-                ?: document.discoveredAt,
+            eventTimestamp = eventTimestamp,
             discoveredAt = document.discoveredAt,
             taxonomyVersion = Versions.TAXONOMY_V1,
             extractorVersion = Versions.EXTRACTOR_V1,
@@ -79,6 +95,11 @@ class EventNormalizationService(
             evidence = candidate.evidence.map { EventEvidence(it.quoteOrFact, it.sourceOffsetHint) },
         )
     }
+
+    private fun companiesByTicker(companies: Collection<Company>): Map<String, Company> =
+        companies.mapNotNull { company ->
+            runCatching { normalizeTicker(company.ticker) }.getOrNull()?.let { it to company }
+        }.toMap()
 
     private fun eventFingerprint(sourceDocumentId: java.util.UUID, event: CatalystEvent): String {
         val facts = event.evidence

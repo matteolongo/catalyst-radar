@@ -169,7 +169,7 @@ class PipelineService(
             }
 
             val extractionResult = extraction.extract(ExtractionRequest(document, resolved))
-            val events = normalization.processDocument(document, extractionResult)
+            val events = normalization.processDocument(document, extractionResult, resolved)
             events.forEach { clustering.clusterEvent(it.id) }
             if (!extractionResult.documentRelevant) {
                 processing.markSkipped(sourceDocumentId, now)

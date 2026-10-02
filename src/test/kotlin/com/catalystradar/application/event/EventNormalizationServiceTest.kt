@@ -3,6 +3,7 @@ package com.catalystradar.application.event
 import com.catalystradar.domain.company.Company
 import com.catalystradar.domain.event.Directness
 import com.catalystradar.domain.event.Direction
+import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.EventHorizon
 import com.catalystradar.domain.event.EventType
 import com.catalystradar.domain.event.SourceDocument
@@ -55,6 +56,7 @@ class EventNormalizationServiceTest : PostgresIntegrationTest() {
                     candidate("DELL", EventType.EARNINGS_BEAT, confidence = 1.5),
                 ),
             ),
+            listOf(company),
         )
 
         assertEquals(1, persisted.size)
@@ -63,17 +65,19 @@ class EventNormalizationServiceTest : PostgresIntegrationTest() {
         assertEquals(SourceQuality.TIER1_NEWS, persisted[0].sourceQuality)
         assertEquals("taxonomy-v1", persisted[0].taxonomyVersion)
         assertEquals("event-extractor-v1", persisted[0].extractorVersion)
+        assertEquals(listOf(EventEvidence("raised", null)), persisted[0].evidence)
         assertNotNull(events.findById(persisted[0].id))
     }
 
     @Test
     fun `links events to their source document`() {
-        companies.save(Company(ticker = "DELL", name = "Dell"))
+        val company = companies.save(Company(ticker = "DELL", name = "Dell"))
         val document = documents.save(newDocument("polygon"))
 
         val persisted = service.processDocument(
             document,
             ExtractionResult(documentRelevant = true, events = listOf(candidate("DELL", EventType.EARNINGS_BEAT))),
+            listOf(company),
         )
 
         val companyEvents = events.findByCompanyId(persisted[0].companyId)
@@ -86,7 +90,7 @@ class EventNormalizationServiceTest : PostgresIntegrationTest() {
 
     @Test
     fun `falls back along the timestamp chain`() {
-        companies.save(Company(ticker = "DELL", name = "Dell"))
+        val company = companies.save(Company(ticker = "DELL", name = "Dell"))
         val publishedAt = Instant.parse("2026-09-15T21:00:00Z")
         val discoveredAt = Instant.parse("2026-09-16T10:00:00Z")
         val withPublished = documents.save(newDocument("finnhub", "fin-1").copy(publishedAt = publishedAt))
@@ -95,16 +99,59 @@ class EventNormalizationServiceTest : PostgresIntegrationTest() {
         val first = service.processDocument(
             withPublished,
             ExtractionResult(documentRelevant = true, events = listOf(candidate("DELL", EventType.EARNINGS_BEAT))),
+            listOf(company),
         )
         val second = service.processDocument(
             withoutPublished,
             ExtractionResult(documentRelevant = true, events = listOf(candidate("DELL", EventType.EARNINGS_BEAT))),
+            listOf(company),
         )
 
         assertEquals(publishedAt, first[0].eventTimestamp)
         assertEquals(discoveredAt, second[0].eventTimestamp)
         assertEquals(SourceQuality.TIER2_NEWS, first[0].sourceQuality)
         assertEquals(discoveredAt, first[0].discoveredAt)
+    }
+
+    @Test
+    fun `rejects candidates outside the document company scope`() {
+        val dell = companies.save(Company(ticker = "DELL", name = "Dell"))
+        companies.save(Company(ticker = "MSFT", name = "Microsoft"))
+        val document = documents.save(newDocument("polygon"))
+
+        val persisted = service.processDocument(
+            document,
+            ExtractionResult(
+                documentRelevant = true,
+                events = listOf(
+                    candidate("DELL", EventType.GUIDANCE_RAISE),
+                    candidate("MSFT", EventType.GUIDANCE_RAISE),
+                ),
+            ),
+            listOf(dell),
+        )
+
+        assertEquals(listOf(dell.id), persisted.map { it.companyId })
+    }
+
+    @Test
+    fun `rejects event timestamps after document discovery`() {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell"))
+        val document = documents.save(newDocument("polygon"))
+
+        val persisted = service.processDocument(
+            document,
+            ExtractionResult(
+                documentRelevant = true,
+                events = listOf(
+                    candidate("DELL", EventType.GUIDANCE_RAISE)
+                        .copy(eventTimestamp = document.discoveredAt.plusSeconds(1)),
+                ),
+            ),
+            listOf(company),
+        )
+
+        assertEquals(emptyList(), persisted)
     }
 
     private fun newDocument(provider: String, providerDocumentId: String? = null) = SourceDocument(
