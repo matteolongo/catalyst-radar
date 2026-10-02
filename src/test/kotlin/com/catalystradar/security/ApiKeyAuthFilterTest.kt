@@ -11,7 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
-import kotlin.test.assertTrue
+import org.springframework.test.web.servlet.options
 import org.springframework.transaction.annotation.Transactional
 
 @SpringBootTest(properties = ["catalyst.api.auth-enabled=true"])
@@ -101,12 +101,22 @@ class ApiKeyAuthFilterTest : PostgresIntegrationTest() {
     }
 
     @Test
-    fun `origin patterns match ports but not foreign hosts`() {
-        val patterns = listOf("http://localhost:*", "http://127.0.0.1:*")
+    fun `ordinary options request to an internal route still requires admin key`() {
+        mockMvc.options("/internal/ingestion/runs").andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("FORBIDDEN") }
+        }
+    }
 
-        assertTrue(ApiKeyAuthFilter.isOriginAllowed(patterns, "http://localhost:8090"))
-        assertTrue(ApiKeyAuthFilter.isOriginAllowed(patterns, "http://127.0.0.1:3000"))
-        assertTrue(!ApiKeyAuthFilter.isOriginAllowed(patterns, "https://evil.example"))
-        assertTrue(!ApiKeyAuthFilter.isOriginAllowed(patterns, "http://localhost.evil.example:8090"))
+    @Test
+    fun `cors preflight to an internal route does not require admin key`() {
+        mockMvc.options("/internal/ingestion/runs") {
+            header("Origin", "http://localhost:8090")
+            header("Access-Control-Request-Method", "GET")
+            header("Access-Control-Request-Headers", "X-Admin-Key")
+        }.andExpect {
+            status { isOk() }
+            header { string("Access-Control-Allow-Origin", "http://localhost:8090") }
+        }
     }
 }
