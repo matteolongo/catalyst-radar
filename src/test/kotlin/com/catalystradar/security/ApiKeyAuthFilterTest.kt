@@ -90,33 +90,10 @@ class ApiKeyAuthFilterTest : PostgresIntegrationTest() {
     }
 
     @Test
-    fun `denials carry cors headers for allowed origins`() {
-        mockMvc.get("/v1/companies/DELL") {
-            accept = MediaType.APPLICATION_JSON
-            header("Origin", "http://localhost:8090")
-        }.andExpect {
-            status { isUnauthorized() }
-            header { string("Access-Control-Allow-Origin", "http://localhost:8090") }
-        }
-    }
-
-    @Test
     fun `ordinary options request to an internal route still requires admin key`() {
         mockMvc.options("/internal/ingestion/runs").andExpect {
             status { isForbidden() }
             jsonPath("$.code") { value("FORBIDDEN") }
-        }
-    }
-
-    @Test
-    fun `cors preflight to an internal route does not require admin key`() {
-        mockMvc.options("/internal/ingestion/runs") {
-            header("Origin", "http://localhost:8090")
-            header("Access-Control-Request-Method", "GET")
-            header("Access-Control-Request-Headers", "X-Admin-Key")
-        }.andExpect {
-            status { isOk() }
-            header { string("Access-Control-Allow-Origin", "http://localhost:8090") }
         }
     }
 }

@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 const app = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
 
-function startDashboard({ search = '', stored = {} } = {}) {
+function startDashboard({ search = '', stored = {}, origin = 'https://ops.example' } = {}) {
   const requests = [];
   const values = new Map(Object.entries(stored));
   const elements = new Map();
@@ -32,8 +32,7 @@ function startDashboard({ search = '', stored = {} } = {}) {
     },
   };
   const window = {
-    location: { search, reload() { reloads++; } },
-    CATALYST_API_BASE: 'http://localhost:8080',
+    location: { origin, search, reload() { reloads++; } },
     sessionStorage: {
       getItem(key) { return values.get(key) || null; },
       setItem(key, value) { values.set(key, value); },
@@ -92,13 +91,13 @@ async function waitForRequests(requests, count) {
   assert.equal(requests.length, count);
 }
 
-test('a link cannot redirect a saved admin key to another API', async () => {
+test('the dashboard sends requests only to the origin serving it', async () => {
   const dashboard = startDashboard({
     search: '?api=https://example.invalid',
     stored: { 'catalyst-admin-key': 'admin-secret' },
   });
   await waitForRequests(dashboard.requests, 4);
-  assert.ok(dashboard.requests.every(({ url }) => url.startsWith('http://localhost:8080/')));
+  assert.ok(dashboard.requests.every(({ url }) => url.startsWith('https://ops.example/')));
 });
 
 test('each credential is sent only to the API routes that need it', async () => {

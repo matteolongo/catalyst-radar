@@ -52,3 +52,10 @@ kotlin {
 tasks.withType<Test> {
 	useJUnitPlatform()
 }
+
+tasks.processResources {
+	from("ui") {
+		include("index.html", "app.js", "styles.css")
+		into("static/ops")
+	}
+}

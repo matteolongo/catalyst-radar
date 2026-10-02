@@ -1,4 +1,4 @@
-package com.catalystradar.api.config
+package com.catalystradar.api
 
 import com.catalystradar.persistence.PostgresIntegrationTest
 import org.junit.jupiter.api.Test
@@ -8,20 +8,21 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 
-@SpringBootTest(properties = ["catalyst.ui.allowed-origins=https://ops.example"])
+@SpringBootTest(properties = ["catalyst.api.auth-enabled=true"])
 @AutoConfigureMockMvc
-class UiCorsConfigurationIntegrationTest : PostgresIntegrationTest() {
+class OpsDashboardTest : PostgresIntegrationTest() {
 
     @Autowired
     private lateinit var mockMvc: MockMvc
 
     @Test
-    fun `custom dashboard origin can read actuator health`() {
-        mockMvc.get("/actuator/health") {
-            header("Origin", "https://ops.example")
-        }.andExpect {
+    fun `dashboard and its script are served by the API without a public key`() {
+        mockMvc.get("/ops/index.html").andExpect {
             status { isOk() }
-            header { string("Access-Control-Allow-Origin", "https://ops.example") }
+            content { string(org.hamcrest.Matchers.containsString("CatalystRadar Ops")) }
+        }
+        mockMvc.get("/ops/app.js").andExpect {
+            status { isOk() }
         }
     }
 }

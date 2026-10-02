@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  var API_BASE = (window.CATALYST_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
+  var API_BASE = window.location.origin;
   var ADMIN_KEY_NAME = 'catalyst-admin-key';
   var API_KEY_NAME = 'catalyst-api-key';
   var pipelineRunning = false;

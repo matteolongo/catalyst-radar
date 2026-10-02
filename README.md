@@ -135,12 +135,41 @@ Local services:
 CatalystRadar API   http://localhost:8080
 OpenAPI             http://localhost:8080/v3/api-docs
 Swagger UI          http://localhost:8080/swagger-ui.html
+Ops dashboard       http://localhost:8080/ops/index.html
 PostgreSQL          localhost:5432
 ```
 
 Developers should not need a locally installed PostgreSQL instance.
 
 Flyway migrates the database automatically on startup.
+
+---
+
+## Operator dashboard (POC)
+
+The dashboard is served by the API itself; no separate UI server or build step
+is needed. For a local run in PowerShell:
+
+```powershell
+docker compose up -d
+$env:SPRING_PROFILES_ACTIVE = 'local'
+$env:CATALYST_INGESTION_ENABLED = 'false' # avoid automatic provider calls
+.\gradlew.bat bootRun
+```
+
+Open `http://localhost:8080/ops/index.html`. Health and discovery leaders
+load immediately. To see ingestion/model-run history or enable **Run pipeline
+now**, enter the local profile's admin key (`local-dev-secret`) and click
+**Save keys**. That button triggers live provider/LLM calls when provider keys
+are configured, so it may incur API costs. Set `POLYGON_API_KEY`,
+`FINNHUB_API_KEY`, and `OPENAI_API_KEY` before using it for real ingestion.
+Set `CATALYST_INGESTION_ENABLED=true` only if you also want scheduled runs.
+
+If public API authentication is enabled, enter a separately issued public API
+key in the **API key** field to load discovery leaders. **Clear keys** removes
+both values; otherwise they stay only in this browser tab's session storage.
+Do not expose the `local` profile or this key-entry POC on the public Internet.
+See [ui/README.md](ui/README.md) for dashboard details.
 
 ---
 
