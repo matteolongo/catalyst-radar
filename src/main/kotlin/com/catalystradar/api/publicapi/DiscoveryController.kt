@@ -32,6 +32,7 @@ class DiscoveryController(private val discovery: DiscoveryStore) {
     ): DiscoveryResponse {
         require(limit in 1..100) { "limit must be within 1..100" }
         require(offset >= 0) { "offset must be non-negative" }
+        val asOf = Instant.now()
         val page = discovery.discover(
             DiscoveryQuery(
                 states = state?.toSet(),
@@ -41,8 +42,9 @@ class DiscoveryController(private val discovery: DiscoveryStore) {
                 sort = sort ?: DiscoverySort.SCORE,
                 limit = limit,
                 offset = offset,
+                asOf = asOf,
             ),
         )
-        return page.toResponse(limit, offset, Instant.now())
+        return page.toResponse(limit, offset, asOf)
     }
 }
