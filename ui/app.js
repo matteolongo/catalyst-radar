@@ -181,6 +181,7 @@
       $('discoveryResults').innerHTML = '';
       $('discoveryStatus').textContent = 'Unable to load discovery results.';
       $('discoveryAsOf').textContent = '';
+      $('pageSummary').textContent = '';
       $('previousPage').disabled = true;
       $('nextPage').disabled = true;
       showError('Discovery: ' + err.message);

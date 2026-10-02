@@ -56,7 +56,9 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
     requests.push({ url, headers: options.headers });
     const route = new URL(url).pathname;
     if (route === '/v1/discovery/catalyzed' && deferDiscovery) {
-      return new Promise((resolve) => discoveryResolvers.push((body) => resolve({ ok: true, status: 200, json: async () => body })));
+      return new Promise((resolve) => discoveryResolvers.push((body) => resolve(body === 'error'
+        ? { ok: false, status: 503, json: async () => ({ detail: 'Discovery unavailable' }) }
+        : { ok: true, status: 200, json: async () => body })));
     }
     if (route.startsWith('/internal/') && deferAdmin && options.method !== 'POST') {
       return new Promise((resolve) => adminResolvers.push(() => resolve({ ok: true, status: 200, json: async () => ({ runs: [] }) })));
@@ -316,4 +318,18 @@ test('paging keeps applied filters and page size when controls are edited but no
   assert.equal(previous.get('sector'), 'Technology');
   assert.equal(previous.get('limit'), '50');
   assert.equal(previous.get('offset'), '0');
+});
+
+test('discovery failure clears the previous page range', async () => {
+  const dashboard = startDashboard({ deferDiscovery: true });
+  await waitForRequests(dashboard.requests, 2);
+  dashboard.resolveDiscovery(0, discoveryPage('DELL', 44));
+  await new Promise(setImmediate);
+  assert.match(dashboard.elements.get('pageSummary').textContent, /Results 1–1 of 44/);
+
+  dashboard.elements.get('nextPage').trigger('click');
+  await waitForRequests(dashboard.requests, 3);
+  dashboard.resolveDiscovery(1, 'error');
+  await new Promise(setImmediate);
+  assert.equal(dashboard.elements.get('pageSummary').textContent, '');
 });
