@@ -11,6 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.options
 import org.springframework.transaction.annotation.Transactional
 
 @SpringBootTest(properties = ["catalyst.api.auth-enabled=true"])
@@ -85,6 +86,14 @@ class ApiKeyAuthFilterTest : PostgresIntegrationTest() {
             header("Authorization", "Bearer nope")
         }.andExpect {
             status { isUnauthorized() }
+        }
+    }
+
+    @Test
+    fun `ordinary options request to an internal route still requires admin key`() {
+        mockMvc.options("/internal/ingestion/runs").andExpect {
+            status { isForbidden() }
+            jsonPath("$.code") { value("FORBIDDEN") }
         }
     }
 }

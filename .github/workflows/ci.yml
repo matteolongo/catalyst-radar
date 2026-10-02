@@ -22,6 +22,9 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Test dashboard
+        run: node --test ui/app.test.js
+
       - name: Build and test
         # Integration tests use Testcontainers (Docker is available on
         # GitHub runners). No live provider keys are ever needed.

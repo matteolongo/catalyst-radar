@@ -176,15 +176,19 @@ On Windows PowerShell, for example:
 
 ```powershell
 $env:SPRING_PROFILES_ACTIVE = "local"
-$env:CATALYST_INTERNAL_ADMIN_KEY = "choose-a-local-admin-key"
+$env:CATALYST_INGESTION_ENABLED = "false"
 .\gradlew.bat bootRun
 ```
 
 On macOS/Linux:
 
 ```bash
-SPRING_PROFILES_ACTIVE=local CATALYST_INTERNAL_ADMIN_KEY=choose-a-local-admin-key ./gradlew bootRun
+SPRING_PROFILES_ACTIVE=local CATALYST_INGESTION_ENABLED=false ./gradlew bootRun
 ```
+
+The local profile uses the demo admin key `local-dev-secret`; never expose it
+remotely. For other profiles, set `CATALYST_INTERNAL_ADMIN_KEY` yourself.
+Keep scheduled ingestion disabled until you intend to make provider calls.
 
 Local endpoints are:
 
@@ -192,9 +196,30 @@ Local endpoints are:
 CatalystRadar API   http://localhost:8080
 OpenAPI             http://localhost:8080/v3/api-docs
 Swagger UI          http://localhost:8080/swagger-ui.html
+Ops dashboard       http://localhost:8080/ops/index.html
 Health              http://localhost:8080/actuator/health
 PostgreSQL          localhost:5432
 ```
+
+### Operator dashboard (POC)
+
+With the API running as above, open `http://localhost:8080/ops/index.html`.
+The dashboard is served by the API itself; it needs no separate UI server,
+build step, or CORS configuration. Health and discovery leaders load
+immediately.
+
+To see ingestion/model-run history or enable **Run pipeline now**, enter the
+local profile's admin key (`local-dev-secret`) and click **Save keys**. The run
+button triggers live provider/LLM calls when provider keys are configured, so
+it may incur API costs. Set `POLYGON_API_KEY`, `FINNHUB_API_KEY`, and
+`OPENAI_API_KEY` before using it for real ingestion. Set
+`CATALYST_INGESTION_ENABLED=true` only if you also want scheduled runs.
+
+If public API authentication is enabled, enter a separately issued public API
+key in the **API key** field to load discovery leaders. **Clear keys** removes
+both values; otherwise they stay only in this browser tab's session storage.
+Do not expose the `local` profile or this key-entry POC on the public Internet.
+See [ui/README.md](ui/README.md) for dashboard details.
 
 ### Five-minute fixture demo
 
