@@ -113,29 +113,44 @@ class EventClusterStore(
     private val template: JdbcAggregateTemplate,
 ) {
 
-    fun save(cluster: EventCluster, embedding: PGvector? = null): EventCluster =
-        template.insert(cluster.toRow(embedding)).toDomain()
+    fun save(
+        cluster: EventCluster,
+        embedding: PGvector? = null,
+        embeddingModel: String? = null,
+    ): EventCluster =
+        template.insert(cluster.toRow(embedding, embeddingModel)).toDomain()
 
     fun findById(id: UUID): EventCluster? =
         repository.findById(id).map { it.toDomain() }.orElse(null)
 
-    fun findRecent(
+    fun findWithinWindow(
         companyId: UUID,
         type: EventType,
-        since: Instant,
+        from: Instant,
+        through: Instant,
         limit: Int,
-    ): List<EventCluster> =
-        repository
-            .findByCompanyIdAndEventTypeAndFirstSeenAtAfterOrderByFirstSeenAtDesc(
+    ): List<EventCluster> {
+        require(!from.isAfter(through)) { "cluster window start must not be after its end" }
+        require(limit > 0) { "cluster candidate limit must be positive" }
+        return repository
+            .findWithinWindow(
                 companyId,
                 type.name,
-                since,
+                from,
+                through,
+                limit,
             )
-            .take(limit)
             .map { it.toDomain() }
+    }
 
-    fun findEmbedding(clusterId: UUID): List<Float>? =
-        repository.findById(clusterId)
-            .map { it.embedding?.toArray()?.toList() }
-            .orElse(null)
+    fun findEmbedding(clusterId: UUID): StoredClusterEmbedding? {
+        val row = repository.findById(clusterId).orElse(null) ?: return null
+        val vector = row.embedding ?: return null
+        return StoredClusterEmbedding(vector.toArray().toList(), row.embeddingModel)
+    }
 }
+
+data class StoredClusterEmbedding(
+    val values: List<Float>,
+    val model: String?,
+)
