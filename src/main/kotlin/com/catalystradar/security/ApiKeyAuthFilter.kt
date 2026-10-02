@@ -34,6 +34,12 @@ class ApiKeyAuthFilter(
         response: HttpServletResponse,
         chain: FilterChain,
     ) {
+        // CORS preflights carry no credentials by design; Spring's CORS
+        // handling answers them and the real request is still checked.
+        if (request.method == "OPTIONS") {
+            chain.doFilter(request, response)
+            return
+        }
         val path = request.requestURI
         when {
             path == "/actuator" || path.startsWith("/actuator/") -> chain.doFilter(request, response)

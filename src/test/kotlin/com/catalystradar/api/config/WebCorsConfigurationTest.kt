@@ -50,4 +50,15 @@ class WebCorsConfigurationTest {
             header { doesNotExist("Access-Control-Allow-Origin") }
         }
     }
+
+    @Test
+    fun `preflight passes through to cors handling`() {
+        mockMvc.options("/v1/companies/DELL") {
+            header("Origin", "http://localhost:8090")
+            header("Access-Control-Request-Method", "GET")
+        }.andExpect {
+            status { isOk() }
+            header { string("Access-Control-Allow-Origin", "http://localhost:8090") }
+        }
+    }
 }
