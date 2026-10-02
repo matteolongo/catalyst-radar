@@ -6,6 +6,11 @@ import com.catalystradar.security.CreatedApiKey
 import java.time.Instant
 import java.util.UUID
 
+/**
+ * Internal pipeline outcome. `documentsProcessed`/`eventsExtracted` keep
+ * their original meaning; the split counters were added so operators can
+ * read inserts, reuses, and completions without re-deriving them.
+ */
 data class PipelineResultResponse(
     val status: String,
     val documentsProcessed: Int,
@@ -16,6 +21,10 @@ data class PipelineResultResponse(
     val documentsRetryScheduled: Int,
     val documentsTerminalFailures: Int,
     val alreadyRunning: Boolean,
+    val documentsConsidered: Int,
+    val documentsCompleted: Int,
+    val eventsInserted: Int,
+    val eventsReused: Int,
 )
 
 fun PipelineResult.toResponse() = PipelineResultResponse(
@@ -28,6 +37,10 @@ fun PipelineResult.toResponse() = PipelineResultResponse(
     documentsRetryScheduled = documentsRetryScheduled,
     documentsTerminalFailures = documentsTerminalFailures,
     alreadyRunning = alreadyRunning,
+    documentsConsidered = documentsConsidered,
+    documentsCompleted = documentsCompleted,
+    eventsInserted = eventsInserted,
+    eventsReused = eventsReused,
 )
 
 data class CreateApiClientRequest(val name: String)

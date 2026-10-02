@@ -6,6 +6,7 @@ import com.catalystradar.application.catalyst.CatalystService
 import com.catalystradar.application.clustering.EventClusteringService
 import com.catalystradar.application.clustering.DedupProperties
 import com.catalystradar.domain.event.Directness
+import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.EventHorizon
 import com.catalystradar.application.event.EventNormalizationService
 import com.catalystradar.application.extraction.ExtractionValidator
@@ -32,7 +33,6 @@ import com.catalystradar.persistence.ingestion.IngestionRunStore
 import com.catalystradar.ports.Embedding
 import com.catalystradar.ports.EmbeddingProvider
 import com.catalystradar.ports.EventExtractionProvider
-import com.catalystradar.ports.EvidenceSpan
 import com.catalystradar.ports.ExtractedEvent
 import com.catalystradar.ports.ExtractionRequest
 import com.catalystradar.ports.ExtractionResult
@@ -51,9 +51,15 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.client.RestClient
 import kotlin.test.assertEquals
@@ -101,6 +107,12 @@ class PipelineServiceTest : PostgresIntegrationTest() {
     @Autowired
     private lateinit var catalyst: CatalystService
 
+    @Autowired
+    private lateinit var persistence: DocumentOutcomePersistenceService
+
+    @Autowired
+    private lateinit var jdbc: JdbcClient
+
     private val meterRegistry = SimpleMeterRegistry()
     private val metrics = CatalystMetrics(meterRegistry)
 
@@ -109,6 +121,7 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         extraction: EventExtractionProvider = TitleExtraction,
         ingestionProperties: IngestionProperties = IngestionProperties(),
         pipelineProperties: PipelineProperties = PipelineProperties(),
+        catalyst: CatalystService = this.catalyst,
     ) = PipelineService(
         ingestion = IngestionService(
             providers = providers,
@@ -128,6 +141,7 @@ class PipelineServiceTest : PostgresIntegrationTest() {
             properties = DedupProperties(),
         ),
         catalyst = catalyst,
+        persistence = persistence,
         documents = documents,
         documentCompanies = documentCompanies,
         processing = processing,
@@ -140,6 +154,50 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         RestClient.builder(),
         PolygonProperties(baseUrl = wireMock.baseUrl(), apiKey = "test-key"),
     )
+
+    /** A pipeline over already-queued documents, with no provider traffic. */
+    private fun drainedPipeline(
+        extraction: EventExtractionProvider = TitleExtraction,
+        catalyst: CatalystService = this.catalyst,
+    ) = pipeline(
+        providers = listOf(NoNewsProvider),
+        extraction = extraction,
+        catalyst = catalyst,
+        ingestionProperties = IngestionProperties(provider = NoNewsProvider.name, fallbackProvider = "none"),
+    )
+
+    private fun queuedDocument(company: Company, now: Instant) =
+        documents.save(
+            SourceDocument(
+                provider = "polygon",
+                title = "Dell raise story",
+                body = "Dell raised its outlook.",
+                discoveredAt = now,
+            ),
+        ).also {
+            documentCompanies.link(it.id, company.id)
+            processing.ensurePending(it.id, now)
+        }
+
+    /** Simulates a run interrupted before it could finalize its outcome. */
+    private fun resetToPending(sourceDocumentId: UUID) {
+        jdbc.sql(
+            "UPDATE document_processing SET status = 'PENDING', next_attempt_at = NULL WHERE source_document_id = :id",
+        ).param("id", sourceDocumentId).update()
+        assertEquals(DocumentProcessingStatus.PENDING, processing.findBySourceDocumentId(sourceDocumentId)?.status)
+    }
+
+    /** Simulates a process killed mid-document, leaving the row in flight. */
+    private fun leaveInProcessing(sourceDocumentId: UUID, now: Instant) {
+        jdbc.sql(
+            """
+            UPDATE document_processing
+            SET status = 'PROCESSING', next_attempt_at = NULL, updated_at = :now::timestamptz
+            WHERE source_document_id = :id
+            """,
+        ).param("id", sourceDocumentId).param("now", now.toString()).update()
+        assertEquals(DocumentProcessingStatus.PROCESSING, processing.findBySourceDocumentId(sourceDocumentId)?.status)
+    }
 
     @Test
     fun `runs news to snapshot end to end`() = runTest {
@@ -304,12 +362,146 @@ class PipelineServiceTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `extracts nothing for a retained document that names no configured company`() = runTest {
+        companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        wireMock.stubFor(
+            get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson(UNRELATED_TICKER_PAGE)),
+        )
+        val countingExtraction = CountingExtraction()
+
+        val result = pipeline(extraction = countingExtraction).runCycle(Instant.parse("2026-09-16T15:00:00Z"))
+
+        assertEquals("SUCCESS", result.status)
+        assertEquals(0, result.documentsConsidered)
+        assertEquals(0, countingExtraction.calls, "an unresolvable document is never sent to the model")
+        assertTrue(
+            documents.findByProviderAndProviderDocumentId("polygon", "poly-unrelated") != null,
+            "the article stays available for audit",
+        )
+    }
+
+    @Test
     fun `reports failed when every provider fails and no queued document completes`() = runTest {
         companyStore.save(Company(ticker = "DELL", name = "Dell"))
 
         val result = pipeline(providers = emptyList()).runCycle(Instant.parse("2026-09-16T10:00:00Z"))
 
         assertEquals("FAILED", result.status)
+    }
+
+    @Test
+    fun `counts a first processing as inserted events and a completed document`() = runTest {
+        val company = companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val now = Instant.parse("2026-09-16T10:00:00Z")
+        val document = queuedDocument(company, now)
+
+        val result = drainedPipeline().runCycle(now)
+
+        assertEquals(1, result.documentsConsidered)
+        assertEquals(1, result.documentsCompleted)
+        assertEquals(1, result.eventsInserted)
+        assertEquals(0, result.eventsReused)
+        assertEquals(1, result.eventsExtracted)
+        assertEquals(1, result.companiesRescored)
+        assertEquals(DocumentProcessingStatus.COMPLETED, processing.findBySourceDocumentId(document.id)?.status)
+    }
+
+    @Test
+    fun `counts a reprocessed document as reused events instead of a second event`() = runTest {
+        val company = companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val now = Instant.parse("2026-09-16T10:00:00Z")
+        val document = queuedDocument(company, now)
+
+        val first = drainedPipeline().runCycle(now)
+        // An interrupted run can leave a row due again; reprocessing must
+        // reuse the stored events instead of adding catalyst impact.
+        resetToPending(document.id)
+        val second = drainedPipeline().runCycle(now.plusSeconds(60))
+
+        assertEquals(1, first.eventsInserted)
+        assertEquals(0, first.eventsReused)
+        assertEquals(1, second.documentsConsidered)
+        assertEquals(1, second.documentsCompleted)
+        assertEquals(0, second.eventsInserted)
+        assertEquals(1, second.eventsReused)
+        assertEquals(1, second.eventsExtracted)
+        assertEquals(1, events.findByCompanyId(company.id).size)
+        assertEquals(1, clusters.findWithinWindow(
+            company.id,
+            EventType.GUIDANCE_RAISE,
+            Instant.parse("2026-09-01T00:00:00Z"),
+            now.plusSeconds(60),
+            limit = 10,
+        ).size)
+    }
+
+    @Test
+    fun `picks up a document left processing by a killed run without multiplying score impact`() = runTest {
+        val company = companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val now = Instant.parse("2026-09-16T10:00:00Z")
+        val document = queuedDocument(company, now)
+
+        drainedPipeline().runCycle(now)
+        val scoreAfterFirstRun = snapshots.latestSnapshot(company.id)?.score?.value
+        leaveInProcessing(document.id, now)
+        val due = processing.findDue(now, limit = 10).map { it.sourceDocumentId }
+
+        assertTrue(due.contains(document.id), "an interrupted document must still be due")
+        // Recalculated at the same instant, so an unchanged score proves the
+        // rerun added no second event behind it.
+        val second = drainedPipeline().runCycle(now)
+
+        assertEquals(1, second.documentsConsidered)
+        assertEquals(1, second.documentsCompleted)
+        assertEquals(0, second.eventsInserted)
+        assertEquals(1, second.eventsReused)
+        assertEquals(1, events.findByCompanyId(company.id).size)
+        assertEquals(1, clusters.findWithinWindow(
+            company.id,
+            EventType.GUIDANCE_RAISE,
+            Instant.parse("2026-09-01T00:00:00Z"),
+            now,
+            limit = 10,
+        ).size)
+        assertEquals(scoreAfterFirstRun, snapshots.latestSnapshot(company.id)?.score?.value)
+    }
+
+    @Test
+    fun `counts a skipped document as considered but not completed`() = runTest {
+        val company = companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val now = Instant.parse("2026-09-16T10:00:00Z")
+        queuedDocument(company, now)
+        val irrelevantExtraction = object : EventExtractionProvider {
+            override suspend fun extract(request: ExtractionRequest): ExtractionResult =
+                ExtractionResult(documentRelevant = false, events = emptyList())
+        }
+
+        val result = drainedPipeline(extraction = irrelevantExtraction).runCycle(now)
+
+        assertEquals(1, result.documentsConsidered)
+        assertEquals(0, result.documentsCompleted)
+        assertEquals(1, result.documentsSkipped)
+        assertEquals(0, result.eventsInserted)
+        assertEquals(0, result.eventsReused)
+        assertEquals(0, result.eventsExtracted)
+        assertEquals(0, result.companiesRescored)
+    }
+
+    @Test
+    fun `does not count a company as rescored when recalculation fails`() = runTest {
+        val company = companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val now = Instant.parse("2026-09-16T10:00:00Z")
+        queuedDocument(company, now)
+        val failingCatalyst = mock<CatalystService>()
+        whenever(failingCatalyst.recalculate(eq(company.id), any()))
+            .thenThrow(IllegalStateException("snapshot store unavailable"))
+
+        val result = drainedPipeline(catalyst = failingCatalyst).runCycle(now)
+
+        assertEquals(1, result.documentsCompleted)
+        assertEquals(1, result.eventsInserted)
+        assertEquals(0, result.companiesRescored)
+        assertEquals("PARTIAL", result.status)
     }
 
     @Test
@@ -361,6 +553,14 @@ ${article("poly-4", "takeover")}
         val wireMock: WireMockExtension = WireMockExtension.newInstance()
             .options(wireMockConfig().dynamicPort())
             .build()
+
+        // The provider labels this story with a ticker nobody tracks.
+        const val UNRELATED_TICKER_PAGE = """{
+  "results": [
+    {"id": "poly-unrelated", "title": "Unlisted Systems wins contract", "description": "Unlisted Systems won a contract.", "article_url": "https://example.com/u", "published_utc": "2026-09-16T14:30:00Z", "tickers": ["ZZZZ"]}
+  ],
+  "status": "OK", "request_id": "r", "count": 1
+}"""
     }
 
     object TitleExtraction : EventExtractionProvider {
@@ -386,11 +586,22 @@ ${article("poly-4", "takeover")}
                         expectedHorizon = EventHorizon.WEEKS,
                         directness = Directness.DIRECT,
                         eventTimestamp = null,
-                        evidence = listOf(EvidenceSpan("quote", null)),
+                        evidence = listOf(EventEvidence("quote", null)),
                         attributes = emptyMap(),
                     ),
                 ),
             )
+        }
+    }
+
+    /** Counts how often a document actually reaches the extraction model. */
+    class CountingExtraction : EventExtractionProvider {
+        var calls: Int = 0
+            private set
+
+        override suspend fun extract(request: ExtractionRequest): ExtractionResult {
+            calls++
+            return TitleExtraction.extract(request)
         }
     }
 

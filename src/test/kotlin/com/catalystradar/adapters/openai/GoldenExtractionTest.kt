@@ -62,6 +62,16 @@ class GoldenExtractionTest {
                     result.events.firstOrNull()?.type?.name,
                     "${golden["id"].asText()}: first type",
                 )
+                val expectedEvidence = golden["expectedFirstEvidenceCount"]
+                    ?.takeIf { it.isNumber() }
+                    ?.intValue()
+                if (expectedEvidence != null) {
+                    assertEquals(
+                        expectedEvidence,
+                        result.events.firstOrNull()?.evidence?.size,
+                        "${golden["id"].asText()}: first evidence count",
+                    )
+                }
             }
         })
     }

@@ -5,47 +5,55 @@ import com.catalystradar.common.Versions
 import com.catalystradar.domain.company.Company
 import com.catalystradar.domain.company.normalizeTicker
 import com.catalystradar.domain.event.CatalystEvent
-import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.SourceDocument
 import com.catalystradar.domain.event.SourceQuality
-import com.catalystradar.observability.CatalystMetrics
-import com.catalystradar.persistence.event.EventStore
 import com.catalystradar.ports.ExtractedEvent
 import com.catalystradar.ports.ExtractionResult
 import org.springframework.stereotype.Service
 import java.security.MessageDigest
 import java.util.HexFormat
 import java.util.Locale
+import java.util.UUID
+
+/** One normalized event plus the identity hash it is stored under. */
+data class NormalizedEvent(
+    val event: CatalystEvent,
+    val fingerprint: String,
+)
 
 /**
  * Turns validated extraction candidates for one stored document into
- * persisted catalyst events. It resolves tickers only against the companies
+ * catalyst events. It resolves tickers only against the companies
  * linked to that document, then normalizes timestamps down the event/published/discovered
  * chain, assigns source quality from the provider tier, and links each
  * event to its source document. Cluster assignment follows in CR-11.
+ *
+ * Every method is pure: an event is validated, normalized, and given the
+ * fingerprint it would be stored under, but nothing is written here. The
+ * pipeline keeps provider calls outside the write transaction and persists
+ * a whole document through DocumentOutcomePersistenceService.
  */
 @Service
 class EventNormalizationService(
     private val validator: ExtractionValidator,
-    private val events: EventStore,
-    private val metrics: CatalystMetrics,
 ) {
 
-    fun processDocument(
+    /**
+     * Validates and normalizes without touching the database. Every
+     * candidate that survives carries the fingerprint it would be stored
+     * under, so callers can persist all of them in one transaction.
+     */
+    fun prepareDocument(
         document: SourceDocument,
         result: ExtractionResult,
         allowedCompanies: Collection<Company>,
-    ): List<CatalystEvent> {
+    ): List<NormalizedEvent> {
         val validated = validator.validate(result)
         if (!validated.documentRelevant) return emptyList()
         val companiesByTicker = companiesByTicker(allowedCompanies)
         return validated.events.mapNotNull { candidate ->
             normalize(document, candidate, companiesByTicker)?.let {
-                val saved = events.saveIfAbsent(it, document.id, eventFingerprint(document.id, it))
-                if (saved.inserted) {
-                    metrics.eventExtracted(it.family.name, it.type.name, it.direction.name)
-                }
-                saved.event
+                NormalizedEvent(it, eventFingerprint(document.id, it))
             }
         }
     }
@@ -92,7 +100,7 @@ class EventNormalizationService(
             taxonomyVersion = Versions.TAXONOMY_V1,
             extractorVersion = Versions.EXTRACTOR_V1,
             attributes = candidate.attributes,
-            evidence = candidate.evidence.map { EventEvidence(it.quoteOrFact, it.sourceOffsetHint) },
+            evidence = candidate.evidence,
         )
     }
 
@@ -101,33 +109,50 @@ class EventNormalizationService(
             runCatching { normalizeTicker(company.ticker) }.getOrNull()?.let { it to company }
         }.toMap()
 
-    private fun eventFingerprint(sourceDocumentId: java.util.UUID, event: CatalystEvent): String {
-        val facts = event.evidence
-            .map { "${it.quoteOrFact.trim().lowercase(Locale.ROOT)}\u001f${it.sourceOffsetHint.orEmpty().trim()}" }
-            .sorted()
-            .joinToString("\u001e")
-        val attributes = event.attributes.toSortedMap().entries.joinToString("\u001e") { "${it.key}\u001f${it.value}" }
-        val canonical = listOf(
-            sourceDocumentId,
-            event.companyId,
-            event.type,
-            event.direction,
-            event.eventTimestamp,
-            event.confidence,
-            event.magnitude,
-            event.surprise,
-            event.materiality,
-            event.expectedHorizon,
-            event.directness,
-            facts,
-            attributes,
-        ).joinToString("\u001d")
+    /**
+     * Identifies the real-world fact, not one model response. Only inputs
+     * that distinguish events are hashed, so re-running extraction with
+     * different confidence, magnitude, surprise, materiality, horizon, or
+     * directness estimates cannot fork a second event, while a different
+     * company, type, direction, timestamp, attribute, or quoted fact still
+     * does. Model output location hints are excluded for the same reason:
+     * they move without changing the fact.
+     *
+     * Fields are length-prefixed, so no quote or attribute can imitate a
+     * separator and make two different events collide.
+     */
+    private fun eventFingerprint(sourceDocumentId: UUID, event: CatalystEvent): String {
+        val fields = buildList {
+            add(FINGERPRINT_SCHEME)
+            add(sourceDocumentId.toString())
+            add(event.companyId.toString())
+            add(event.type.name)
+            add(event.direction.name)
+            add(event.eventTimestamp?.toString().orEmpty())
+            event.attributes.toSortedMap().forEach { (key, value) -> add("$key=$value") }
+            event.evidence.map { normalizeEvidenceText(it.quoteOrFact) }.distinct().sorted().forEach(::add)
+        }
+        val canonical = fields.joinToString(separator = "") { "${it.length}:$it" }
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray()))
     }
+
+    /**
+     * Evidence text varies only in presentation: the same quoted fact
+     * arrives capitalized, collapsed, or line-wrapped depending on the
+     * publisher and the model.
+     */
+    private fun normalizeEvidenceText(quoteOrFact: String): String =
+        quoteOrFact.lowercase(Locale.ROOT).replace(WHITESPACE_RUN, " ").trim()
 
     private fun sourceQualityFor(provider: String): SourceQuality = when (provider) {
         "polygon" -> SourceQuality.TIER1_NEWS
         "finnhub" -> SourceQuality.TIER2_NEWS
         else -> SourceQuality.OTHER
+    }
+
+    private companion object {
+        /** Version tag so a future input change is a deliberate schema decision. */
+        const val FINGERPRINT_SCHEME = "event-fingerprint-v1"
+        val WHITESPACE_RUN = Regex("\\s+")
     }
 }

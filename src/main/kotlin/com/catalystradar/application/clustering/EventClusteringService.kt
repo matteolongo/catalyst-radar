@@ -1,22 +1,23 @@
 package com.catalystradar.application.clustering
 
+import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.persistence.company.CompanyStore
 import com.catalystradar.persistence.event.EventClusterStore
 import com.catalystradar.persistence.event.EventStore
-import com.catalystradar.domain.event.EventCluster
 import com.catalystradar.ports.EmbeddingProvider
-import com.pgvector.PGvector
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-import java.time.Instant
 import java.util.UUID
 
 /**
- * Assigns persisted events to canonical clusters so repeated reporting
- * of one real-world fact contributes a single score downstream.
+ * Decides how persisted events map onto canonical clusters so repeated
+ * reporting of one real-world fact contributes a single score downstream.
  * A candidate joins a cluster on same company, same type, a bounded
  * time window, and embedding similarity at or above threshold;
  * otherwise a new canonical cluster opens with the candidate's vector.
+ *
+ * This stage only decides. Embedding calls and cluster reads happen here,
+ * outside the document's write transaction; the pipeline applies the
+ * returned [EventClusterPlan] while persisting that document.
  */
 @Service
 class EventClusteringService(
@@ -27,9 +28,11 @@ class EventClusteringService(
     private val properties: DedupProperties,
 ) {
 
-    private val log = LoggerFactory.getLogger(EventClusteringService::class.java)
-
-    suspend fun clusterEvent(eventId: UUID): UUID {
+    suspend fun prepareClustering(
+        sourceDocumentId: UUID,
+        eventFingerprint: String,
+        event: CatalystEvent,
+    ): EventClusterPlan {
         require(!properties.window.isNegative && !properties.window.isZero) {
             "deduplication window must be positive"
         }
@@ -37,10 +40,12 @@ class EventClusteringService(
         require(properties.similarityThreshold in -1.0..1.0) {
             "deduplication similarity threshold must be within -1..1"
         }
-        val event = events.findById(eventId)
-            ?: throw IllegalArgumentException("unknown event: $eventId")
-        event.clusterId?.let { return it }
-        val at = requireNotNull(event.eventTimestamp) { "event has no timestamp: $eventId" }
+        // A fact this document already stored keeps its cluster, so a
+        // reprocess needs no further embedding call.
+        events.findFingerprinted(sourceDocumentId, eventFingerprint)?.clusterId?.let {
+            return EventClusterPlan.JoinCluster(it)
+        }
+        val at = requireNotNull(event.eventTimestamp) { "event has no clustering timestamp" }
         val ticker = requireNotNull(companies.findById(event.companyId)?.ticker) {
             "unknown company: ${event.companyId}"
         }
@@ -58,18 +63,7 @@ class EventClusteringService(
                     null
                 }
             }
-        if (match != null) {
-            events.assignCluster(eventId, match)
-            log.info("event {} joined cluster {}", eventId, match)
-            return match
-        }
-        val created = clusters.save(
-            EventCluster(companyId = event.companyId, eventType = event.type, firstSeenAt = at),
-            embedding = PGvector(candidate.values.toFloatArray()),
-            embeddingModel = candidate.model,
-        )
-        events.assignCluster(eventId, created.id)
-        log.info("event {} opened cluster {}", eventId, created.id)
-        return created.id
+        return match?.let { EventClusterPlan.JoinCluster(it) }
+            ?: EventClusterPlan.OpenCluster(candidate)
     }
 }

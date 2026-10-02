@@ -2,10 +2,10 @@ package com.catalystradar.adapters.openai
 
 import com.catalystradar.domain.event.Directness
 import com.catalystradar.domain.event.Direction
+import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.EventFamily
 import com.catalystradar.domain.event.EventHorizon
 import com.catalystradar.domain.event.EventType
-import com.catalystradar.ports.EvidenceSpan
 import com.catalystradar.ports.ExtractedEvent
 import com.catalystradar.ports.ExtractionResult
 import com.catalystradar.ports.ProviderException
@@ -76,7 +76,7 @@ internal class ExtractionResponseParser(
             ?.mapNotNull { item ->
                 val quote = item.path("quote_or_fact").asString().takeIf { it.isNotBlank() } ?: return@mapNotNull null
                 val hint = item.path("source_offset_hint").takeIf { it.isString }?.asString()
-                EvidenceSpan(quoteOrFact = quote, sourceOffsetHint = hint)
+                EventEvidence(quoteOrFact = quote, sourceOffsetHint = hint)
             }.orEmpty()
         val attributes = node.path("attributes").takeIf { it.isArray }
             ?.mapNotNull { item ->
