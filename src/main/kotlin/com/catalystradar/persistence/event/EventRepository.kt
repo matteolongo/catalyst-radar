@@ -10,6 +10,8 @@ interface EventRepository : ListCrudRepository<EventRow, UUID> {
 
     fun findByClusterId(clusterId: UUID): List<EventRow>
 
+    fun findBySourceDocumentIdAndEventFingerprint(sourceDocumentId: UUID, eventFingerprint: String): EventRow?
+
     @Query(
         """
         SELECT * FROM events

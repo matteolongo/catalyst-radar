@@ -1,6 +1,8 @@
 package com.catalystradar.application.ingestion
 
 import kotlinx.coroutines.test.runTest
+import com.catalystradar.application.pipeline.PipelineResult
+import com.catalystradar.application.pipeline.PipelineService
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.times
@@ -11,7 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 
 /**
- * The scheduler delegates cycles to the ingestion service. The bean only
+ * The scheduler delegates cycles to the full pipeline. The bean only
  * exists with catalyst.ingestion.enabled=true (off by default).
  */
 @SpringBootTest(
@@ -21,17 +23,17 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean
 class IngestionSchedulerTest {
 
     @MockitoBean
-    private lateinit var service: IngestionService
+    private lateinit var pipeline: PipelineService
 
     @Autowired
     private lateinit var scheduler: IngestionScheduler
 
     @Test
-    fun `manual trigger runs one ingestion cycle`() = runTest {
-        whenever(service.ingestCycle(any())).thenReturn(IngestionCycleResult(emptyList()))
+    fun `manual trigger runs one pipeline cycle`() = runTest {
+        whenever(pipeline.runCycle(any())).thenReturn(PipelineResult("SUCCESS", 0, 0, 0))
 
         scheduler.runIngestion()
 
-        verify(service, times(1)).ingestCycle(any())
+        verify(pipeline, times(1)).runCycle(any())
     }
 }
