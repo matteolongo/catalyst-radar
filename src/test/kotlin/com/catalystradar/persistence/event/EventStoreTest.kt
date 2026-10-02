@@ -5,6 +5,7 @@ import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.Directness
 import com.catalystradar.domain.event.Direction
 import com.catalystradar.domain.event.EventCluster
+import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.EventHorizon
 import com.catalystradar.domain.event.EventType
 import com.catalystradar.domain.event.SourceDocument
@@ -66,6 +67,7 @@ class EventStoreTest : PostgresIntegrationTest() {
                 taxonomyVersion = "taxonomy-v1",
                 extractorVersion = "event-extractor-v1",
                 attributes = mapOf("period" to "FY2026"),
+                evidence = listOf(EventEvidence("Dell raised its full-year outlook.", "body:0-36")),
             ),
             sourceDocumentId = document.id,
         )
@@ -78,6 +80,7 @@ class EventStoreTest : PostgresIntegrationTest() {
         assertEquals(0.85, reloaded.confidence)
         assertEquals(cluster.id, reloaded.clusterId)
         assertEquals(mapOf("period" to "FY2026"), reloaded.attributes)
+        assertEquals(listOf(EventEvidence("Dell raised its full-year outlook.", "body:0-36")), reloaded.evidence)
     }
 
     @Test

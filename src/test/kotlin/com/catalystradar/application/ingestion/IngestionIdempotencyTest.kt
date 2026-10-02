@@ -40,6 +40,9 @@ class IngestionIdempotencyTest : PostgresIntegrationTest() {
     private lateinit var documents: SourceDocumentStore
 
     @Autowired
+    private lateinit var registrations: SourceDocumentRegistrationService
+
+    @Autowired
     private lateinit var runs: IngestionRunStore
 
     private fun service(provider: String, fallback: String) = IngestionService(
@@ -49,7 +52,7 @@ class IngestionIdempotencyTest : PostgresIntegrationTest() {
         ),
         properties = IngestionProperties(provider = provider, fallbackProvider = fallback),
         companies = companies,
-        documents = documents,
+        registrations = registrations,
         runs = runs,
         metrics = CatalystMetrics(SimpleMeterRegistry()),
     )

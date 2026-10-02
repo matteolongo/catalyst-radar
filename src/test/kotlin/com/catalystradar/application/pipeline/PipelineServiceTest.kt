@@ -11,6 +11,7 @@ import com.catalystradar.application.event.EventNormalizationService
 import com.catalystradar.application.extraction.ExtractionValidator
 import com.catalystradar.application.ingestion.IngestionProperties
 import com.catalystradar.application.ingestion.IngestionService
+import com.catalystradar.application.ingestion.SourceDocumentRegistrationService
 import com.catalystradar.domain.catalyst.CatalystState
 import com.catalystradar.application.company.CompanyService
 import com.catalystradar.persistence.company.CompanyStore
@@ -60,6 +61,9 @@ class PipelineServiceTest : PostgresIntegrationTest() {
     private lateinit var documents: SourceDocumentStore
 
     @Autowired
+    private lateinit var registrations: SourceDocumentRegistrationService
+
+    @Autowired
     private lateinit var runs: IngestionRunStore
 
     @Autowired
@@ -87,7 +91,7 @@ class PipelineServiceTest : PostgresIntegrationTest() {
             providers = providers,
             properties = IngestionProperties(),
             companies = companyStore,
-            documents = documents,
+            registrations = registrations,
             runs = runs,
             metrics = metrics,
         ),

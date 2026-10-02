@@ -7,6 +7,7 @@ import com.catalystradar.domain.event.EventHorizon
 import com.catalystradar.domain.event.EventType
 import com.catalystradar.domain.event.SourceQuality
 import com.catalystradar.persistence.jdbc.JsonB
+import com.catalystradar.persistence.jdbc.toEventEvidence
 import com.catalystradar.persistence.jdbc.toJsonB
 import com.catalystradar.persistence.jdbc.toStringMap
 import org.springframework.data.annotation.Id
@@ -41,6 +42,8 @@ data class EventRow(
     @Column("taxonomy_version") val taxonomyVersion: String,
     @Column("extractor_version") val extractorVersion: String,
     val attributes: JsonB,
+    val evidence: JsonB,
+    @Column("event_fingerprint") val eventFingerprint: String?,
 )
 
 fun EventRow.toDomain() = CatalystEvent(
@@ -62,9 +65,12 @@ fun EventRow.toDomain() = CatalystEvent(
     taxonomyVersion = taxonomyVersion,
     extractorVersion = extractorVersion,
     attributes = attributes.toStringMap(),
+    evidence = evidence.toEventEvidence(),
 )
 
-fun CatalystEvent.toRow(    sourceDocumentId: UUID? = null,
+fun CatalystEvent.toRow(
+    sourceDocumentId: UUID? = null,
+    eventFingerprint: String? = null,
 ) = EventRow(
     id = id,
     companyId = companyId,
@@ -86,6 +92,8 @@ fun CatalystEvent.toRow(    sourceDocumentId: UUID? = null,
     taxonomyVersion = taxonomyVersion,
     extractorVersion = extractorVersion,
     attributes = attributes.toJsonB(),
+    evidence = evidence.toJsonB(),
+    eventFingerprint = eventFingerprint,
 )
 
 /** An event with its source linkage for API and evaluation reads. */

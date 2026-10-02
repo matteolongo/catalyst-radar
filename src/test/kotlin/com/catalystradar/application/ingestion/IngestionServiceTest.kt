@@ -8,6 +8,8 @@ import com.catalystradar.domain.company.Company
 import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.PostgresIntegrationTest
 import com.catalystradar.persistence.company.CompanyStore
+import com.catalystradar.persistence.document.DocumentProcessingStore
+import com.catalystradar.persistence.document.SourceDocumentCompanyStore
 import com.catalystradar.persistence.document.SourceDocumentStore
 import com.catalystradar.persistence.ingestion.IngestionRunStore
 import com.github.tomakehurst.wiremock.client.WireMock.aResponse
@@ -36,6 +38,15 @@ class IngestionServiceTest : PostgresIntegrationTest() {
     private lateinit var documents: SourceDocumentStore
 
     @Autowired
+    private lateinit var registrations: SourceDocumentRegistrationService
+
+    @Autowired
+    private lateinit var documentCompanies: SourceDocumentCompanyStore
+
+    @Autowired
+    private lateinit var processing: DocumentProcessingStore
+
+    @Autowired
     private lateinit var runs: IngestionRunStore
 
     private val polygon = PolygonNewsProvider(
@@ -54,7 +65,7 @@ class IngestionServiceTest : PostgresIntegrationTest() {
         providers = listOf(polygon, finnhub),
         properties = IngestionProperties(provider = provider, fallbackProvider = fallback),
         companies = companies,
-        documents = documents,
+        registrations = registrations,
         runs = runs,
         metrics = CatalystMetrics(SimpleMeterRegistry()),
     )
@@ -91,6 +102,24 @@ class IngestionServiceTest : PostgresIntegrationTest() {
         assertEquals(2, second.runs[0].fetched)
         assertEquals(0, second.runs[0].added)
         assertEquals(2, second.runs[0].duplicates)
+    }
+
+    @Test
+    fun `queues only documents linked to resolved active companies`() = runTest {
+        val dell = companies.save(Company(ticker = "DELL", name = "Dell"))
+        wireMock.stubFor(
+            get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson(NEWS_PAGE)),
+        )
+
+        service().ingestCycle()
+
+        val supported = requireNotNull(documents.findByProviderAndProviderDocumentId("polygon", "poly-1"))
+        val unsupported = requireNotNull(documents.findByProviderAndProviderDocumentId("polygon", "poly-2"))
+
+        assertEquals(listOf(dell.id), documentCompanies.findCompanyIds(supported.id))
+        assertEquals(DocumentProcessingStatus.PENDING, processing.findBySourceDocumentId(supported.id)?.status)
+        assertEquals(emptyList(), documentCompanies.findCompanyIds(unsupported.id))
+        assertEquals(null, processing.findBySourceDocumentId(unsupported.id))
     }
 
     @Test
