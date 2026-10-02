@@ -1,13 +1,14 @@
 /* CatalystRadar Ops dashboard — vanilla JS, no dependencies.
  * Reads the versioned API plus the admin run-history endpoints.
- * The admin key lives in sessionStorage only and is sent as X-Admin-Key.
+ * Keys live in sessionStorage and are sent only to the routes that need them.
  */
 (function () {
   'use strict';
 
-  var params = new URLSearchParams(window.location.search);
-  var API_BASE = (params.get('api') || window.CATALYST_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
-  var KEY_NAME = 'catalyst-admin-key';
+  var API_BASE = (window.CATALYST_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
+  var ADMIN_KEY_NAME = 'catalyst-admin-key';
+  var API_KEY_NAME = 'catalyst-api-key';
+  var pipelineRunning = false;
 
   function $(id) { return document.getElementById(id); }
 
@@ -44,8 +45,10 @@
 
   async function api(path, options) {
     var headers = { 'Accept': 'application/json' };
-    var key = window.sessionStorage.getItem(KEY_NAME);
-    if (key) headers['X-Admin-Key'] = key;
+    var adminKey = window.sessionStorage.getItem(ADMIN_KEY_NAME);
+    var apiKey = window.sessionStorage.getItem(API_KEY_NAME);
+    if (path.startsWith('/internal/') && adminKey) headers['X-Admin-Key'] = adminKey;
+    if (path.startsWith('/v1/') && apiKey) headers.Authorization = 'Bearer ' + apiKey;
     var response = await fetch(API_BASE + path, Object.assign({ headers: headers }, options));
     var body = await response.json().catch(function () { return {}; });
     if (!response.ok) {
@@ -77,6 +80,7 @@
     try {
       rows = (await api('/internal/ingestion/runs?limit=20')).runs;
     } catch (err) {
+      $('ingestionRows').innerHTML = '<tr><td colspan="7" class="muted">Unable to load runs.</td></tr>';
       showError('Ingestion runs: ' + err.message);
       return;
     }
@@ -85,8 +89,7 @@
       return;
     }
     $('ingestionRows').innerHTML = rows.map(function (run) {
-      var started = fmtTime(run.startedAt || run.finishedAt);
-      return '<tr><td>' + esc(started) + '</td><td>' + esc(run.provider) + '</td>' +
+      return '<tr><td>' + esc(fmtTime(run.finishedAt)) + '</td><td>' + esc(run.provider) + '</td>' +
         '<td>' + statusPill(run.status) + '</td>' +
         '<td class="num">' + fmtInt(run.fetched) + '</td>' +
         '<td class="num">' + fmtInt(run.added) + '</td>' +
@@ -100,6 +103,10 @@
     try {
       rows = (await api('/internal/model-runs?limit=50')).runs;
     } catch (err) {
+      $('modelRows').innerHTML = '<tr><td colspan="9" class="muted">Unable to load model runs.</td></tr>';
+      $('totalIn').textContent = '–';
+      $('totalOut').textContent = '–';
+      $('totalCost').textContent = '–';
       showError('Model runs: ' + err.message);
       return;
     }
@@ -136,6 +143,7 @@
     try {
       page = await api('/v1/discovery/catalyzed?limit=5');
     } catch (err) {
+      $('leaderRows').innerHTML = '<tr><td colspan="6" class="muted">Unable to load leaders.</td></tr>';
       showError('Discovery: ' + err.message);
       return;
     }
@@ -154,15 +162,33 @@
     }).join('');
   }
 
+  function requireAdminKey() {
+    var hasKey = !!window.sessionStorage.getItem(ADMIN_KEY_NAME);
+    $('runNow').disabled = !hasKey || pipelineRunning;
+    if (!hasKey) {
+      $('ingestionRows').innerHTML = '<tr><td colspan="7" class="muted">Save an admin key to view runs.</td></tr>';
+      $('modelRows').innerHTML = '<tr><td colspan="9" class="muted">Save an admin key to view model runs.</td></tr>';
+      $('totalIn').textContent = '–';
+      $('totalOut').textContent = '–';
+      $('totalCost').textContent = '–';
+    }
+    return hasKey;
+  }
+
   async function refreshAll() {
     clearError();
+    var hasAdminKey = requireAdminKey();
     await refreshHealth();
-    await refreshIngestionRuns();
-    await refreshModelRuns();
+    if (hasAdminKey) {
+      await refreshIngestionRuns();
+      await refreshModelRuns();
+    }
     await refreshLeaders();
   }
 
   async function runPipelineNow() {
+    if (pipelineRunning) return;
+    pipelineRunning = true;
     var button = $('runNow');
     button.disabled = true;
     $('pipelineStatus').textContent = 'Pipeline running — this takes minutes with live LLM calls…';
@@ -180,7 +206,8 @@
       showError('Pipeline run failed: ' + err.message);
       $('pipelineStatus').textContent = 'Last run failed.';
     } finally {
-      button.disabled = false;
+      pipelineRunning = false;
+      button.disabled = !window.sessionStorage.getItem(ADMIN_KEY_NAME);
     }
   }
 
@@ -193,16 +220,22 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     $('apiDocs').href = API_BASE + '/swagger-ui.html';
-    var saved = window.sessionStorage.getItem(KEY_NAME);
+    var saved = window.sessionStorage.getItem(ADMIN_KEY_NAME);
     if (saved) $('adminKey').value = saved;
+    var savedApiKey = window.sessionStorage.getItem(API_KEY_NAME);
+    if (savedApiKey) $('apiKey').value = savedApiKey;
     $('saveKey').addEventListener('click', function () {
-      window.sessionStorage.setItem(KEY_NAME, $('adminKey').value.trim());
+      window.sessionStorage.setItem(ADMIN_KEY_NAME, $('adminKey').value.trim());
+      window.sessionStorage.setItem(API_KEY_NAME, $('apiKey').value.trim());
       refreshAll();
     });
     $('clearKey').addEventListener('click', function () {
-      window.sessionStorage.removeItem(KEY_NAME);
+      window.sessionStorage.removeItem(ADMIN_KEY_NAME);
+      window.sessionStorage.removeItem(API_KEY_NAME);
       $('adminKey').value = '';
-      refreshAll();
+      $('apiKey').value = '';
+      requireAdminKey();
+      window.location.reload();
     });
     $('refresh').addEventListener('click', refreshAll);
     $('runNow').addEventListener('click', runPipelineNow);
