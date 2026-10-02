@@ -53,35 +53,35 @@ internal class ExtractionResponseParser(
         }
 
     private fun toCandidateOrThrow(node: JsonNode): ExtractedEvent? {
-        val ticker = node.path("ticker").asText().takeIf { it.isNotBlank() } ?: return null
-        val family = node.path("family").asText().let { runCatching { EventFamily.valueOf(it) }.getOrNull() }
+        val ticker = node.path("ticker").asString().takeIf { it.isNotBlank() } ?: return null
+        val family = node.path("family").asString().let { runCatching { EventFamily.valueOf(it) }.getOrNull() }
             ?: return null
-        val type = node.path("type").asText().let { runCatching { EventType.valueOf(it) }.getOrNull() }
+        val type = node.path("type").asString().let { runCatching { EventType.valueOf(it) }.getOrNull() }
             ?: return null
         if (type.family != family) return null
-        val direction = node.path("direction").asText().let { runCatching { Direction.valueOf(it) }.getOrNull() }
+        val direction = node.path("direction").asString().let { runCatching { Direction.valueOf(it) }.getOrNull() }
             ?: return null
         val confidence = node.path("confidence").takeIf { it.isNumber }?.asDouble()
             ?.takeIf { it.isFinite() && it in 0.0..1.0 } ?: return null
         val magnitude = optionalDouble(node, "magnitude", range = null)
         val surprise = optionalDouble(node, "surprise", range = 0.0..1.0)
         val materiality = optionalDouble(node, "materiality", range = 0.0..1.0)
-        val horizon = node.path("expected_horizon").asText().let { runCatching { EventHorizon.valueOf(it) }.getOrNull() }
+        val horizon = node.path("expected_horizon").asString().let { runCatching { EventHorizon.valueOf(it) }.getOrNull() }
             ?: return null
-        val directness = node.path("directness").asText().let { runCatching { Directness.valueOf(it) }.getOrNull() }
+        val directness = node.path("directness").asString().let { runCatching { Directness.valueOf(it) }.getOrNull() }
             ?: return null
-        val timestamp = node.path("event_timestamp").takeIf { it.isTextual }
-            ?.asText()?.let { runCatching { Instant.parse(it) }.getOrNull() }
+        val timestamp = node.path("event_timestamp").takeIf { it.isString }
+            ?.asString()?.let { runCatching { Instant.parse(it) }.getOrNull() }
         val evidence = node.path("evidence").takeIf { it.isArray }
             ?.mapNotNull { item ->
-                val quote = item.path("quote_or_fact").asText().takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                val hint = item.path("source_offset_hint").takeIf { it.isTextual }?.asText()
+                val quote = item.path("quote_or_fact").asString().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val hint = item.path("source_offset_hint").takeIf { it.isString }?.asString()
                 EvidenceSpan(quoteOrFact = quote, sourceOffsetHint = hint)
             }.orEmpty()
         val attributes = node.path("attributes").takeIf { it.isArray }
             ?.mapNotNull { item ->
-                val key = item.path("key").asText().takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                key to item.path("value").asText()
+                val key = item.path("key").asString().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                key to item.path("value").asString()
             }?.toMap().orEmpty()
         return ExtractedEvent(
             ticker = ticker,

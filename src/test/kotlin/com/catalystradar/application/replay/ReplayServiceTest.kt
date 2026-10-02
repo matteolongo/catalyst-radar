@@ -23,6 +23,7 @@ import com.catalystradar.ports.EvidenceSpan
 import com.catalystradar.ports.ExtractedEvent
 import com.catalystradar.ports.ExtractionRequest
 import com.catalystradar.ports.ExtractionResult
+import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -58,6 +59,9 @@ class ReplayServiceTest : PostgresIntegrationTest() {
     @Autowired
     private lateinit var clusters: EventClusterStore
 
+    @Autowired
+    private lateinit var meterRegistry: MeterRegistry
+
     private val t0 = Instant.parse("2026-09-16T10:00:00Z")
 
     @Test
@@ -65,6 +69,11 @@ class ReplayServiceTest : PostgresIntegrationTest() {
         val company = companies.save(Company(ticker = "DELL", name = "Dell"))
         val document = documents.save(newDocument("poly-1", t0.minusSeconds(5L * 86_400)))
         documentCompanies.link(document.id, company.id)
+        val consideredBefore = meterRegistry.counter(
+            "catalyst_replay_documents_total",
+            "outcome",
+            "considered",
+        ).count()
 
         val result = replay.replay(
             ReplayRequest(ticker = "DELL", cutoff = t0),
@@ -75,6 +84,10 @@ class ReplayServiceTest : PostgresIntegrationTest() {
         assertEquals(1, result.documentsConsidered)
         assertEquals(1, result.candidatesAccepted)
         assertEquals(1, result.eventCount)
+        assertEquals(
+            consideredBefore + 1.0,
+            meterRegistry.counter("catalyst_replay_documents_total", "outcome", "considered").count(),
+        )
         assertEquals(100 * contribution / (contribution + 30.0), result.score, 1e-9)
         assertEquals(0, events.findByCompanyId(company.id).size)
     }

@@ -1,5 +1,6 @@
 package com.catalystradar.application.catalyst
 
+import com.catalystradar.observability.CatalystMetrics
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.times
@@ -18,6 +19,9 @@ class DailySnapshotSchedulerTest {
     @MockitoBean
     private lateinit var snapshots: DailySnapshotService
 
+    @MockitoBean
+    private lateinit var metrics: CatalystMetrics
+
     @Autowired
     private lateinit var scheduler: DailySnapshotScheduler
 
@@ -30,5 +34,6 @@ class DailySnapshotSchedulerTest {
         scheduler.runDailySnapshots()
 
         verify(snapshots, times(1)).recalculateActive(any())
+        verify(metrics).dailySnapshotCycle("success")
     }
 }

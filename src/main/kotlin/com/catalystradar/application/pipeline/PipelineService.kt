@@ -109,6 +109,10 @@ class PipelineService(
             documentsProcessed++
             eventsExtracted += outcome.eventsExtracted
             affectedCompanies += outcome.affectedCompanies
+            metrics.documentProcessing(outcome.status.name.lowercase())
+            if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) {
+                metrics.documentRetryAttempt()
+            }
             when (outcome.status) {
                 DocumentProcessingStatus.COMPLETED -> documentsCompleted++
                 DocumentProcessingStatus.SKIPPED -> documentsSkipped++

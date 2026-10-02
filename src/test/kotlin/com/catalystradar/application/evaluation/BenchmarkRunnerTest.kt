@@ -24,6 +24,7 @@ import com.catalystradar.ports.ExtractedEvent
 import com.catalystradar.ports.ExtractionRequest
 import com.catalystradar.ports.ExtractionResult
 import com.catalystradar.ports.MarketDataProvider
+import com.catalystradar.ports.ProviderException
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -62,9 +63,7 @@ class BenchmarkRunnerTest : PostgresIntegrationTest() {
 
     @Test
     fun `separates movers from controls`() = runTest {
-        whenever(embeddings.embed(any())).thenReturn(
-            Embedding(List(1536) { if (it == 0) 1f else 0f }, "fake"),
-        )
+        stubEmbeddings()
         val t0 = LocalDate.parse("2026-09-10")
         val dell = companies.save(Company(ticker = "DELL", name = "Dell"))
         companies.save(Company(ticker = "HPQ", name = "HP"))
@@ -96,6 +95,33 @@ class BenchmarkRunnerTest : PostgresIntegrationTest() {
         assertEquals(0.05, report.avgPositiveReturns[1]!!, 1e-9)
         assertEquals(0.01, report.avgControlReturns[1]!!, 1e-9)
         assertNull(report.positives.single().returns[99])
+    }
+
+    @Test
+    fun `reports unavailable price data instead of treating a provider failure as an empty series`() = runTest {
+        stubEmbeddings()
+        val t0 = LocalDate.parse("2026-09-10")
+        val dell = companies.save(Company(ticker = "DELL", name = "Dell"))
+        seedEvidence(dell.id)
+        val definition = BenchmarkDefinition(
+            cases = listOf(BenchmarkCase("dell-2026-09", "DELL", t0)),
+            controls = emptyMap(),
+            lookbacks = listOf(1),
+            horizons = listOf(1),
+        )
+
+        val report = BenchmarkRunner(replay, UnavailableMarketData).run(definition, TitleExtraction)
+
+        val result = report.positives.single()
+        assertEquals(PriceDataStatus.UNAVAILABLE, result.priceDataStatus)
+        assertEquals(false, result.priced)
+        assertNull(result.returns[1])
+    }
+
+    private suspend fun stubEmbeddings() {
+        whenever(embeddings.embed(any())).thenReturn(
+            Embedding(List(1536) { if (it == 0) 1f else 0f }, "fake"),
+        )
     }
 
     private fun seedEvidence(companyId: UUID) {
@@ -200,5 +226,10 @@ class BenchmarkRunnerTest : PostgresIntegrationTest() {
                     ),
                 )
             }
+    }
+
+    object UnavailableMarketData : MarketDataProvider {
+        override suspend fun dailyBars(ticker: String, from: LocalDate, to: LocalDate): List<DailyBar> =
+            throw ProviderException.TemporaryUnavailable("market data unavailable")
     }
 }

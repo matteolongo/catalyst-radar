@@ -15,6 +15,7 @@ import com.catalystradar.common.Versions
 import com.catalystradar.domain.catalyst.CatalystState
 import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.EventType
+import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.catalyst.CatalystSnapshotStore
 import com.catalystradar.persistence.document.SourceDocumentCompanyStore
 import com.catalystradar.ports.Embedding
@@ -68,6 +69,7 @@ class ReplayService(
     private val selector: CanonicalEventSelector,
     private val embeddings: EmbeddingProvider,
     private val dedup: DedupProperties,
+    private val metrics: CatalystMetrics,
 ) {
 
     private val calculator = ScoreCalculator()
@@ -111,6 +113,11 @@ class ReplayService(
         val calculated = calculator.calculate(canonical, request.cutoff)
         val history = snapshots.history(company.id).filter { !it.asOf.isAfter(request.cutoff) }
         val state = stateForScore(calculated.score.value)
+        metrics.replayInputs(
+            documentsConsidered = documents.size,
+            documentsSkipped = documentsSkipped,
+            candidatesAccepted = accepted.size,
+        )
         return ReplayResult(
             ticker = company.ticker,
             asOf = request.cutoff,

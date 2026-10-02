@@ -34,6 +34,7 @@ catalyst:
     # Always required for /internal/*, even locally. Never commit a real value.
     admin-key: ${CATALYST_INTERNAL_ADMIN_KEY:}
   ingestion:
+    # Opt in only for one POC process; disabled avoids unconfigured provider calls.
     enabled: false
     interval: PT30M
     lookback: PT2H
@@ -41,10 +42,12 @@ catalyst:
     fallback-provider: finnhub
     page-size: 50
   pipeline:
+    # Bounded durable-queue draining and retry behavior.
     batch-size: 50
     max-attempts: 3
     retry-delay: PT1M
   snapshots:
+    # Local-only daily recalculation; it never calls providers or the LLM.
     enabled: false
     interval: PT24H
   polygon:
