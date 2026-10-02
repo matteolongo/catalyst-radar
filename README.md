@@ -21,8 +21,9 @@ Important limits are intentional:
 
 * Run one application instance. Scheduler guards are in-process and do not
   coordinate multiple deployments.
-* Use a small configured universe. Large-universe throughput and calibration
-  are not POC exit criteria.
+* Keep real-provider smoke runs to a small active universe. The local profile
+  seeds the S&P 500 plus Nasdaq-100, and ingestion queries every active ticker
+  in batches; review that scope before enabling scheduled ingestion.
 * Real ingestion requires provider credentials supplied at runtime; no sample
   secret in this repository is valid for production.
 * Scores use provisional `score-v1` rules. Benchmarking reports data quality
@@ -152,8 +153,10 @@ docker compose up -d
 ```
 
 Flyway applies V1 and the additive V2 migration automatically at application
-startup. The local profile seeds the small reference universe, but schedulers
-remain disabled unless explicitly enabled.
+startup. The local profile seeds the S&P 500 plus Nasdaq-100 reference data,
+but schedulers remain disabled unless explicitly enabled. Ingestion queries
+every active company ticker in batches, so keep the active universe small for a
+real-provider smoke run.
 
 Use environment variables or a Git-ignored `.env` file for configuration.
 Never commit a real key, token, or database password.
