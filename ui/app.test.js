@@ -295,3 +295,25 @@ test('discovery starts without waiting for slow Operations requests', async () =
   assert.ok(dashboard.requests.some((request) => new URL(request.url).pathname === '/v1/discovery/catalyzed'));
   assert.match(dashboard.elements.get('discoveryResults').innerHTML, /DELL/);
 });
+
+test('paging keeps applied filters and page size when controls are edited but not applied', async () => {
+  const dashboard = startDashboard({ discovery: discoveryPage('DELL', 120) });
+  await waitForRequests(dashboard.requests, 2);
+  dashboard.elements.get('sector').value = 'Technology';
+  dashboard.elements.get('pageSize').value = '50';
+  await dashboard.elements.get('discoveryFilters').trigger('submit', { preventDefault() {} });
+
+  dashboard.elements.get('sector').value = 'Healthcare';
+  dashboard.elements.get('pageSize').value = '100';
+  await dashboard.elements.get('nextPage').trigger('click');
+  const next = new URL(dashboard.requests.at(-1).url).searchParams;
+  assert.equal(next.get('sector'), 'Technology');
+  assert.equal(next.get('limit'), '50');
+  assert.equal(next.get('offset'), '50');
+
+  await dashboard.elements.get('previousPage').trigger('click');
+  const previous = new URL(dashboard.requests.at(-1).url).searchParams;
+  assert.equal(previous.get('sector'), 'Technology');
+  assert.equal(previous.get('limit'), '50');
+  assert.equal(previous.get('offset'), '0');
+});

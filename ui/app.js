@@ -12,6 +12,7 @@
   var discoveryOffset = 0;
   var discoveryTotal = 0;
   var discoveryLimit = 20;
+  var appliedDiscoveryFilters;
   var discoveryRequest = 0;
   var discoveryLoading = false;
 
@@ -143,7 +144,7 @@
     $('totalCost').textContent = fmtCost(totalCost);
   }
 
-  function discoveryPath() {
+  function readDiscoveryFilters() {
     var query = new URLSearchParams();
     Array.from($('discoveryStates').selectedOptions || []).forEach(function (option) {
       query.append('state', option.value);
@@ -152,8 +153,12 @@
     if ($('minVelocity7d').value !== '') query.set('minVelocity7d', $('minVelocity7d').value);
     if ($('sector').value.trim()) query.set('sector', $('sector').value.trim());
     query.set('sort', $('discoverySort').value || 'SCORE');
-    discoveryLimit = Math.min(100, Math.max(1, Number($('pageSize').value) || 20));
-    query.set('limit', String(discoveryLimit));
+    query.set('limit', String(Math.min(100, Math.max(1, Number($('pageSize').value) || 20))));
+    return query;
+  }
+
+  function discoveryPath() {
+    var query = new URLSearchParams(appliedDiscoveryFilters);
     query.set('offset', String(discoveryOffset));
     return '/v1/discovery/catalyzed?' + query.toString();
   }
@@ -292,6 +297,8 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
+    appliedDiscoveryFilters = readDiscoveryFilters();
+    discoveryLimit = Number(appliedDiscoveryFilters.get('limit'));
     $('apiDocs').href = API_BASE + '/swagger-ui.html';
     var saved = window.sessionStorage.getItem(ADMIN_KEY_NAME);
     if (saved) $('adminKey').value = saved;
@@ -317,6 +324,8 @@
     });
     $('discoveryFilters').addEventListener('submit', function (event) {
       event.preventDefault();
+      appliedDiscoveryFilters = readDiscoveryFilters();
+      discoveryLimit = Number(appliedDiscoveryFilters.get('limit'));
       discoveryOffset = 0;
       clearError();
       return refreshDiscovery();
