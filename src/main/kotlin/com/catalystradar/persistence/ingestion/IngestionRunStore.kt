@@ -1,6 +1,7 @@
 package com.catalystradar.persistence.ingestion
 
 import com.catalystradar.application.ingestion.IngestionStatus
+import org.springframework.data.domain.PageRequest
 import org.springframework.data.jdbc.core.JdbcAggregateTemplate
 import org.springframework.stereotype.Repository
 import java.time.Instant
@@ -54,4 +55,7 @@ class IngestionRunStore(
 
     fun findById(id: UUID): IngestionRunRecord? =
         repository.findById(id).map { it.toRecord() }.orElse(null)
+
+    fun listRecent(limit: Int): List<IngestionRunRecord> =
+        repository.findAllByOrderByStartedAtDescIdDesc(PageRequest.of(0, limit)).map { it.toRecord() }
 }

@@ -1,5 +1,6 @@
 package com.catalystradar.persistence.extraction
 
+import org.springframework.data.domain.PageRequest
 import org.springframework.data.jdbc.core.JdbcAggregateTemplate
 import org.springframework.stereotype.Repository
 import java.util.UUID
@@ -18,4 +19,7 @@ class ModelRunStore(
 
     fun findByDocument(sourceDocumentId: UUID): List<ModelRunRecord> =
         repository.findBySourceDocumentId(sourceDocumentId).map { it.toRecord() }
+
+    fun listRecent(limit: Int): List<ModelRunRecord> =
+        repository.findAllByOrderByCreatedAtDescIdDesc(PageRequest.of(0, limit)).map { it.toRecord() }
 }

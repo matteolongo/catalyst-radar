@@ -22,6 +22,7 @@ data class ModelRunRow(
     @Column("estimated_cost") val estimatedCost: BigDecimal?,
     val success: Boolean,
     val error: String?,
+    @Column("created_at") val createdAt: Instant,
 )
 
 data class ModelRunRecord(
@@ -38,6 +39,7 @@ data class ModelRunRecord(
     val estimatedCost: BigDecimal?,
     val success: Boolean,
     val error: String?,
+    val createdAt: Instant,
 )
 
 data class ModelRunInput(
@@ -69,6 +71,7 @@ fun ModelRunRow.toRecord() = ModelRunRecord(
     estimatedCost = estimatedCost,
     success = success,
     error = error,
+    createdAt = createdAt,
 )
 
 fun ModelRunInput.toRow(id: UUID) = ModelRunRow(
@@ -85,4 +88,5 @@ fun ModelRunInput.toRow(id: UUID) = ModelRunRow(
     estimatedCost = estimatedCost,
     success = success,
     error = error,
+    createdAt = Instant.now(),
 )
