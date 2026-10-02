@@ -414,6 +414,33 @@ test('history shows zero and one snapshot without inventing a line', async () =>
   }
 });
 
+test('history keeps persisted transitions visible when no snapshots are returned', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/timeline': {
+    ticker: 'DELL', snapshots: [], transitions: [{ from: 'NORMAL', to: 'WATCH', score: 30,
+      scoreVersion: 'score-v1', at: '2026-09-29T12:00:00Z' }],
+  } } });
+  await waitForRequests(dashboard.requests, 6);
+  const history = dashboard.elements.get('companyHistory').innerHTML;
+  assert.match(history, /No score history/);
+  assert.match(history, /State transitions at persisted times/);
+  assert.match(history, /2026-09-29T12:00:00Z.*NORMAL → WATCH/s);
+});
+
+test('history chart includes transition times outside snapshot extent', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/timeline': {
+    ticker: 'DELL', snapshots: [
+      { score: 44, state: 'WATCH', asOf: '2026-09-30T12:00:00Z' },
+      { score: 68, state: 'CATALYZED', asOf: '2026-10-02T12:00:00Z' },
+    ], transitions: [{ from: 'NORMAL', to: 'WATCH', score: 30,
+      scoreVersion: 'score-v1', at: '2026-09-29T12:00:00Z' }],
+  } } });
+  await waitForRequests(dashboard.requests, 6);
+  const history = dashboard.elements.get('companyHistory').innerHTML;
+  assert.match(history, /<path class="transition-mark" d="M30 20V130"/);
+  assert.match(history, /<circle class="score-point" cx="210"/);
+  assert.doesNotMatch(history, /<polyline/);
+});
+
 test('history sorts actual snapshots, labels transitions, and requests capped ranges', async () => {
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL' });
   await waitForRequests(dashboard.requests, 6);

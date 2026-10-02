@@ -272,26 +272,27 @@
   function renderHistory(data) {
     var snapshots = (data.snapshots || []).slice().sort(function (a, b) { return new Date(a.asOf) - new Date(b.asOf); });
     var transitions = (data.transitions || []).slice().sort(function (a, b) { return new Date(a.at) - new Date(b.at); });
+    var transitionList = transitions.length ? '<p>State transitions at persisted times:</p><ul>' + transitions.map(function (t) {
+      return '<li>' + timeLabel(t.at) + ' · ' + esc(t.from) + ' → ' + esc(t.to) + ' · score ' + esc(fmtScore(t.score)) + '</li>';
+    }).join('') + '</ul>' : '';
     if (!snapshots.length) {
-      $('companyHistory').innerHTML = '<p>No score history in this range.</p>';
+      $('companyHistory').innerHTML = '<p>No score history in this range.</p>' + transitionList;
       return;
     }
-    var chart = '';
-    if (snapshots.length > 1) {
-      var minTime = new Date(snapshots[0].asOf).getTime();
-      var maxTime = new Date(snapshots[snapshots.length - 1].asOf).getTime();
-      var x = function (at) { return 30 + 540 * (new Date(at).getTime() - minTime) / (maxTime - minTime || 1); };
-      var y = function (score) { return 130 - Math.max(0, Math.min(100, Number(score))) * 1.1; };
-      chart = '<p class="muted small">Only stored snapshot points are shown; gaps have no implied values.</p><svg viewBox="0 0 600 150" role="img" aria-label="Stored catalyst score snapshot points and state transitions; data table follows">' +
-        '<line x1="30" y1="130" x2="570" y2="130" class="axis"/><line x1="30" y1="20" x2="30" y2="130" class="axis"/>' +
-        snapshots.map(function (s) { return '<circle class="score-point" cx="' + x(s.asOf) + '" cy="' + y(s.score) + '" r="4"><title>' + esc(s.asOf) + ' · ' + esc(fmtScore(s.score)) + ' · ' + esc(s.state) + '</title></circle>'; }).join('') +
-        transitions.filter(function (t) { return new Date(t.at).getTime() >= minTime && new Date(t.at).getTime() <= maxTime; }).map(function (t) { return '<path class="transition-mark" d="M' + x(t.at) + ' 20V130"><title>' + esc(t.at) + ' · ' + esc(t.from) + ' → ' + esc(t.to) + '</title></path>'; }).join('') + '</svg>';
-    } else chart = '<p>Insufficient history for a line chart. One stored snapshot is available.</p>';
+    var times = snapshots.map(function (s) { return new Date(s.asOf).getTime(); })
+      .concat(transitions.map(function (t) { return new Date(t.at).getTime(); }));
+    var minTime = Math.min.apply(null, times);
+    var maxTime = Math.max.apply(null, times);
+    var x = function (at) { return maxTime === minTime ? 300 : 30 + 540 * (new Date(at).getTime() - minTime) / (maxTime - minTime); };
+    var y = function (score) { return 130 - Math.max(0, Math.min(100, Number(score))) * 1.1; };
+    var chart = (snapshots.length === 1 ? '<p>Insufficient history for a trend chart. One stored snapshot is available.</p>' : '') +
+      '<p class="muted small">Only stored snapshot points are shown; gaps have no implied values.</p><svg viewBox="0 0 600 150" role="img" aria-label="Stored catalyst score snapshot points and state transitions; data table follows">' +
+      '<line x1="30" y1="130" x2="570" y2="130" class="axis"/><line x1="30" y1="20" x2="30" y2="130" class="axis"/>' +
+      snapshots.map(function (s) { return '<circle class="score-point" cx="' + x(s.asOf) + '" cy="' + y(s.score) + '" r="4"><title>' + esc(s.asOf) + ' · ' + esc(fmtScore(s.score)) + ' · ' + esc(s.state) + '</title></circle>'; }).join('') +
+      transitions.map(function (t) { return '<path class="transition-mark" d="M' + x(t.at) + ' 20V130"><title>' + esc(t.at) + ' · ' + esc(t.from) + ' → ' + esc(t.to) + '</title></path>'; }).join('') + '</svg>';
     $('companyHistory').innerHTML = chart + '<div class="history-table"><table><caption>Stored score snapshots</caption><thead><tr><th>Date</th><th>Score</th><th>State</th><th>As of</th></tr></thead><tbody>' +
       snapshots.map(function (s) { return '<tr><td>' + esc((s.asOf || '').slice(0, 10)) + '</td><td>' + esc(fmtScore(s.score)) + '</td><td>' + esc(s.state) + '</td><td>' + timeLabel(s.asOf) + '</td></tr>'; }).join('') +
-      '</tbody></table></div>' + (transitions.length ? '<p>State transitions at persisted times:</p><ul>' + transitions.map(function (t) {
-        return '<li>' + timeLabel(t.at) + ' · ' + esc(t.from) + ' → ' + esc(t.to) + ' · score ' + esc(fmtScore(t.score)) + '</li>';
-      }).join('') + '</ul>' : '');
+      '</tbody></table></div>' + transitionList;
   }
 
   function renderCompanyEvents() {
