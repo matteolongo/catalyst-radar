@@ -3,6 +3,7 @@ package com.catalystradar.api.dto
 import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.persistence.event.EventWithSource
+import com.catalystradar.persistence.event.SafeSourceMetadata
 import java.time.Instant
 import java.util.UUID
 
@@ -26,6 +27,25 @@ data class CatalystEventResponse(
     val taxonomyVersion: String,
     val extractorVersion: String,
     val evidence: List<EventEvidenceResponse>,
+    val ticker: String? = null,
+    val companyName: String? = null,
+    val source: SafeSourceResponse? = null,
+)
+
+data class SafeSourceResponse(
+    val sourceDocumentId: UUID,
+    val title: String,
+    val provider: String,
+    val publishedAt: Instant?,
+    val canonicalUrl: String?,
+)
+
+fun SafeSourceMetadata.toResponse() = SafeSourceResponse(
+    sourceDocumentId = sourceDocumentId,
+    title = title,
+    provider = provider,
+    publishedAt = publishedAt,
+    canonicalUrl = canonicalUrl,
 )
 
 data class EventEvidenceResponse(
@@ -33,7 +53,7 @@ data class EventEvidenceResponse(
     val sourceOffsetHint: String?,
 )
 
-private fun EventEvidence.toResponse() = EventEvidenceResponse(
+fun EventEvidence.toResponse() = EventEvidenceResponse(
     quoteOrFact = quoteOrFact,
     sourceOffsetHint = sourceOffsetHint,
 )
@@ -58,6 +78,9 @@ fun EventWithSource.toResponse() = CatalystEventResponse(
     taxonomyVersion = event.taxonomyVersion,
     extractorVersion = event.extractorVersion,
     evidence = event.evidence.map { it.toResponse() },
+    ticker = ticker,
+    companyName = companyName,
+    source = source?.toResponse(),
 )
 
 data class EventsFeedResponse(

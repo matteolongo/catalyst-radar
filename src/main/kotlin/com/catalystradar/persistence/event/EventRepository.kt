@@ -10,6 +10,9 @@ interface EventRepository : ListCrudRepository<EventRow, UUID> {
 
     fun findByClusterId(clusterId: UUID): List<EventRow>
 
+    @Query("SELECT * FROM events WHERE company_id = :companyId AND created_at <= :snapshotCreatedAt")
+    fun findAvailableByCompanyId(companyId: UUID, snapshotCreatedAt: Instant): List<EventRow>
+
     fun findBySourceDocumentIdAndEventFingerprint(sourceDocumentId: UUID, eventFingerprint: String): EventRow?
 
     @Query(

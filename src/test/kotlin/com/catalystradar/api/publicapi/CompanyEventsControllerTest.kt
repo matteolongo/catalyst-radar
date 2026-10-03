@@ -10,6 +10,7 @@ import com.catalystradar.domain.event.EventType
 import com.catalystradar.domain.event.SourceQuality
 import com.catalystradar.persistence.event.EventStore
 import com.catalystradar.persistence.event.EventWithSource
+import com.catalystradar.persistence.event.SafeSourceMetadata
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
 import org.mockito.kotlin.any
@@ -59,6 +60,10 @@ class CompanyEventsControllerTest {
             jsonPath("$.events.length()") { value(1) }
             jsonPath("$.events[0].type") { value("GUIDANCE_RAISE") }
             jsonPath("$.events[0].sourceDocumentId") { exists() }
+            jsonPath("$.events[0].ticker") { value("DELL") }
+            jsonPath("$.events[0].source.title") { value("Dell outlook") }
+            jsonPath("$.events[0].source.provider") { value("polygon") }
+            jsonPath("$.events[0].source.canonicalUrl") { value("https://example.com/dell") }
             jsonPath("$.nextCursor") { exists() }
         }.andReturn()
         cursor = ObjectMapper().readTree(firstPage.response.contentAsString).path("nextCursor").asText()
@@ -97,6 +102,7 @@ class CompanyEventsControllerTest {
 
     private fun detailed(at: String): EventWithSource {
         val instant = Instant.parse(at)
+        val sourceId = UUID.randomUUID()
         return EventWithSource(
             event = CatalystEvent(
                 companyId = company.id,
@@ -111,7 +117,10 @@ class CompanyEventsControllerTest {
                 taxonomyVersion = "taxonomy-v1",
                 extractorVersion = "event-extractor-v1",
             ),
-            sourceDocumentId = UUID.randomUUID(),
+            sourceDocumentId = sourceId,
+            ticker = company.ticker,
+            companyName = company.name,
+            source = SafeSourceMetadata(sourceId, "Dell outlook", "polygon", instant, "https://example.com/dell"),
         )
     }
 }
