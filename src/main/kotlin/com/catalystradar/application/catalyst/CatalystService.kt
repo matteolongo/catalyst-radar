@@ -19,13 +19,20 @@ import java.util.UUID
  * Initial score bands. Provisional calibration defaults, not truths:
  * BUILDING/CATALYZED separation comes from benchmark data in CR-18.
  */
-fun stateForScore(score: Double): CatalystState = when {
-    score < 25.0 -> CatalystState.NORMAL
-    score < 45.0 -> CatalystState.WATCH
-    score < 65.0 -> CatalystState.BUILDING
-    score < 80.0 -> CatalystState.CATALYZED
-    else -> CatalystState.HIGH
-}
+data class StateBand(val state: CatalystState, val minScore: Double, val maxScore: Double)
+
+private val stateBands = listOf(
+    StateBand(CatalystState.NORMAL, 0.0, 25.0),
+    StateBand(CatalystState.WATCH, 25.0, 45.0),
+    StateBand(CatalystState.BUILDING, 45.0, 65.0),
+    StateBand(CatalystState.CATALYZED, 65.0, 80.0),
+    StateBand(CatalystState.HIGH, 80.0, 100.0),
+)
+
+fun stateBandForScore(score: Double): StateBand =
+    stateBands.firstOrNull { score < it.maxScore } ?: stateBands.last()
+
+fun stateForScore(score: Double): CatalystState = stateBandForScore(score).state
 
 /**
  * Scoring/state application service: the only writer of catalyst

@@ -11,6 +11,7 @@ import com.catalystradar.persistence.event.EventSearch
 import com.catalystradar.persistence.event.EventSearchPage
 import com.catalystradar.persistence.event.EventStore
 import com.catalystradar.persistence.event.EventWithSource
+import com.catalystradar.persistence.event.SafeSourceMetadata
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
 import org.mockito.kotlin.any
@@ -40,11 +41,15 @@ class EventsControllerTest {
     @Test
     fun `searches with filters and cursor`() {
         val event = event()
+        val sourceId = UUID.randomUUID()
         `when`(
             events.searchEvents(
                 argThat { ticker == "DELL" && type == EventType.GUIDANCE_RAISE && limit == 10 },
             ),
-        ).thenReturn(EventSearchPage(listOf(EventWithSource(event, null)), "next"))
+        ).thenReturn(EventSearchPage(listOf(EventWithSource(
+            event, sourceId, "DELL", "Dell Technologies",
+            SafeSourceMetadata(sourceId, "Dell outlook", "polygon", null, null),
+        )), "next"))
 
         mockMvc.get("/v1/events?ticker=DELL&type=GUIDANCE_RAISE&limit=10") {
             accept = MediaType.APPLICATION_JSON
@@ -53,6 +58,15 @@ class EventsControllerTest {
             jsonPath("$.events.length()") { value(1) }
             jsonPath("$.events[0].type") { value("GUIDANCE_RAISE") }
             jsonPath("$.events[0].evidence[0].quoteOrFact") { value("Dell raised its full-year outlook.") }
+            jsonPath("$.events[0].ticker") { value("DELL") }
+            jsonPath("$.events[0].companyName") { value("Dell Technologies") }
+            jsonPath("$.events[0].source.title") { value("Dell outlook") }
+            jsonPath("$.events[0].source.sourceDocumentId") { value(sourceId.toString()) }
+            jsonPath("$.events[0].source.provider") { value("polygon") }
+            jsonPath("$.events[0].source.publishedAt") { doesNotExist() }
+            jsonPath("$.events[0].source.canonicalUrl") { doesNotExist() }
+            jsonPath("$.events[0].source.body") { doesNotExist() }
+            jsonPath("$.events[0].source.rawPayload") { doesNotExist() }
             jsonPath("$.nextCursor") { value("next") }
         }
     }

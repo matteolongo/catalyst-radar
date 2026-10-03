@@ -19,7 +19,7 @@ class OpsDashboardTest : PostgresIntegrationTest() {
     fun `dashboard and its script are served by the API without a public key`() {
         mockMvc.get("/ops/index.html").andExpect {
             status { isOk() }
-            content { string(org.hamcrest.Matchers.containsString("CatalystRadar Ops")) }
+            content { string(org.hamcrest.Matchers.containsString("CatalystRadar")) }
         }
         mockMvc.get("/ops/app.js").andExpect {
             status { isOk() }

@@ -101,6 +101,31 @@ class ScoreCalculatorTest {
 
         assertEquals(2, result.familyCount)
         assertEquals((9.0 + 7.2) * 1.05, result.rawScore, 1e-9)
+        assertEquals(16.2, result.contributionSum, 1e-9)
+        assertEquals(1.05, result.convergenceMultiplier, 1e-9)
+        assertEquals(30.0, result.normalizationScale, 1e-9)
+        assertEquals(0.01, result.contributionCutoff, 1e-9)
+    }
+
+    @Test
+    fun `signed contribution exposes exactly the factors used by score v1`() {
+        val event = miss(confidence = 0.8).copy(
+            materiality = 0.5,
+            surprise = 0.25,
+            directness = Directness.INFERRED,
+            eventTimestamp = asOf.minusSeconds(10L * 24 * 3600),
+        )
+        val contribution = calculator.calculate(listOf(event), asOf).contributions.single()
+
+        assertEquals(-1.0, contribution.sign)
+        assertEquals(8.0, contribution.baseWeight)
+        assertEquals(0.8, contribution.confidence)
+        assertEquals(0.5, contribution.materialityFactor)
+        assertEquals(0.25, contribution.surpriseFactor)
+        assertEquals(0.9, contribution.sourceQualityFactor)
+        assertEquals(0.5, contribution.directnessFactor)
+        assertEquals(0.5, contribution.timeDecayFactor, 1e-9)
+        assertEquals(-0.18, contribution.value, 1e-9)
     }
 
     @Test

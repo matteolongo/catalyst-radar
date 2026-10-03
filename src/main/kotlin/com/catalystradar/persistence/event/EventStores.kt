@@ -6,6 +6,7 @@ import com.catalystradar.domain.event.EventType
 import com.pgvector.PGvector
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.jdbc.core.JdbcAggregateTemplate
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
 import java.time.Instant
 import java.util.UUID
@@ -14,6 +15,7 @@ import java.util.UUID
 class EventStore(
     private val repository: EventRepository,
     private val template: JdbcAggregateTemplate,
+    private val jdbc: NamedParameterJdbcTemplate,
 ) {
 
     fun save(
@@ -87,7 +89,7 @@ class EventStore(
             null
         }
         return EventSearchPage(
-            events = page.map { EventWithSource(it.toDomain(), it.sourceDocumentId) },
+            events = detailed(page),
             nextCursor = next,
         )
     }
@@ -103,7 +105,42 @@ class EventStore(
     }
 
     fun findDetailedByCompanyId(companyId: UUID): List<EventWithSource> =
-        repository.findByCompanyId(companyId).map { EventWithSource(it.toDomain(), it.sourceDocumentId) }
+        detailed(repository.findByCompanyId(companyId))
+
+    fun findDetailedAvailableByCompanyId(companyId: UUID, snapshotCreatedAt: Instant): List<EventWithSource> =
+        detailed(repository.findAvailableByCompanyId(companyId, snapshotCreatedAt))
+
+    private fun detailed(rows: List<EventRow>): List<EventWithSource> {
+        if (rows.isEmpty()) return emptyList()
+        val metadata = jdbc.query(
+            """
+            SELECT e.id, c.ticker, c.name AS company_name,
+                   d.id AS document_id, d.title AS source_title, d.provider AS source_provider,
+                   d.published_at AS source_published_at, d.canonical_url AS source_canonical_url
+            FROM events e
+            JOIN companies c ON c.id = e.company_id
+            LEFT JOIN source_documents d ON d.id = e.source_document_id
+            WHERE e.id IN (:ids)
+            """,
+            mapOf("ids" to rows.map { it.id }),
+        ) { rs, _ ->
+            val documentId = rs.getObject("document_id", UUID::class.java)
+            val source = documentId?.let {
+                SafeSourceMetadata(
+                    sourceDocumentId = it,
+                    title = rs.getString("source_title"),
+                    provider = rs.getString("source_provider"),
+                    publishedAt = rs.getTimestamp("source_published_at")?.toInstant(),
+                    canonicalUrl = rs.getString("source_canonical_url"),
+                )
+            }
+            rs.getObject("id", UUID::class.java) to Triple(rs.getString("ticker"), rs.getString("company_name"), source)
+        }.toMap()
+        return rows.map { row ->
+            val (ticker, companyName, source) = requireNotNull(metadata[row.id])
+            EventWithSource(row.toDomain(), row.sourceDocumentId, ticker, companyName, source)
+        }
+    }
 
     fun assignCluster(eventId: UUID, clusterId: UUID) {
         val row = repository.findById(eventId).orElseThrow()

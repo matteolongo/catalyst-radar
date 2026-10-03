@@ -196,7 +196,7 @@ Local endpoints are:
 CatalystRadar API   http://localhost:8080
 OpenAPI             http://localhost:8080/v3/api-docs
 Swagger UI          http://localhost:8080/swagger-ui.html
-Ops dashboard       http://localhost:8080/ops/index.html
+Analysis dashboard  http://localhost:8080/ops/index.html
 Health              http://localhost:8080/actuator/health
 PostgreSQL          localhost:5432
 ```
@@ -205,8 +205,20 @@ PostgreSQL          localhost:5432
 
 With the API running as above, open `http://localhost:8080/ops/index.html`.
 The dashboard is served by the API itself; it needs no separate UI server,
-build step, or CORS configuration. Health and discovery leaders load
-immediately.
+build step, or CORS configuration. It opens on **Discover**. Filter bounded
+company results by state, minimum score or velocity, and exact-match sector;
+select a ticker for current catalyst analysis. **Events** searches bounded
+cross-company event pages by ticker, taxonomy, direction, and first-captured
+(`discoveredAt`) dates, with cursor-based **Load more**. Event, source
+publication, and first-captured timestamps remain distinct.
+
+Company analysis shows the saved current score/state and its server-defined
+range. Its explanation is a current reconstruction shown only when score and
+versions match the saved snapshot. Driver contributions are raw event values,
+not normalized score points. History shows stored snapshots and transitions,
+limited to 200 of each per selected range; contextual events do not prove why
+a past score changed. Pipeline controls and run histories remain under
+**Operations**.
 
 To see ingestion/model-run history or enable **Run pipeline now**, enter the
 local profile's admin key (`local-dev-secret`) and click **Save keys**. The run
@@ -216,8 +228,11 @@ it may incur API costs. Set `POLYGON_API_KEY`, `FINNHUB_API_KEY`, and
 `CATALYST_INGESTION_ENABLED=true` only if you also want scheduled runs.
 
 If public API authentication is enabled, enter a separately issued public API
-key in the **API key** field to load discovery leaders. **Clear keys** removes
-both values; otherwise they stay only in this browser tab's session storage.
+key in the **API key** field to load Discover, Company, and Events. The public
+key is sent only to `/v1/*`, and the admin key only to `/internal/*`. **Clear
+keys** removes both values; otherwise they stay only in this browser tab's
+session storage. Model run details show prompt/extractor versions and source
+document IDs, without prompts or document bodies.
 Do not expose the `local` profile or this key-entry POC on the public Internet.
 See [ui/README.md](ui/README.md) for dashboard details.
 

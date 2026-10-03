@@ -146,6 +146,30 @@ class EventStoreTest : PostgresIntegrationTest() {
         }
     }
 
+    @Test
+    fun `detailed reads include company and safe source metadata`() {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell Technologies"))
+        val publishedAt = Instant.parse("2026-09-16T09:00:00Z")
+        val document = documents.save(newDocument().copy(
+            publishedAt = publishedAt,
+            canonicalUrl = "https://example.com/dell",
+        ))
+        val event = events.save(newEvent(company.id, null, EventType.GUIDANCE_RAISE), document.id)
+
+        val companyResult = events.findDetailedByCompanyId(company.id).single { it.event.id == event.id }
+        val globalResult = events.searchEvents(EventSearch(limit = 10)).events.single { it.event.id == event.id }
+
+        listOf(companyResult, globalResult).forEach { result ->
+            assertEquals("DELL", result.ticker)
+            assertEquals("Dell Technologies", result.companyName)
+            assertEquals(document.id, result.source?.sourceDocumentId)
+            assertEquals("Dell raises guidance", result.source?.title)
+            assertEquals("polygon", result.source?.provider)
+            assertEquals(publishedAt, result.source?.publishedAt)
+            assertEquals("https://example.com/dell", result.source?.canonicalUrl)
+        }
+    }
+
     private fun newDocument() = SourceDocument(
         provider = "polygon",
         title = "Dell raises guidance",
