@@ -1,6 +1,5 @@
 # CatalystRadar local runtime (CR-01).
-# Only infrastructure runs in containers; the Spring Boot app runs via ./gradlew bootRun.
-# PostgreSQL with pgvector only. No Redis/Kafka (see AGENTS.md 1.1, 42).
+# PostgreSQL with pgvector and the Spring Boot application. No Redis/Kafka (see AGENTS.md 1.1, 42).
 
 services:
   postgres:
@@ -20,6 +19,30 @@ services:
       # PG18+ images expect a single mount at /var/lib/postgresql
       # (data lives in a versioned subdirectory for pg_upgrade).
       - catalyst_pgdata:/var/lib/postgresql
+
+  app:
+    build:
+      context: .
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      CATALYST_DB_URL: jdbc:postgresql://postgres:5432/catalyst_radar
+      CATALYST_DB_USER: catalyst
+      CATALYST_DB_PASSWORD: catalyst
+      POLYGON_API_KEY: ${POLYGON_API_KEY:-}
+      FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      CATALYST_INTERNAL_ADMIN_KEY: ${CATALYST_INTERNAL_ADMIN_KEY:-local-dev-secret}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
 
 volumes:
   catalyst_pgdata:

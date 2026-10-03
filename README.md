@@ -140,17 +140,29 @@ Polygon and Finnhub are accessed through provider abstractions and must not leak
 
 ## Run the POC
 
-Local infrastructure runs in Docker while the Kotlin application runs from
-Gradle or an IDE. Prerequisites are JDK 21 and Docker Desktop; Docker is also
-required for the Testcontainers integration tests.
+### Start the full local stack
 
-### Configure it safely
-
-Start PostgreSQL + pgvector with:
+Docker Desktop is the only runtime prerequisite. Start PostgreSQL, the Kotlin
+API, and the packaged analysis dashboard with:
 
 ```bash
-docker compose up -d
+docker compose up --build
 ```
+
+The API applies Flyway migrations during startup. Wait for the `app` service
+to report healthy, then use:
+
+```text
+CatalystRadar API   http://localhost:8080
+Analysis dashboard  http://localhost:8080/ops/index.html
+Health              http://localhost:8080/actuator/health
+PostgreSQL          localhost:5432
+```
+
+Run `docker compose down` to stop the stack while retaining database data.
+Run `docker compose down -v` only when a fresh local database is intended.
+
+### Configure it safely
 
 Flyway applies V1 and the additive V2 migration automatically at application
 startup. The local profile seeds the S&P 500 plus Nasdaq-100 reference data,
@@ -158,8 +170,8 @@ but schedulers remain disabled unless explicitly enabled. Ingestion queries
 every active company ticker in batches, so keep the active universe small for a
 real-provider smoke run.
 
-Use environment variables or a Git-ignored `.env` file for configuration.
-Never commit a real key, token, or database password.
+Compose reads optional keys from a Git-ignored `.env` file or exported
+environment variables. Never commit a real key, token, or database password.
 
 | Purpose | Environment variable |
 | --- | --- |
@@ -172,34 +184,9 @@ Never commit a real key, token, or database password.
 | Processing safety | `CATALYST_PIPELINE_BATCH_SIZE`, `CATALYST_PIPELINE_MAX_ATTEMPTS`, `CATALYST_PIPELINE_RETRY_DELAY` |
 | Daily decay snapshots | `CATALYST_SNAPSHOTS_ENABLED`, `CATALYST_SNAPSHOTS_INTERVAL` |
 
-On Windows PowerShell, for example:
-
-```powershell
-$env:SPRING_PROFILES_ACTIVE = "local"
-$env:CATALYST_INGESTION_ENABLED = "false"
-.\gradlew.bat bootRun
-```
-
-On macOS/Linux:
-
-```bash
-SPRING_PROFILES_ACTIVE=local CATALYST_INGESTION_ENABLED=false ./gradlew bootRun
-```
-
 The local profile uses the demo admin key `local-dev-secret`; never expose it
 remotely. For other profiles, set `CATALYST_INTERNAL_ADMIN_KEY` yourself.
 Keep scheduled ingestion disabled until you intend to make provider calls.
-
-Local endpoints are:
-
-```text
-CatalystRadar API   http://localhost:8080
-OpenAPI             http://localhost:8080/v3/api-docs
-Swagger UI          http://localhost:8080/swagger-ui.html
-Analysis dashboard  http://localhost:8080/ops/index.html
-Health              http://localhost:8080/actuator/health
-PostgreSQL          localhost:5432
-```
 
 ### Operator dashboard (POC)
 
