@@ -14,6 +14,25 @@ import java.time.Instant
 import java.util.UUID
 
 /**
+ * What registration did with one fetched article. An article naming no
+ * configured company is still stored: raw source material is the audit
+ * trail, and a ticker nobody tracks today may be tracked tomorrow. It is
+ * not queued, because nothing downstream could attribute it and guessing
+ * would attach catalyst impact to the wrong company.
+ */
+sealed interface DocumentRegistration {
+
+    /** Stored and queued for extraction. */
+    data class Queued(val documentId: UUID) : DocumentRegistration
+
+    /** Stored for audit only: no configured company explains this article. */
+    data class Unresolved(val documentId: UUID) : DocumentRegistration
+
+    /** Already ingested earlier, so nothing changed. */
+    data object Duplicate : DocumentRegistration
+}
+
+/**
  * Registers one provider article after it has been fetched. This is the
  * transaction boundary for local source-document, company-link, and queue
  * writes; provider and model calls remain outside it.
@@ -27,9 +46,11 @@ class SourceDocumentRegistrationService(
 ) {
 
     @Transactional
-    fun registerIfNew(provider: String, article: RawArticle, now: Instant): UUID? {
+    fun registerIfNew(provider: String, article: RawArticle, now: Instant): DocumentRegistration {
         val normalized = normalizeArticle(article, now)
-        if (existingDocument(provider, normalized.providerDocumentId, normalized.contentHash) != null) return null
+        if (existingDocument(provider, normalized.providerDocumentId, normalized.contentHash) != null) {
+            return DocumentRegistration.Duplicate
+        }
 
         val document = try {
             documents.save(
@@ -40,7 +61,9 @@ class SourceDocumentRegistrationService(
                 ).toJsonB(),
             )
         } catch (e: DataIntegrityViolationException) {
-            if (existingDocument(provider, normalized.providerDocumentId, normalized.contentHash) != null) return null
+            if (existingDocument(provider, normalized.providerDocumentId, normalized.contentHash) != null) {
+                return DocumentRegistration.Duplicate
+            }
             throw e
         }
 
@@ -50,10 +73,9 @@ class SourceDocumentRegistrationService(
                 ?.id
         }.toSet()
         documentCompanies.link(document.id, companyIds)
-        if (companyIds.isNotEmpty()) {
-            processing.ensurePending(document.id, now)
-        }
-        return document.id
+        if (companyIds.isEmpty()) return DocumentRegistration.Unresolved(document.id)
+        processing.ensurePending(document.id, now)
+        return DocumentRegistration.Queued(document.id)
     }
 
     private fun existingDocument(provider: String, providerDocumentId: String?, contentHash: String) =

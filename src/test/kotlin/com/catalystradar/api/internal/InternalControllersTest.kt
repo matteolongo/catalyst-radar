@@ -78,6 +78,36 @@ class InternalControllersTest {
     }
 
     @Test
+    fun `reports inserts and reuses separately from the original counters`() = runTest {
+        whenever(pipeline.runCycle(any())).thenReturn(
+            PipelineResult(
+                status = "SUCCESS",
+                documentsProcessed = 5,
+                eventsExtracted = 7,
+                companiesRescored = 1,
+                documentsSkipped = 1,
+                documentsCompleted = 4,
+                eventsInserted = 5,
+                eventsReused = 2,
+            ),
+        )
+
+        mockMvc.post("/internal/ingestion/runs") {
+            accept = MediaType.APPLICATION_JSON
+            header("X-Admin-Key", "test-admin")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.documentsConsidered") { value(5) }
+            jsonPath("$.documentsProcessed") { value(5) }
+            jsonPath("$.documentsCompleted") { value(4) }
+            jsonPath("$.documentsSkipped") { value(1) }
+            jsonPath("$.eventsExtracted") { value(7) }
+            jsonPath("$.eventsInserted") { value(5) }
+            jsonPath("$.eventsReused") { value(2) }
+        }
+    }
+
+    @Test
     fun `pipeline trigger without admin key is forbidden`() = runTest {
         mockMvc.post("/internal/ingestion/runs") {
             accept = MediaType.APPLICATION_JSON

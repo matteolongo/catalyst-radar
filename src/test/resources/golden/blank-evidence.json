@@ -1,0 +1,33 @@
+{
+  "id": "blank-evidence",
+  "article": {
+    "title": "Dell updates its full-year forecast",
+    "body": "Dell Technologies updated its full-year revenue forecast on Thursday without disclosing the reasoning."
+  },
+  "modelOutput": {
+    "document_relevant": true,
+    "events": [
+      {
+        "ticker": "DELL",
+        "family": "GUIDANCE",
+        "type": "GUIDANCE_RAISE",
+        "direction": "POSITIVE",
+        "confidence": 0.91,
+        "magnitude": null,
+        "surprise": 0.5,
+        "materiality": 0.8,
+        "expected_horizon": "MONTHS",
+        "directness": "DIRECT",
+        "event_timestamp": null,
+        "evidence": [
+          {"quote_or_fact": "   ", "source_offset_hint": "body:0-4"}
+        ],
+        "attributes": [{"key": "driver", "value": "unspecified"}]
+      }
+    ]
+  },
+  "expectedRelevant": true,
+  "expectedEventCount": 1,
+  "expectedFirstType": "GUIDANCE_RAISE",
+  "expectedFirstEvidenceCount": 0
+}

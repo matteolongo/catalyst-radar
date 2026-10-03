@@ -3,6 +3,7 @@ package com.catalystradar.e2e
 import com.catalystradar.domain.company.Company
 import com.catalystradar.domain.event.Directness
 import com.catalystradar.domain.event.Direction
+import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.EventHorizon
 import com.catalystradar.domain.event.EventType
 import com.catalystradar.persistence.PostgresIntegrationTest
@@ -10,10 +11,11 @@ import com.catalystradar.persistence.company.CompanyStore
 import com.catalystradar.ports.Embedding
 import com.catalystradar.ports.EmbeddingProvider
 import com.catalystradar.ports.EventExtractionProvider
-import com.catalystradar.ports.EvidenceSpan
 import com.catalystradar.ports.ExtractedEvent
 import com.catalystradar.ports.ExtractionRequest
 import com.catalystradar.ports.ExtractionResult
+import com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor
+import com.github.tomakehurst.wiremock.client.WireMock.anyUrl
 import com.github.tomakehurst.wiremock.client.WireMock.get
 import com.github.tomakehurst.wiremock.client.WireMock.okJson
 import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
@@ -40,6 +42,7 @@ import tools.jackson.databind.ObjectMapper
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * v0.1 acceptance scenario: real-shaped provider news for a known
@@ -100,7 +103,7 @@ class CatalystPipelineE2ETest : PostgresIntegrationTest() {
                         expectedHorizon = EventHorizon.WEEKS,
                         directness = Directness.DIRECT,
                         eventTimestamp = null,
-                        evidence = listOf(EvidenceSpan("quote", null)),
+                        evidence = listOf(EventEvidence("quote", null)),
                         attributes = emptyMap(),
                     ),
                 ),
@@ -108,6 +111,13 @@ class CatalystPipelineE2ETest : PostgresIntegrationTest() {
         }
         whenever(embeddings.embed(any())).thenReturn(
             Embedding(List(1536) { if (it == 0) 1f else 0f }, "fake"),
+        )
+
+        // The fixture context pins both schedulers off, so nothing may reach
+        // the provider before this test triggers the pipeline itself.
+        assertTrue(
+            wireMock.findAll(anyRequestedFor(anyUrl())).isEmpty(),
+            "fixture startup must not issue a provider request: ${wireMock.findAll(anyRequestedFor(anyUrl()))}",
         )
 
         mockMvc.post("/internal/ingestion/runs") {

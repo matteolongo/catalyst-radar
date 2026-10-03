@@ -261,6 +261,11 @@ The suite covers the POC acceptance path without calling live providers:
 | Full document-to-discovery flow | `CatalystPipelineE2ETest` with WireMock and stubbed LLM boundaries |
 | Scheduled execution | `IngestionSchedulerTest` calls `PipelineService` |
 | Retry and idempotency | `PipelineServiceTest` retries a transient extraction failure without re-ingesting or duplicating an event |
+| Honest counters | `PipelineServiceTest` separates inserted from reused events and never counts a failed recalculation |
+| Atomic document outcome | `PipelineAtomicityTest` rolls back event and cluster writes when the outcome cannot be finalized |
+| Interrupted-run recovery | `PipelineServiceTest` reprocesses a document left `PROCESSING` without multiplying score impact |
+| Unresolved company | `UnresolvedCompanyIngestionTest` keeps the article, queues nothing, and counts one bounded reason |
+| Fixture scheduler isolation | `FixtureSchedulerIsolationTest` proves both schedulers stay off even when the shell enables them |
 | Extraction trust boundary | `EventNormalizationServiceTest` rejects out-of-scope and future-dated candidates |
 | Canonical clustering | `EventClusteringServiceTest` keeps distinct evidence separate and syndication together |
 | Daily decay | `DailySnapshotServiceTest` writes a fresher, lower decayed score for an active company |
@@ -292,6 +297,26 @@ POST /internal/replays             recompute one company at a historical cutoff
 POST /internal/api-clients         issue a public API key
 ```
 
+A pipeline run reports what it actually did. `documentsProcessed` and
+`eventsExtracted` keep their original meaning for existing consumers; the
+split counters say where the numbers come from:
+
+| Field | Meaning |
+| --- | --- |
+| `documentsConsidered` | documents drained from the durable queue this cycle (alias of `documentsProcessed`) |
+| `documentsCompleted` | documents whose events, clusters, and completed status committed together |
+| `documentsSkipped` | documents that were judged irrelevant or had no configured company |
+| `eventsInserted` | new fingerprinted event rows written this cycle |
+| `eventsReused` | events already stored under the same fingerprint, e.g. after a reprocess |
+| `companiesRescored` | companies whose recalculation succeeded; a failure leaves it uncounted and the cycle `PARTIAL` |
+
+`eventsExtracted` remains `eventsInserted + eventsReused`. An event is
+identified by its stable facts, not by one model response: source document,
+company, type, direction, event timestamp, attributes, and evidence text.
+Re-running extraction with different confidence, magnitude, surprise,
+materiality, horizon, directness, or offset hints reuses the stored event
+instead of forking a second one.
+
 Replay accepts only a ticker and a cutoff, never raw source content:
 
 ```bash
@@ -309,10 +334,29 @@ the key on `/v1/*` requests, then send it as `Authorization: Bearer <rawKey>`.
 ### Scheduler and migration notes
 
 `catalyst.ingestion.enabled` and `catalyst.snapshots.enabled` both default to
-`false`. Leave them disabled for fixture-based tests. Enable them only for one
-application process: the pipeline's and daily snapshot task's overlap guards
-are intentionally in-memory for this POC. The daily task performs local
-recalculation only; it makes no provider or LLM call.
+`false`. Automated fixture contexts go further and pin both to `false` with
+test properties, so an inherited `CATALYST_INGESTION_ENABLED=true` in the
+shell cannot start a real pipeline against real provider keys and race the
+trigger a test owns. Scheduler behaviour is proven by tests that opt in
+explicitly with their own minimal context and mocked pipeline. Enable the
+flags only for one application process: the pipeline's and daily snapshot
+task's overlap guards are intentionally in-memory for this POC. The daily
+task performs local recalculation only; it makes no provider or LLM call.
+
+One document commits as a unit: its events, their cluster assignments, and
+its completed or skipped status land in a single short transaction.
+Extraction, normalization, and every embedding call happen before it opens,
+so a failure rolls the document back whole and records a retryable or
+terminal status separately. A document left `PROCESSING` by a killed run is
+still picked up, and reprocessing it reuses its stored events rather than
+adding catalyst impact.
+
+A fetched article whose tickers match no configured company is still stored
+for audit but never queued for extraction, and no LLM call is made for it.
+Each run counts that outcome once, logs only the count and the reason
+`NO_CONFIGURED_COMPANY`, and increments
+`catalyst_ingestion_documents_total{status="unresolved_company"}`. Repeated
+ingestion of the same article does not inflate it.
 
 V2 is additive and safely applies after V1. It backfills document/company
 links derivable from existing events. A legacy source document with neither an
@@ -720,6 +764,11 @@ sequenceDiagram
 The v0.1 ingestion process uses scheduled polling backed by a durable
 PostgreSQL processing record for retries. A separate message broker is
 deliberately not required for the POC.
+
+In practice the "Persist events" and "Find duplicate/related events" steps are
+one unit: clustering decides first (its embedding call runs before the
+transaction) and the document's events, cluster assignments, and final
+processing status then commit together, or not at all.
 
 ---
 

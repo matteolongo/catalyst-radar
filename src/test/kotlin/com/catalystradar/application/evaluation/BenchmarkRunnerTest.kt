@@ -6,6 +6,7 @@ import com.catalystradar.domain.company.Company
 import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.Directness
 import com.catalystradar.domain.event.Direction
+import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.EventHorizon
 import com.catalystradar.domain.event.EventType
 import com.catalystradar.domain.event.SourceDocument
@@ -19,7 +20,6 @@ import com.catalystradar.ports.DailyBar
 import com.catalystradar.ports.Embedding
 import com.catalystradar.ports.EmbeddingProvider
 import com.catalystradar.ports.EventExtractionProvider
-import com.catalystradar.ports.EvidenceSpan
 import com.catalystradar.ports.ExtractedEvent
 import com.catalystradar.ports.ExtractionRequest
 import com.catalystradar.ports.ExtractionResult
@@ -184,7 +184,7 @@ class BenchmarkRunnerTest : PostgresIntegrationTest() {
                         expectedHorizon = EventHorizon.WEEKS,
                         directness = Directness.DIRECT,
                         eventTimestamp = null,
-                        evidence = listOf(EvidenceSpan("quote", null)),
+                        evidence = listOf(EventEvidence("quote", null)),
                         attributes = emptyMap(),
                     ),
                 ),

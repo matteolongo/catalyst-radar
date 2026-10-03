@@ -2,12 +2,14 @@ package com.catalystradar.ports
 
 import com.catalystradar.domain.event.Directness
 import com.catalystradar.domain.event.Direction
+import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.EventHorizon
 import com.catalystradar.domain.event.EventType
 import com.catalystradar.domain.event.SourceDocument
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class ExtractionContractTest {
@@ -29,7 +31,7 @@ class ExtractionContractTest {
                         expectedHorizon = EventHorizon.WEEKS,
                         directness = Directness.DIRECT,
                         eventTimestamp = null,
-                        evidence = listOf(EvidenceSpan("raised guidance", null)),
+                        evidence = listOf(EventEvidence("raised guidance", null)),
                         attributes = mapOf("period" to "FY2026"),
                     ),
                 ),
@@ -56,5 +58,28 @@ class ExtractionContractTest {
         val result = ExtractionResult(documentRelevant = false, events = emptyList())
 
         assertEquals(emptyList(), result.events)
+    }
+
+    @Test
+    fun `candidates carry domain evidence values rather than a port-local copy`() {
+        val evidence = listOf(EventEvidence("raised guidance", "body:0-15"))
+
+        val candidate = ExtractedEvent(
+            ticker = "DELL",
+            type = EventType.GUIDANCE_RAISE,
+            direction = Direction.POSITIVE,
+            confidence = 0.9,
+            magnitude = null,
+            surprise = null,
+            materiality = null,
+            expectedHorizon = EventHorizon.WEEKS,
+            directness = Directness.DIRECT,
+            eventTimestamp = null,
+            evidence = evidence,
+            attributes = emptyMap(),
+        )
+
+        assertEquals(evidence, candidate.evidence)
+        assertSame(evidence.first(), candidate.evidence.first())
     }
 }

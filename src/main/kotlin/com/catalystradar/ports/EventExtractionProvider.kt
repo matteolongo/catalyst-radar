@@ -3,6 +3,7 @@ package com.catalystradar.ports
 import com.catalystradar.domain.company.Company
 import com.catalystradar.domain.event.Directness
 import com.catalystradar.domain.event.Direction
+import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.EventHorizon
 import com.catalystradar.domain.event.EventType
 import com.catalystradar.domain.event.SourceDocument
@@ -28,9 +29,12 @@ data class ExtractionResult(
 )
 
 /**
- * One extraction candidate. Deliberately narrower than [CatalystEvent]:
+ * One extraction candidate. Deliberately narrower than [com.catalystradar.domain.event.CatalystEvent]:
  * source quality comes from provider tier at validation time, and
  * scheduled defaults to false until stated otherwise.
+ *
+ * Evidence is the same domain value the stored event keeps, so an adapter
+ * never has to translate it and normalization cannot drop a field.
  */
 data class ExtractedEvent(
     val ticker: String,
@@ -43,11 +47,6 @@ data class ExtractedEvent(
     val expectedHorizon: EventHorizon,
     val directness: Directness,
     val eventTimestamp: Instant?,
-    val evidence: List<EvidenceSpan>,
+    val evidence: List<EventEvidence>,
     val attributes: Map<String, String>,
-)
-
-data class EvidenceSpan(
-    val quoteOrFact: String,
-    val sourceOffsetHint: String?,
 )

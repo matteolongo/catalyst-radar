@@ -22,6 +22,15 @@ import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Outcome of one pipeline cycle.
+ *
+ * `documentsProcessed` and `eventsExtracted` predate the split counters and
+ * keep their meaning for existing consumers: documents drained from the
+ * durable queue, and events stored for them regardless of whether the row
+ * was new or already present. `eventsInserted` and `eventsReused` separate
+ * those two cases so operators can see model drift without re-deriving it.
+ */
 data class PipelineResult(
     val status: String,
     val documentsProcessed: Int,
@@ -32,7 +41,13 @@ data class PipelineResult(
     val documentsRetryScheduled: Int = 0,
     val documentsTerminalFailures: Int = 0,
     val alreadyRunning: Boolean = false,
-)
+    val documentsCompleted: Int = 0,
+    val eventsInserted: Int = 0,
+    val eventsReused: Int = 0,
+) {
+    /** Documents taken off the durable queue this cycle. */
+    val documentsConsidered: Int get() = documentsProcessed
+}
 
 /**
  * End-to-end catalyst pipeline. Ingestion only registers source material;
@@ -45,6 +60,7 @@ class PipelineService(
     private val extraction: EventExtractionProvider,
     private val normalization: EventNormalizationService,
     private val clustering: EventClusteringService,
+    private val persistence: DocumentOutcomePersistenceService,
     private val catalyst: CatalystService,
     private val documents: SourceDocumentStore,
     private val documentCompanies: SourceDocumentCompanyStore,
@@ -98,6 +114,8 @@ class PipelineService(
 
         var documentsProcessed = 0
         var eventsExtracted = 0
+        var eventsInserted = 0
+        var eventsReused = 0
         var documentsSkipped = 0
         var documentsRetryScheduled = 0
         var documentsTerminalFailures = 0
@@ -107,7 +125,9 @@ class PipelineService(
         for (record in processing.findDue(now, properties.batchSize)) {
             val outcome = processDocument(record.sourceDocumentId, now)
             documentsProcessed++
-            eventsExtracted += outcome.eventsExtracted
+            eventsExtracted += outcome.eventsStored
+            eventsInserted += outcome.eventsInserted
+            eventsReused += outcome.eventsReused
             affectedCompanies += outcome.affectedCompanies
             metrics.documentProcessing(outcome.status.name.lowercase())
             if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) {
@@ -155,6 +175,9 @@ class PipelineService(
             documentsSkipped = documentsSkipped,
             documentsRetryScheduled = documentsRetryScheduled,
             documentsTerminalFailures = documentsTerminalFailures,
+            documentsCompleted = documentsCompleted,
+            eventsInserted = eventsInserted,
+            eventsReused = eventsReused,
         )
     }
 
@@ -173,19 +196,27 @@ class PipelineService(
             }
 
             val extractionResult = extraction.extract(ExtractionRequest(document, resolved))
-            val events = normalization.processDocument(document, extractionResult, resolved)
-            events.forEach { clustering.clusterEvent(it.id) }
-            if (!extractionResult.documentRelevant) {
-                processing.markSkipped(sourceDocumentId, now)
-                DocumentOutcome(DocumentProcessingStatus.SKIPPED)
+            val prepared = normalization.prepareDocument(document, extractionResult, resolved)
+            val plan = DocumentPersistencePlan(
+                sourceDocumentId = sourceDocumentId,
+                events = prepared.map { candidate ->
+                    PlannedEvent(
+                        event = candidate.event,
+                        fingerprint = candidate.fingerprint,
+                        cluster = clustering.prepareClustering(
+                            sourceDocumentId = sourceDocumentId,
+                            eventFingerprint = candidate.fingerprint,
+                            event = candidate.event,
+                        ),
+                    )
+                },
+            )
+            val finalStatus = if (extractionResult.documentRelevant) {
+                DocumentProcessingStatus.COMPLETED
             } else {
-                processing.markCompleted(sourceDocumentId, now)
-                DocumentOutcome(
-                    status = DocumentProcessingStatus.COMPLETED,
-                    eventsExtracted = events.size,
-                    affectedCompanies = events.mapTo(linkedSetOf()) { it.companyId },
-                )
+                DocumentProcessingStatus.SKIPPED
             }
+            persistence.persist(plan, finalStatus, now)
         } catch (e: ProviderException) {
             handleProviderFailure(sourceDocumentId, attempt.attemptCount, e, now)
         } catch (e: RuntimeException) {
@@ -239,11 +270,4 @@ class PipelineService(
         (error.message ?: error::class.simpleName ?: "pipeline failure")
             .replace(Regex("\\s+"), " ")
             .take(500)
-
-    private data class DocumentOutcome(
-        val status: DocumentProcessingStatus,
-        val eventsExtracted: Int = 0,
-        val affectedCompanies: Set<UUID> = emptySet(),
-        val error: String? = null,
-    )
 }

@@ -19,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -118,6 +120,30 @@ class EventStoreTest : PostgresIntegrationTest() {
         assertFalse(second.inserted)
         assertEquals(first.event.id, second.event.id)
         assertEquals(1, events.findByCompanyId(company.id).size)
+    }
+
+    @Test
+    fun `stores a distinct event for each fingerprint of one source document`() {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell Technologies"))
+        val document = documents.save(newDocument())
+
+        val first = events.saveIfAbsent(newEvent(company.id, null, EventType.GUIDANCE_RAISE), document.id, "a".repeat(64))
+        val second = events.saveIfAbsent(newEvent(company.id, null, EventType.GUIDANCE_RAISE), document.id, "b".repeat(64))
+
+        assertTrue(first.inserted)
+        assertTrue(second.inserted)
+        assertNotEquals(first.event.id, second.event.id)
+        assertEquals(2, events.findByCompanyId(company.id).size)
+    }
+
+    @Test
+    fun `rejects a fingerprint that is not a sha256 hex value`() {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell Technologies"))
+        val document = documents.save(newDocument())
+
+        assertFailsWith<IllegalArgumentException> {
+            events.saveIfAbsent(newEvent(company.id, null, EventType.GUIDANCE_RAISE), document.id, "not-a-hash")
+        }
     }
 
     @Test

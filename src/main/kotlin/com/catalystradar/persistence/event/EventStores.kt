@@ -30,8 +30,8 @@ class EventStore(
         eventFingerprint: String,
     ): StoredEvent {
         require(eventFingerprint.length == 64) { "eventFingerprint must be a SHA-256 hex value" }
-        repository.findBySourceDocumentIdAndEventFingerprint(sourceDocumentId, eventFingerprint)?.let {
-            return StoredEvent(it.toDomain(), inserted = false)
+        findFingerprinted(sourceDocumentId, eventFingerprint)?.let {
+            return StoredEvent(it, inserted = false)
         }
         return try {
             StoredEvent(
@@ -39,10 +39,19 @@ class EventStore(
                 inserted = true,
             )
         } catch (e: DataIntegrityViolationException) {
-            val existing = repository.findBySourceDocumentIdAndEventFingerprint(sourceDocumentId, eventFingerprint)
-            if (existing != null) StoredEvent(existing.toDomain(), inserted = false) else throw e
+            val existing = findFingerprinted(sourceDocumentId, eventFingerprint)
+            if (existing != null) StoredEvent(existing, inserted = false) else throw e
         }
     }
+
+    /**
+     * The event this exact fact is already stored under for one document,
+     * or null when the document has not produced it yet. Callers use this
+     * before deciding how much work a reprocess still needs.
+     */
+    fun findFingerprinted(sourceDocumentId: UUID, eventFingerprint: String): CatalystEvent? =
+        repository.findBySourceDocumentIdAndEventFingerprint(sourceDocumentId, eventFingerprint)
+            ?.toDomain()
 
     fun findById(id: UUID): CatalystEvent? =
         repository.findById(id).map { it.toDomain() }.orElse(null)

@@ -2,13 +2,14 @@ package com.catalystradar.application.extraction
 
 import com.catalystradar.domain.event.Directness
 import com.catalystradar.domain.event.Direction
+import com.catalystradar.domain.event.EventEvidence
 import com.catalystradar.domain.event.EventHorizon
 import com.catalystradar.domain.event.EventType
-import com.catalystradar.ports.EvidenceSpan
 import com.catalystradar.ports.ExtractedEvent
 import com.catalystradar.ports.ExtractionResult
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class ExtractionValidatorTest {
@@ -42,14 +43,11 @@ class ExtractionValidatorTest {
 
     @Test
     fun `drops candidates with blank evidence`() {
-        val result = validator.validate(
-            ExtractionResult(
-                documentRelevant = true,
-                events = listOf(valid().copy(evidence = listOf(EvidenceSpan(" ", null)))),
-            ),
-        )
-
-        assertTrue(result.events.isEmpty())
+        // Blank evidence cannot reach this point as a value: the domain
+        // EventEvidence refuses it at construction, and the adapter drops
+        // blank quotes before building a candidate.
+        assertFailsWith<IllegalArgumentException> { EventEvidence(" ", null) }
+        assertTrue(validator.validate(ExtractionResult(documentRelevant = true, events = listOf(valid()))).events.size == 1)
     }
 
     @Test
@@ -80,7 +78,7 @@ class ExtractionValidatorTest {
         expectedHorizon = EventHorizon.WEEKS,
         directness = Directness.DIRECT,
         eventTimestamp = null,
-        evidence = listOf(EvidenceSpan("raised outlook", null)),
+        evidence = listOf(EventEvidence("raised outlook", null)),
         attributes = mapOf("period" to "FY2026"),
     )
 }

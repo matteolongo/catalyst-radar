@@ -89,6 +89,7 @@ class IngestionService(
         var fetched = 0
         var added = 0
         var duplicates = 0
+        var unresolved = 0
         var firstError: String? = null
         val fresh = mutableListOf<NewDocument>()
         try {
@@ -104,14 +105,21 @@ class IngestionService(
                 fetched += page.articles.size
                 for (article in page.articles) {
                     try {
-                        val freshId = registrations.registerIfNew(provider.name, article, now)
-                        if (freshId != null) {
-                            added++
-                            fresh += NewDocument(freshId, article.tickers)
-                            metrics.documentIngested(provider.name, "new")
-                        } else {
-                            duplicates++
-                            metrics.documentIngested(provider.name, "duplicate")
+                        when (val registration = registrations.registerIfNew(provider.name, article, now)) {
+                            is DocumentRegistration.Queued -> {
+                                added++
+                                fresh += NewDocument(registration.documentId, article.tickers)
+                                metrics.documentIngested(provider.name, "new")
+                            }
+                            is DocumentRegistration.Unresolved -> {
+                                added++
+                                unresolved++
+                                metrics.documentIngested(provider.name, UNRESOLVED_COMPANY_STATUS)
+                            }
+                            DocumentRegistration.Duplicate -> {
+                                duplicates++
+                                metrics.documentIngested(provider.name, "duplicate")
+                            }
                         }
                     } catch (e: RuntimeException) {
                         if (firstError == null) firstError = e.message
@@ -126,14 +134,30 @@ class IngestionService(
         } catch (e: ProviderException.RateLimited) {
             // Preserve the window: a later cycle re-fetches it idempotently.
             metrics.ingestionRun(provider.name, elapsedMs(started))
+            reportUnresolved(runId, provider.name, unresolved)
             return ProviderOutcome(finish(runId, IngestionStatus.PARTIAL, fetched, added, duplicates, "rate limited"), fresh)
         } catch (e: ProviderException) {
             metrics.ingestionRun(provider.name, elapsedMs(started))
+            reportUnresolved(runId, provider.name, unresolved)
             return ProviderOutcome(finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, e.message), fresh)
         }
         val status = if (firstError != null) IngestionStatus.PARTIAL else IngestionStatus.SUCCESS
         metrics.ingestionRun(provider.name, elapsedMs(started))
+        reportUnresolved(runId, provider.name, unresolved)
         return ProviderOutcome(finish(runId, status, fetched, added, duplicates, firstError), fresh)
+    }
+
+    /**
+     * Counts only, never content: a retained document is explained by
+     * its reason, and article text, payloads, and ticker lists stay out
+     * of the log.
+     */
+    private fun reportUnresolved(runId: UUID, provider: String, unresolved: Int) {
+        if (unresolved == 0) return
+        log.info(
+            "ingestion run {} retained {} documents without a configured company provider={} reason={}",
+            runId, unresolved, provider, NO_CONFIGURED_COMPANY,
+        )
     }
 
     private fun elapsedMs(started: Long): Long = (System.nanoTime() - started) / 1_000_000
@@ -152,5 +176,11 @@ class IngestionService(
 
     companion object {
         const val TICKER_CHUNK_SIZE = 20
+
+        /** Why a stored document was kept without being queued. */
+        const val NO_CONFIGURED_COMPANY = "NO_CONFIGURED_COMPANY"
+
+        /** Bounded metric status for the same outcome. */
+        const val UNRESOLVED_COMPANY_STATUS = "unresolved_company"
     }
 }
