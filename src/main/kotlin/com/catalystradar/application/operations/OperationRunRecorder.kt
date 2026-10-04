@@ -1,7 +1,9 @@
 package com.catalystradar.application.operations
 
 import com.catalystradar.persistence.operations.OperationRunStore
+import jakarta.annotation.PostConstruct
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization
 import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.Instant
@@ -9,11 +11,16 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 @Service
+@DependsOnDatabaseInitialization
 class OperationRunRecorder(
     private val store: OperationRunStore,
     @Qualifier("operationsClock") private val clock: Clock,
 ) {
     private val current = ConcurrentHashMap<OperationKind, UUID>()
+
+    // This single-instance application has no live run owners during bean initialization.
+    @PostConstruct
+    fun recoverUnfinishedRuns() = store.recoverUnfinished(clock.instant())
 
     // Callers acquire their existing execution guard before opening a cycle.
     fun begin(kind: OperationKind, trigger: OperationTrigger, asOf: Instant): UUID {

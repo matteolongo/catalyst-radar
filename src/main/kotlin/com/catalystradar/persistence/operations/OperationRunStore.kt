@@ -20,23 +20,35 @@ class OperationRunStore(private val jdbc: NamedParameterJdbcTemplate, transactio
     fun begin(id: UUID, kind: OperationKind, trigger: OperationTrigger, asOf: Instant, now: Instant) {
         val params = mapOf("id" to id, "kind" to kind.name, "trigger" to trigger.name,
             "phase" to if (kind == OperationKind.PIPELINE) "INGESTION" else "SCORING",
-            "asOf" to Timestamp.from(asOf), "now" to Timestamp.from(now),
-            "message" to OperationalErrors.message("UNFINISHED_PREVIOUS_RUN"), "traceVersion" to PIPELINE_TRACE_VERSION)
+            "asOf" to Timestamp.from(asOf), "now" to Timestamp.from(now), "traceVersion" to PIPELINE_TRACE_VERSION)
         transaction.executeWithoutResult {
-            jdbc.update("""UPDATE document_processing_steps SET status='INTERRUPTED',finished_at=NULL,
-                updated_at=:now,error_code='UNFINISHED_PREVIOUS_RUN',error_message=:message
-                WHERE status='RUNNING' AND operation_run_id IN
-                    (SELECT id FROM operation_runs WHERE kind=:kind AND status='RUNNING')""", params)
-            jdbc.update("""UPDATE document_processing_attempts SET status='INTERRUPTED',finished_at=NULL,
-                updated_at=:now,error_code='UNFINISHED_PREVIOUS_RUN',error_message=:message
-                WHERE status='RUNNING' AND operation_run_id IN
-                    (SELECT id FROM operation_runs WHERE kind=:kind AND status='RUNNING')""", params)
-            jdbc.update("""UPDATE operation_runs SET status='INTERRUPTED',finished_at=NULL,capture_complete=FALSE,
-                updated_at=:now,error_code='UNFINISHED_PREVIOUS_RUN',error_message=:message
-                WHERE kind=:kind AND status='RUNNING'""", params)
+            interruptUnfinished(now, kind)
             jdbc.update("""INSERT INTO operation_runs(id,kind,trigger_type,status,phase,as_of,started_at,updated_at,trace_version)
                 VALUES(:id,:kind,:trigger,'RUNNING',:phase,:asOf,:now,:now,:traceVersion)""", params)
         }
+    }
+
+    fun recoverUnfinished(now: Instant) {
+        transaction.executeWithoutResult { interruptUnfinished(now) }
+    }
+
+    private fun interruptUnfinished(now: Instant, kind: OperationKind? = null) {
+        val params = mapOf<String, Any>("now" to Timestamp.from(now),
+            "message" to OperationalErrors.message("UNFINISHED_PREVIOUS_RUN")) +
+            (kind?.let { mapOf("kind" to it.name) } ?: emptyMap())
+        // Startup also repairs orphan children whose parent was already finalized.
+        val parents = if (kind == null) "TRUE" else "kind=:kind AND status='RUNNING'"
+        jdbc.update("""UPDATE document_processing_steps SET status='INTERRUPTED',finished_at=NULL,
+            updated_at=:now,error_code='UNFINISHED_PREVIOUS_RUN',error_message=:message
+            WHERE status='RUNNING' AND operation_run_id IN
+                (SELECT id FROM operation_runs WHERE $parents)""", params)
+        jdbc.update("""UPDATE document_processing_attempts SET status='INTERRUPTED',finished_at=NULL,
+            updated_at=:now,error_code='UNFINISHED_PREVIOUS_RUN',error_message=:message
+            WHERE status='RUNNING' AND operation_run_id IN
+                (SELECT id FROM operation_runs WHERE $parents)""", params)
+        jdbc.update("""UPDATE operation_runs SET status='INTERRUPTED',finished_at=NULL,capture_complete=FALSE,
+            updated_at=:now,error_code='UNFINISHED_PREVIOUS_RUN',error_message=:message
+            WHERE status='RUNNING' AND $parents""", params)
     }
 
     fun phase(id: UUID, phase: OperationPhase, now: Instant) {
