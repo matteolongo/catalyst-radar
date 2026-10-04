@@ -16,7 +16,7 @@ class DocumentInspectionStore(
 ) {
     private val cursor = OperationsCursor()
 
-    fun search(query: DocumentQuery, generatedAt: Instant, activeOperationRunIds: Set<UUID> = emptySet()): OperationsPage<DocumentListItem> {
+    fun search(query: DocumentQuery, generatedAt: Instant, activeOperationRunIds: Set<UUID>): OperationsPage<DocumentListItem> {
         val filters = mapOf(
             "states" to query.states.map { it.name }.sorted().joinToString(","),
             "provider" to (query.provider ?: ""), "ticker" to (query.normalizedTicker ?: ""),
@@ -86,10 +86,23 @@ class DocumentInspectionStore(
         ) { rs, _ ->
             val item = listItem(rs)
             val captured = rs.getLong("captured_attempts")
-            DocumentDetail(generatedAt, item, rs.getString("canonical_url"), rs.getString("provider_document_id"),
-                rs.instant("completed_at"), pipeline.maxAttempts, captured,
-                ((item.attemptCount ?: 0).toLong() - captured).coerceAtLeast(0), captured > 0,
-                emptyList(), 0, false, rs.getLong("model_calls"), item.eventReports, item.canonicalClusters)
+            DocumentDetail(
+                generatedAt = generatedAt,
+                document = item,
+                canonicalUrl = rs.getString("canonical_url"),
+                providerDocumentId = rs.getString("provider_document_id"),
+                completedAt = rs.instant("completed_at"),
+                maxAttempts = pipeline.maxAttempts,
+                capturedAttemptCount = captured,
+                unrecordedAttemptCount = ((item.attemptCount ?: 0).toLong() - captured).coerceAtLeast(0),
+                historyAvailable = captured > 0,
+                companies = emptyList(),
+                companiesTotal = 0,
+                companiesTruncated = false,
+                modelCallsRecorded = rs.getLong("model_calls"),
+                eventReports = item.eventReports,
+                canonicalClusters = item.canonicalClusters,
+            )
         }.singleOrNull() ?: return null
         val companies = jdbc.query(
             """SELECT c.id, c.ticker, c.name, COUNT(*) OVER () AS total,
@@ -132,12 +145,23 @@ class DocumentInspectionStore(
     }
 
     private fun listItem(rs: ResultSet) = DocumentListItem(
-        rs.uuid("id"), rs.getString("provider"), rs.getString("title"), rs.instant("published_at"),
-        requireNotNull(rs.instant("discovered_at")), requireNotNull(rs.instant("created_at")),
-        DocumentState.valueOf(rs.getString("state")), rs.getObject("attempt_count", Int::class.javaObjectType),
-        rs.instant("next_attempt_at"), rs.instant("updated_at"), rs.getString("last_error_code"),
-        rs.getString("last_error_message"), emptyList(), false, rs.getLong("event_reports"),
-        rs.getLong("canonical_clusters"), rs.getObject("first_ingestion_run_id", UUID::class.java),
+        id = rs.uuid("id"),
+        provider = rs.getString("provider"),
+        title = rs.getString("title"),
+        publishedAt = rs.instant("published_at"),
+        discoveredAt = requireNotNull(rs.instant("discovered_at")),
+        createdAt = requireNotNull(rs.instant("created_at")),
+        state = DocumentState.valueOf(rs.getString("state")),
+        attemptCount = rs.getObject("attempt_count", Int::class.javaObjectType),
+        nextAttemptAt = rs.instant("next_attempt_at"),
+        updatedAt = rs.instant("updated_at"),
+        lastErrorCode = rs.getString("last_error_code"),
+        lastErrorMessage = rs.getString("last_error_message"),
+        tickers = emptyList(),
+        tickersTruncated = false,
+        eventReports = rs.getLong("event_reports"),
+        canonicalClusters = rs.getLong("canonical_clusters"),
+        firstIngestionRunId = rs.getObject("first_ingestion_run_id", UUID::class.java),
     )
 
     private fun ResultSet.instant(column: String): Instant? = getTimestamp(column)?.toInstant()

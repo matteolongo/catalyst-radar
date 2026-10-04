@@ -48,7 +48,7 @@ class DocumentInspectionStoreTest : PostgresIntegrationTest() {
             .param("id", ingestion).param("at", at.toString()).update()
         jdbc.sql("UPDATE source_documents SET first_ingestion_run_id=:ingestion WHERE id=:id")
             .param("ingestion", ingestion).param("id", document).update()
-        assertEquals(listOf(document), store.search(DocumentQuery(ingestionRunId = ingestion), at).items.map { it.id })
+        assertEquals(listOf(document), store.search(DocumentQuery(ingestionRunId = ingestion), at, emptySet()).items.map { it.id })
         assertEquals(ingestion, store.detail(document, at)?.document?.firstIngestionRunId)
         assertNull(store.detail(other, at)?.document?.firstIngestionRunId)
         listOf(at.minusSeconds(1) to at.plusSeconds(100), at to at, at to at.plusSeconds(1)).forEach { (asOf, created) ->
@@ -66,7 +66,7 @@ class DocumentInspectionStoreTest : PostgresIntegrationTest() {
         val literal = fixtures.document(at, title = "A_B\\C")
         fixtures.document(at, title = "AXB\\C")
         fixtures.document(at, title = "A_BC")
-        assertEquals(listOf(literal), store.search(DocumentQuery(title = "A_B\\C"), at).items.map { it.id })
+        assertEquals(listOf(literal), store.search(DocumentQuery(title = "A_B\\C"), at, emptySet()).items.map { it.id })
     }
 
     @Test
@@ -75,8 +75,8 @@ class DocumentInspectionStoreTest : PostgresIntegrationTest() {
         val second = fixtures.document(at, title = "Contract update")
         fixtures.link(first, fixtures.company("AAA"))
         fixtures.link(first, fixtures.company("BBB"))
-        val page1 = store.search(DocumentQuery(from = at, to = at.plusSeconds(1), page = PageRequest(1)), at.plusSeconds(60))
-        val page2 = store.search(DocumentQuery(from = at, to = at.plusSeconds(1), page = PageRequest(1, page1.nextCursor)), at.plusSeconds(60))
+        val page1 = store.search(DocumentQuery(from = at, to = at.plusSeconds(1), page = PageRequest(1)), at.plusSeconds(60), emptySet())
+        val page2 = store.search(DocumentQuery(from = at, to = at.plusSeconds(1), page = PageRequest(1, page1.nextCursor)), at.plusSeconds(60), emptySet())
         assertEquals(setOf(first, second), (page1.items + page2.items).map { it.id }.toSet())
         assertEquals(2, page1.items.size + page2.items.size)
         assertNull(page2.nextCursor)
@@ -91,7 +91,7 @@ class DocumentInspectionStoreTest : PostgresIntegrationTest() {
         fixtures.link(notTracked, fixtures.company("AAA"))
         val skipped = fixtures.document(at)
         fixtures.processing(skipped, "SKIPPED", attempts = 1, updatedAt = at)
-        val page = store.search(DocumentQuery(states = setOf(DocumentState.UNRESOLVED, DocumentState.NOT_TRACKED), from = at, to = at.plusSeconds(1)), at)
+        val page = store.search(DocumentQuery(states = setOf(DocumentState.UNRESOLVED, DocumentState.NOT_TRACKED), from = at, to = at.plusSeconds(1)), at, emptySet())
         assertEquals(mapOf(unresolved to DocumentState.UNRESOLVED, notTracked to DocumentState.NOT_TRACKED), page.items.associate { it.id to it.state })
         assertEquals(DocumentState.SKIPPED, store.detail(skipped, at)?.document?.state)
         assertFalse(requireNotNull(store.detail(skipped, at)).historyAvailable)
@@ -105,8 +105,8 @@ class DocumentInspectionStoreTest : PostgresIntegrationTest() {
         fixtures.document(at, title = "Revenue +100", provider = "finnhub")
         fixtures.document(at.plusSeconds(1), title = "Revenue +10%", provider = "finnhub")
         fixtures.document(at, title = "Revenue +10%", provider = "polygon")
-        assertEquals(listOf(match), store.search(DocumentQuery(title = "%", ticker = " aaa ", provider = "finnhub", from = at, to = at.plusSeconds(1)), at).items.map { it.id })
-        assertEquals(2, store.search(DocumentQuery(provider = "finnhub", from = at, to = at.plusSeconds(1)), at).items.size)
+        assertEquals(listOf(match), store.search(DocumentQuery(title = "%", ticker = " aaa ", provider = "finnhub", from = at, to = at.plusSeconds(1)), at, emptySet()).items.map { it.id })
+        assertEquals(2, store.search(DocumentQuery(provider = "finnhub", from = at, to = at.plusSeconds(1)), at, emptySet()).items.size)
     }
 
     @Test
@@ -149,16 +149,16 @@ class DocumentInspectionStoreTest : PostgresIntegrationTest() {
         assertEquals(1, detail.unrecordedAttemptCount)
         assertTrue(detail.historyAvailable)
         assertEquals(2, detail.companiesTotal)
-        assertEquals(listOf(document), store.search(DocumentQuery(runId = run), at).items.map { it.id })
-        assertTrue(store.search(DocumentQuery(runId = UUID.randomUUID()), at).items.isEmpty())
-        assertEquals(3, store.search(DocumentQuery(from = at, to = at.plusSeconds(1)), at).items.single().eventReports)
+        assertEquals(listOf(document), store.search(DocumentQuery(runId = run), at, emptySet()).items.map { it.id })
+        assertTrue(store.search(DocumentQuery(runId = UUID.randomUUID()), at, emptySet()).items.isEmpty())
+        assertEquals(3, store.search(DocumentQuery(from = at, to = at.plusSeconds(1)), at, emptySet()).items.single().eventReports)
     }
 
     @Test
     fun `ticker and company associations are capped with explicit truncation`() {
         val document = fixtures.document(at)
         repeat(101) { fixtures.link(document, fixtures.company("A${it.toString().padStart(3, '0')}")) }
-        val item = store.search(DocumentQuery(from = at, to = at.plusSeconds(1)), at).items.single()
+        val item = store.search(DocumentQuery(from = at, to = at.plusSeconds(1)), at, emptySet()).items.single()
         assertEquals(100, item.tickers.size)
         assertTrue(item.tickersTruncated)
         assertEquals("A000", item.tickers.first())
@@ -172,8 +172,8 @@ class DocumentInspectionStoreTest : PostgresIntegrationTest() {
     @Test
     fun `cursor is bound to the normalized filters`() {
         repeat(2) { fixtures.document(at, title = "10%") }
-        val page = store.search(DocumentQuery(title = " 10% ", page = PageRequest(1)), at)
-        assertEquals(1, store.search(DocumentQuery(title = "10%", page = PageRequest(1, page.nextCursor)), at).items.size)
-        assertFailsWith<IllegalArgumentException> { store.search(DocumentQuery(title = "other", page = PageRequest(1, page.nextCursor)), at) }
+        val page = store.search(DocumentQuery(title = " 10% ", page = PageRequest(1)), at, emptySet())
+        assertEquals(1, store.search(DocumentQuery(title = "10%", page = PageRequest(1, page.nextCursor)), at, emptySet()).items.size)
+        assertFailsWith<IllegalArgumentException> { store.search(DocumentQuery(title = "other", page = PageRequest(1, page.nextCursor)), at, emptySet()) }
     }
 }
