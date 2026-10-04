@@ -186,6 +186,11 @@ environment variables. Never commit a real key, token, or database password.
 
 The local profile uses the demo admin key `local-dev-secret`; never expose it
 remotely. For other profiles, set `CATALYST_INTERNAL_ADMIN_KEY` yourself.
+The app service receives `CATALYST_OPENAI_EXTRACTION_MODEL` from Compose; after
+changing it in `.env`, recreate the service with `docker compose up -d --build app`.
+Exported shell variables take precedence over `.env`; clear a stale override first
+(`Remove-Item Env:CATALYST_OPENAI_EXTRACTION_MODEL` in PowerShell, or `unset
+CATALYST_OPENAI_EXTRACTION_MODEL` in Bash).
 Keep scheduled ingestion disabled until you intend to make provider calls.
 
 ### Operator dashboard (POC)

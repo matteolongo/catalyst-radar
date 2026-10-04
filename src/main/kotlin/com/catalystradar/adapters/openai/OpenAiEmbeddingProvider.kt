@@ -61,7 +61,7 @@ class OpenAiEmbeddingProvider(
             try {
                 response = post(request.text)
                 val values = response.data?.firstOrNull()?.embedding
-                    ?: throw ProviderException.InvalidResponse("openai: no embedding data")
+                    ?: throw ProviderException.InvalidResponse("openai: no embedding data", provider = "openai")
                 record(request, response, elapsedMs(started), success = true, error = null)
                 Embedding(values = values, model = properties.embeddingModel)
             } catch (e: CancellationException) {
@@ -72,18 +72,18 @@ class OpenAiEmbeddingProvider(
                 recordFailure(request, response, started, mapped)
                 throw mapped
             } catch (e: HttpServerErrorException) {
-                val failure = ProviderException.TemporaryUnavailable("openai: ${e.statusCode}")
+                val failure = ProviderException.TemporaryUnavailable("openai: ${e.statusCode}", provider = "openai")
                 recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: ProviderException) {
                 recordFailure(request, response, started, e)
                 throw e
             } catch (e: JacksonException) {
-                val failure = ProviderException.InvalidResponse("openai: unusable JSON (${e.message})")
+                val failure = ProviderException.InvalidResponse("openai: unusable JSON (${e.message})", provider = "openai")
                 recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: RestClientException) {
-                val failure = ProviderException.InvalidResponse("openai: ${e.message}")
+                val failure = ProviderException.InvalidResponse("openai: ${e.message}", provider = "openai")
                 recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: RuntimeException) {
@@ -103,7 +103,7 @@ class OpenAiEmbeddingProvider(
             .body(body)
             .retrieve()
             .body<OpenAiEmbeddingResponse>()
-            ?: throw ProviderException.InvalidResponse("openai: empty response")
+            ?: throw ProviderException.InvalidResponse("openai: empty response", provider = "openai")
     }
 
     private fun record(

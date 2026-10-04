@@ -69,7 +69,8 @@ Run kinds: PIPELINE/DAILY_SNAPSHOTS; statuses: RUNNING/SUCCESS/PARTIAL/FAILED/
 CANCELLED/INTERRUPTED. Model filters combine with AND: `provider=openai`,
 `operation=extract|embed`, exact `model` (1–128 characters), boolean `success`,
 UUID `documentId`, `attemptId`, `runId`. Run links join through attempts, never
-time proximity.
+time proximity. Cycle issues include the responsible provider when recorded or
+when a historical association is unambiguous; otherwise they say Unknown.
 
 Feeds default to 25 rows; `limit` is 1–100. Envelopes contain `generatedAt`,
 `window`, `items`, `limit`, `nextCursor`. Window is null for Documents, attempts,

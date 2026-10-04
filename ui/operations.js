@@ -1813,7 +1813,8 @@
         if (issue.ticker) links.push('<a href="?view=company&amp;ticker=' + encodeURIComponent(issue.ticker) +
           '" data-run-company-ticker="' + esc(issue.ticker) + '">Inspect company</a>');
         return '<li><span class="pill bad">' + esc(issue.phase) + '</span> <strong>' + esc(issue.errorCode) + '</strong><br>' +
-          esc(issue.errorMessage) + '<br><span class="muted">' + esc(time(issue.createdAt)) + '</span>' +
+          esc(issue.errorMessage) + '<br><span class="muted">Provider: ' + esc(issue.provider || 'Unknown') + '</span>' +
+          '<br><span class="muted">' + esc(time(issue.createdAt)) + '</span>' +
           (links.length ? '<p>' + links.join(' · ') + '</p>' : '') + '</li>';
       }).join('') + '</ul>';
       if (runIssuesError && runIssues.length) content += '<p class="panel-error">' + esc(runIssuesError) + '</p>';

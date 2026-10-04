@@ -41,6 +41,63 @@ class OperationsSchemaTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `V4 backfills provider on historical issues only when attribution is unambiguous`() {
+        val upgradeDatabase = PostgreSQLContainer<Nothing>(
+            DockerImageName.parse("pgvector/pgvector:pg18").asCompatibleSubstituteFor("postgres"),
+        ).apply { start() }
+        try {
+            Flyway.configure().dataSource(upgradeDatabase.jdbcUrl, upgradeDatabase.username, upgradeDatabase.password)
+                .target("3").load().migrate()
+            val upgradeJdbc = JdbcClient.create(DriverManagerDataSource(
+                upgradeDatabase.jdbcUrl, upgradeDatabase.username, upgradeDatabase.password,
+            ))
+            val upgradeFixtures = OperationsFixtures(upgradeJdbc)
+
+            fun ingestion(run: UUID, provider: String, at: Instant): UUID {
+                val id = UUID.randomUUID()
+                upgradeJdbc.sql("""
+                    INSERT INTO ingestion_runs(id,provider,status,operation_run_id,error_code,started_at)
+                    VALUES(:id,:provider,'PARTIAL',:run,'RATE_LIMITED',:at::timestamptz)
+                """).param("id", id).param("provider", provider).param("run", run).param("at", at.toString()).update()
+                return id
+            }
+
+            fun issue(run: UUID, phase: String, document: UUID? = null): UUID {
+                val id = UUID.randomUUID()
+                upgradeJdbc.sql("""
+                    INSERT INTO operation_run_issues(id,operation_run_id,phase,source_document_id,error_code,error_message,created_at)
+                    VALUES(:id,:run,:phase,:document,'RATE_LIMITED','Provider rate limit',:at::timestamptz)
+                """).param("id", id).param("run", run).param("phase", phase).param("document", document).param("at", at.toString()).update()
+                return id
+            }
+
+            val uniqueRun = upgradeFixtures.run(at)
+            ingestion(uniqueRun, "polygon", at)
+            val uniqueIssue = issue(uniqueRun, "INGESTION")
+
+            val ambiguousRun = upgradeFixtures.run(at.plusSeconds(10))
+            ingestion(ambiguousRun, "polygon", at.plusSeconds(10))
+            ingestion(ambiguousRun, "finnhub", at.plusSeconds(11))
+            val ambiguousIssue = issue(ambiguousRun, "INGESTION")
+
+            val processingRun = upgradeFixtures.run(at.plusSeconds(20))
+            val document = upgradeFixtures.document(at)
+            val attempt = upgradeFixtures.attempt(document, processingRun, 1, at, status = "RETRYABLE_ERROR")
+            upgradeFixtures.model(at, null, null, null, success = false, document = document, attempt = attempt)
+            val processingIssue = issue(processingRun, "PROCESSING", document)
+
+            Flyway.configure().dataSource(upgradeDatabase.jdbcUrl, upgradeDatabase.username, upgradeDatabase.password)
+                .load().migrate()
+
+            fun provider(issueId: UUID): String = upgradeJdbc.sql("SELECT COALESCE(provider,'') AS provider FROM operation_run_issues WHERE id=:id")
+                .param("id", issueId).query { rs, _ -> rs.getString("provider") }.single()
+            assertEquals("polygon", provider(uniqueIssue))
+            assertEquals("", provider(ambiguousIssue))
+            assertEquals("openai", provider(processingIssue))
+        } finally { upgradeDatabase.stop() }
+    }
+
+    @Test
     fun `upgrades V2 preserving legacy sources processing and known costs`() {
         val upgradeDatabase = PostgreSQLContainer<Nothing>(
             DockerImageName.parse("pgvector/pgvector:pg18").asCompatibleSubstituteFor("postgres"),

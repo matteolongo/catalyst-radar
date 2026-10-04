@@ -92,7 +92,7 @@ class PipelineService(
             ingestionResult.runs.filter { it.status != IngestionStatus.SUCCESS }.forEach { providerRun ->
                 val code = providerRun.errorCode ?: "UNKNOWN_FAILURE"
                 if (firstErrorCode == null) firstErrorCode = code
-                recorder.issue(id, phase, code)
+                recorder.issue(id, phase, code, provider = providerRun.provider)
             }
             phase = OperationPhase.PROCESSING
             recorder.phase(id, phase)
@@ -213,7 +213,7 @@ class PipelineService(
             val retryAt = if (e.isRetryable() && attempt.number < properties.maxAttempts) now.plus(retryDelay(e, attempt.number)) else null
             val code = OperationalErrors.code(e)
             attempts.fail(attempt, if (retryAt != null) DocumentProcessingStatus.RETRYABLE_ERROR else DocumentProcessingStatus.TERMINAL_ERROR, code, retryAt, now).also {
-                recorder.issue(runId, OperationPhase.PROCESSING, code, documentId = sourceDocumentId)
+                recorder.issue(runId, OperationPhase.PROCESSING, code, documentId = sourceDocumentId, provider = e.provider)
             }
         } catch (e: RuntimeException) {
             attempts.fail(attempt, DocumentProcessingStatus.TERMINAL_ERROR, "PROCESSING_FAILURE", null, now).also {

@@ -144,6 +144,7 @@ class BackofficeE2ETest : PostgresIntegrationTest() {
             header { string("Cache-Control", "no-store") }
             jsonPath("$.items[0].documentId") { value(sourceA.id.toString()) }
             jsonPath("$.items[0].errorCode") { value("RATE_LIMITED") }
+            jsonPath("$.items[0].provider") { value("openai") }
         }
         mockMvc.get("/internal/operations/runs/$second") {
             header("X-Admin-Key", "e2e-admin")
@@ -158,6 +159,22 @@ class BackofficeE2ETest : PostgresIntegrationTest() {
             status { isOk() }
             jsonPath("$.scoreVersion") { value(Versions.SCORE_V1) }
             jsonPath("$.score") { exists() }
+        }
+    }
+
+    @Test
+    fun `a rate-limited ingestion issue identifies its news provider`() = runTest {
+        val at = clock.instant().truncatedTo(ChronoUnit.MICROS)
+        val company = companyStore.save(Company(ticker = "ZZIP", name = "Ingestion Provider Issue"))
+        val runId = assertNotNull(pipelineFixture.build(company, at, failIngestion = true).runCycle(at).runId)
+
+        mockMvc.get("/internal/operations/runs/$runId/issues") {
+            header("X-Admin-Key", "e2e-admin")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.items[0].phase") { value("INGESTION") }
+            jsonPath("$.items[0].errorCode") { value("RATE_LIMITED") }
+            jsonPath("$.items[0].provider") { value("polygon") }
         }
     }
 }

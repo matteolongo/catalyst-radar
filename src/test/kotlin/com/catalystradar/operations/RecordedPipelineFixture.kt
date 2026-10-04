@@ -52,6 +52,7 @@ class RecordedPipelineFixture(
         at: Instant,
         titles: List<String> = listOf("Observability raise story"),
         failFirstTitle: String? = null,
+        failIngestion: Boolean = false,
     ): PipelineService {
         val metrics = CatalystMetrics(SimpleMeterRegistry())
         val failedSources = mutableSetOf<UUID>()
@@ -66,10 +67,13 @@ class RecordedPipelineFixture(
         }
         val news = object : NewsProvider {
             override val name = "polygon"
-            override suspend fun fetch(request: NewsFetchRequest) = NewsFetchResult(
-                articles = if (company.ticker in request.tickers) articles else emptyList(),
-                nextCursor = null,
-            )
+            override suspend fun fetch(request: NewsFetchRequest): NewsFetchResult {
+                if (failIngestion) throw ProviderException.RateLimited(retryAfterSeconds = 30L)
+                return NewsFetchResult(
+                    articles = if (company.ticker in request.tickers) articles else emptyList(),
+                    nextCursor = null,
+                )
+            }
         }
         val extraction = object : EventExtractionProvider {
             override suspend fun extract(request: ExtractionRequest): ExtractionResult {
@@ -83,7 +87,7 @@ class RecordedPipelineFixture(
                     success = !fails, errorCode = if (fails) "RATE_LIMITED" else null,
                     error = if (fails) "Provider rate limit; wait for the scheduled retry." else null,
                 ))
-                if (fails) throw ProviderException.RateLimited(retryAfterSeconds = 60)
+                if (fails) throw ProviderException.RateLimited(retryAfterSeconds = 60, provider = "openai")
                 return PipelineServiceTest.TitleExtraction.extract(request)
             }
         }
