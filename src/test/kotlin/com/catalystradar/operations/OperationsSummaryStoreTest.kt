@@ -170,6 +170,8 @@ class OperationsSummaryStoreTest : PostgresIntegrationTest() {
 
     @Test
     fun `dependency outcomes use observation time outside activity and exclude cancellation unfinished and future rows`() {
+        // Keep this aggregate fixture outside real-clock adapter records in the shared container.
+        val now = Instant.parse("2040-10-04T12:00:00Z")
         val old = now.minusSeconds(7200)
         ingestion(old, now.minusSeconds(300), "SUCCESS")
         ingestion(old, now.minusSeconds(200), "PARTIAL", code = "RATE_LIMITED")
