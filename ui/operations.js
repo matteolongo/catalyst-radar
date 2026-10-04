@@ -2674,6 +2674,17 @@
           (screen === 'company' && reloadKey === 'companyValuations') || (valuation && reloadKey === 'contributions');
         if (!credentials().hasAdmin || (!documentHistory && !collectionHistory)) return;
         invalidate();
+        // Aborted sibling reads cannot repaint after sequence invalidation; release controls without replacing retained content.
+        [['loadRunDocuments', tracePages.runDocuments], ['loadRunValuations', tracePages.runValuations],
+          ['loadCompanyValuations', tracePages.companyValuations], ['loadContributions', tracePages.contributions],
+          ['loadSteps', documentTabCache.steps], ['loadDocumentValuations', documentTabCache.valuations]].forEach(function (control) {
+          el(control[0]).disabled = !(control[1] && (control[1].cursor || control[1].error));
+        });
+        document.querySelectorAll('[data-reload-trace]').forEach(function (button) {
+          var key = button.dataset.reloadTrace;
+          var state = ['steps', 'valuations'].includes(key) ? documentTabCache[key] : tracePages[key];
+          button.disabled = !(state && state.loaded && state.historyPaused);
+        });
         if (documentHistory) delete documentTabCache[reloadKey];
         else delete tracePages[reloadKey];
         var context = traceContext;
