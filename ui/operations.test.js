@@ -670,7 +670,7 @@ test('a deep-linked unfinished pipeline run loads detail and paginated issues by
   const runId = '14141414-1414-4141-8141-141414141414';
   const documentId = '15151515-1515-4151-8151-151515151515';
   const issue = operationIssuesPageFixture(1, { items: [Object.assign({}, operationIssuesPageFixture().items[0], {
-    runId, documentId, errorMessage: '<script>private</script>',
+    runId, documentId, provider: 'openai', errorMessage: '<script>private</script>',
   })] });
   const detail = operationRunDetailFixture(runId, { run: operationRunFixture(runId, {
     active: false, status: 'RUNNING', phase: 'PROCESSING', captureComplete: false, finishedAt: null, durationMs: null,
@@ -689,6 +689,7 @@ test('a deep-linked unfinished pipeline run loads detail and paginated issues by
   assert.match(dashboard.html('runDetailContent'), /&lt;script&gt;private&lt;\/script&gt;/);
   assert.doesNotMatch(dashboard.html('runDetailContent'), /<script>/);
   assert.match(dashboard.html('runIssues'), /EXTRACTION_FAILED/);
+  assert.match(dashboard.html('runIssues'), /Provider: openai/);
   assert.match(dashboard.html('runIssues'), new RegExp('data-run-document-id="' + documentId + '"'));
   assert.doesNotMatch(dashboard.html('runDetailContent'), /%/);
 

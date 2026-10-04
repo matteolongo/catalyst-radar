@@ -78,18 +78,18 @@ class OpenAiEventExtractionProvider(
                 recordFailure(request, response, started, mapped)
                 throw mapped
             } catch (e: HttpServerErrorException) {
-                val failure = ProviderException.TemporaryUnavailable("openai: ${e.statusCode}")
+                val failure = ProviderException.TemporaryUnavailable("openai: ${e.statusCode}", provider = "openai")
                 recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: ProviderException) {
                 recordFailure(request, response, started, e)
                 throw e
             } catch (e: JacksonException) {
-                val failure = ProviderException.InvalidResponse("openai: unusable JSON (${e.message})")
+                val failure = ProviderException.InvalidResponse("openai: unusable JSON (${e.message})", provider = "openai")
                 recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: RestClientException) {
-                val failure = ProviderException.InvalidResponse("openai: ${e.message}")
+                val failure = ProviderException.InvalidResponse("openai: ${e.message}", provider = "openai")
                 recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: RuntimeException) {
@@ -120,7 +120,7 @@ class OpenAiEventExtractionProvider(
             .body(body)
             .retrieve()
             .body<OpenAiChatResponse>()
-            ?: throw ProviderException.InvalidResponse("openai: empty response")
+            ?: throw ProviderException.InvalidResponse("openai: empty response", provider = "openai")
     }
 
     private fun userMessage(request: ExtractionRequest): String {

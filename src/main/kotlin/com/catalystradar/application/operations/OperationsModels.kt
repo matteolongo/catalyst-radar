@@ -102,7 +102,18 @@ data class ProcessingAttempt(
     val nextAttemptAt: Instant?, val eventsInserted: Int, val eventsReused: Int, val errorCode: String?,
     val errorMessage: String?, val modelCallIds: List<UUID>, val modelCallsTotal: Long, val modelCallsTruncated: Boolean,
 )
-data class OperationIssue(val id: UUID, val runId: UUID, val phase: IssuePhase, val documentId: UUID?, val companyId: UUID?, val ticker: String?, val errorCode: String, val errorMessage: String, val createdAt: Instant)
+data class OperationIssue(
+    val id: UUID,
+    val runId: UUID,
+    val phase: IssuePhase,
+    val documentId: UUID?,
+    val companyId: UUID?,
+    val ticker: String?,
+    val provider: String?,
+    val errorCode: String,
+    val errorMessage: String,
+    val createdAt: Instant,
+)
 data class StartedAttempt(val id: UUID, val documentId: UUID, val runId: UUID, val number: Int)
 class OperationsResourceNotFoundException(val resource: OperationsResource, val id: UUID) : RuntimeException()
 data class IngestionRunInspection(val id: UUID, val provider: String, val status: IngestionStatus, val fetched: Int, val added: Int, val duplicates: Int, val error: String?, val finishedAt: Instant?, val startedAt: Instant, val durationMs: Long?, val runId: UUID?, val errorCode: String?)

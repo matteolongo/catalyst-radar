@@ -65,12 +65,13 @@ class OperationRunStore(private val jdbc: NamedParameterJdbcTemplate, transactio
             WHERE id=:id AND status='RUNNING'""", params) == 1) { "operation is not running" }
     }
 
-    fun issue(id: UUID, phase: OperationPhase, code: String, documentId: UUID?, companyId: UUID?, now: Instant) {
+    fun issue(id: UUID, phase: OperationPhase, code: String, documentId: UUID?, companyId: UUID?, now: Instant, provider: String?) {
         require(phase != OperationPhase.FINISHED) { "issues require an execution phase" }
-        jdbc.update("""INSERT INTO operation_run_issues(id,operation_run_id,phase,source_document_id,company_id,error_code,error_message,created_at)
-            VALUES(:issueId,:id,:phase,:document,:company,:code,:message,:now)""",
+        jdbc.update("""INSERT INTO operation_run_issues(id,operation_run_id,phase,source_document_id,company_id,provider,error_code,error_message,created_at)
+            VALUES(:issueId,:id,:phase,:document,:company,:provider,:code,:message,:now)""",
             mapOf("issueId" to UUID.randomUUID(), "id" to id, "phase" to phase.name, "document" to documentId,
-                "company" to companyId, "code" to code, "message" to OperationalErrors.message(code), "now" to Timestamp.from(now)))
+                "company" to companyId, "provider" to provider, "code" to code,
+                "message" to OperationalErrors.message(code), "now" to Timestamp.from(now)))
     }
 
     private fun OperationCounts.parameters(): Map<String, Any> = mapOf(
@@ -124,14 +125,15 @@ class OperationRunStore(private val jdbc: NamedParameterJdbcTemplate, transactio
             params["cursorAt"] = Timestamp.from(position.at); params["cursorId"] = position.id
         }
         val rows = jdbc.query(
-            """SELECT i.id,i.operation_run_id,i.phase,i.source_document_id,i.company_id,c.ticker,i.error_code,i.created_at
+            """SELECT i.id,i.operation_run_id,i.phase,i.source_document_id,i.company_id,c.ticker,i.provider,i.error_code,i.created_at
                 FROM operation_run_issues i LEFT JOIN companies c ON c.id=i.company_id
                 WHERE i.operation_run_id=:id $positionSql ORDER BY i.created_at DESC,i.id DESC LIMIT :limit""", params,
         ) { rs, _ ->
             val code = rs.getString("error_code")
             OperationIssue(rs.getObject("id", UUID::class.java), rs.getObject("operation_run_id", UUID::class.java),
                 IssuePhase.valueOf(rs.getString("phase")), rs.getObject("source_document_id", UUID::class.java),
-                rs.getObject("company_id", UUID::class.java), rs.getString("ticker"), code, OperationalErrors.message(code), rs.getTimestamp("created_at").toInstant())
+                rs.getObject("company_id", UUID::class.java), rs.getString("ticker"), rs.getString("provider"),
+                code, OperationalErrors.message(code), rs.getTimestamp("created_at").toInstant())
         }
         val items = rows.take(page.limit)
         val next = if (rows.size > page.limit) items.last().let { cursor.encode("issues", CursorPosition(it.createdAt, it.id), filters) } else null

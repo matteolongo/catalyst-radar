@@ -42,8 +42,14 @@ class OperationRunRecorder(
         }
     }
 
-    fun issue(id: UUID, phase: OperationPhase, code: String, documentId: UUID? = null, companyId: UUID? = null) =
-        store.issue(id, phase, code, documentId, companyId, clock.instant())
+    fun issue(
+        id: UUID,
+        phase: OperationPhase,
+        code: String,
+        documentId: UUID? = null,
+        companyId: UUID? = null,
+        provider: String? = null,
+    ) = store.issue(id, phase, code, documentId, companyId, clock.instant(), provider)
 
     fun activeIds(): Set<UUID> = current.values.toSet()
 

@@ -25,23 +25,23 @@ internal class ExtractionResponseParser(
 
     fun parse(response: OpenAiChatResponse): ExtractionResult {
         val message = response.choices?.firstOrNull()?.message
-            ?: throw ProviderException.InvalidResponse("openai: no choices")
+            ?: throw ProviderException.InvalidResponse("openai: no choices", provider = "openai")
         if (!message.refusal.isNullOrBlank()) {
-            throw ProviderException.InvalidResponse("openai: model refused")
+            throw ProviderException.InvalidResponse("openai: model refused", provider = "openai")
         }
         val content = message.content?.takeIf { it.isNotBlank() }
-            ?: throw ProviderException.InvalidResponse("openai: empty content")
+            ?: throw ProviderException.InvalidResponse("openai: empty content", provider = "openai")
         val root = try {
             mapper.readTree(content)
         } catch (e: Exception) {
-            throw ProviderException.InvalidResponse("openai: content is not JSON")
+            throw ProviderException.InvalidResponse("openai: content is not JSON", provider = "openai")
         }
         val relevant = root.path("document_relevant").takeIf { it.isBoolean }?.booleanValue()
-            ?: throw ProviderException.InvalidResponse("openai: missing document_relevant")
+            ?: throw ProviderException.InvalidResponse("openai: missing document_relevant", provider = "openai")
         if (!relevant) return ExtractionResult(documentRelevant = false, events = emptyList())
         val events = root.path("events").takeIf { it.isArray }
             ?.mapNotNull { toCandidate(it) }
-            ?: throw ProviderException.InvalidResponse("openai: missing events")
+            ?: throw ProviderException.InvalidResponse("openai: missing events", provider = "openai")
         return ExtractionResult(documentRelevant = true, events = events)
     }
 
