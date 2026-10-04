@@ -6,7 +6,7 @@
   var OPERATIONAL = ['overview', 'pipeline', 'documents', 'models', 'settings'];
   var ACCESS_STATUS_IDS = ['overviewStatus', 'pipelineStatus', 'documentStatus', 'modelStatus'];
   var DOCUMENT_STATES = ['PENDING', 'PROCESSING', 'COMPLETED', 'SKIPPED', 'RETRYABLE_ERROR', 'TERMINAL_ERROR', 'UNRESOLVED', 'NOT_TRACKED'];
-  var DOCUMENT_TABS = ['steps', 'valuations', 'overview', 'attempts', 'models', 'events', 'source'];
+  var DOCUMENT_TABS = ['steps', 'overview', 'valuations', 'attempts', 'models', 'events', 'source'];
   var MODEL_PROVIDERS = ['openai'];
   var MODEL_OPERATIONS = ['extract', 'embed'];
   var PIPELINE_KINDS = ['PIPELINE', 'DAILY_SNAPSHOTS'];
@@ -513,6 +513,30 @@
     function valuationRoute(item) {
       return traceRoute({ valuationId: item.id, runId: screen === 'company' ? item.operationRunId : params.get('runId') });
     }
+    function retainTracePage(state, page, appendPage, sortField) {
+      var incoming = page.items || [];
+      var refreshed = new Map(incoming.map(function (item) { return [item.id, item]; }));
+      var previous = state.items.map(function (item) { return refreshed.get(item.id) || item; });
+      var existingIds = new Set(state.items.map(function (item) { return item.id; }));
+      var overlaps = incoming.some(function (item) { return existingIds.has(item.id); });
+      state.items = window.CatalystOperationsModel.mergePage(
+        { items: appendPage ? previous : incoming }, { items: appendPage ? incoming : previous }).items;
+      state.items.sort(function (a, b) {
+        return new Date(b[sortField] || b.asOf || b.startedAt || b.discoveredAt || b.createdAt) - new Date(a[sortField] || a.asOf || a.startedAt || a.discoveredAt || a.createdAt) || b.id.localeCompare(a.id);
+      });
+      if (appendPage || !state.loaded || !overlaps) state.cursor = page.nextCursor || null;
+      state.historyPaused = !!(state.historyPaused || appendPage || state.items.length > 25);
+      state.firstLoadedAt = state.firstLoadedAt || page.generatedAt || null;
+      state.generatedAt = page.generatedAt || state.generatedAt || null;
+    }
+    function traceHistoryNotice(state, key) {
+      if (!state.historyPaused) return '';
+      return '<div class="trace-notice"><p>History refresh is paused while inspecting retained pages. ' +
+        (state.firstLoadedAt ? 'Pages read from ' + timeMark(state.firstLoadedAt) + ' to ' + timeMark(state.generatedAt) + '. ' : '') +
+        'Rows keep their last read values; running steps and document outcomes may have changed. Automatic refresh remains active for cycle phases and document overview. Load more continues from the retained page.</p>' +
+        '<button type="button" data-reload-trace="' + esc(key) + '"' + (state.loading ? ' disabled' : '') + '>Reload latest trace/history</button>' +
+        '<p class="small">Reload starts with the latest 25 rows. Any already verified valuation detail stays open.</p></div>';
+    }
     function renderValuationRows(state, origin) {
       var rows = state.items.map(function (item) {
         var companyRoute = '?view=company&ticker=' + encodeURIComponent(item.ticker) + '&runId=' + encodeURIComponent(item.operationRunId) + '&valuationId=' + encodeURIComponent(item.id);
@@ -540,11 +564,11 @@
         html = '<p class="muted small">No successful valuation for the selected cycle is present in the loaded company pages. ' + traceLink('?view=pipeline&runId=' + encodeURIComponent(params.get('runId')), 'Inspect cycle issues') + (state.cursor ? '. Additional history remains on later pages.</p>' : '. No additional recorded valuation pages are available.</p>') + html;
       }
       if (state.error) html += '<p class="panel-error">' + esc(state.error) + '</p>';
-      return html;
+      return traceHistoryNotice(state, origin === 'document' ? 'valuations' : origin === 'company' ? 'companyValuations' : 'runValuations') + html;
     }
     function renderDocumentSteps(state) {
       var item = selectedDocumentDetail && selectedDocumentDetail.document || {};
-      var html = traceCoverage(item.traceVersion, 'document intake') + '<p class="muted small">Only executed, persisted stages appear. Times are operational UTC times; scoring as-of and source publication/discovery remain separate. Showing ' + state.items.length + ' loaded stages.</p>';
+      var html = traceHistoryNotice(state, 'steps') + traceCoverage(item.traceVersion, 'document intake') + '<p class="muted small">Only executed, persisted stages appear. Times are operational UTC times; scoring as-of and source publication/discovery remain separate. Showing ' + state.items.length + ' loaded stages.</p>';
       if (documentFilters.runId) html += '<p>Selected cycle: ' + traceLink('?view=pipeline&runId=' + encodeURIComponent(documentFilters.runId), documentFilters.runId) + '</p>';
       if (selectedAttemptId) html += '<p>Selected attempt: ' + esc(selectedAttemptId) + '</p>';
       if (!state.items.length) html += '<p class="muted">' + (state.loading ? 'Loading recorded steps…' : 'No stages recorded for this document and selected run/attempt context. Later stages are not assumed to have run.') + '</p>';
@@ -643,14 +667,14 @@
         el('documentDetailStatus').textContent = '';
       }
     }
-    function renderDocumentDetail() {
+    function renderDocumentDetail(keepRetainedHistory) {
       if (!selectedDocumentId || !selectedDocumentDetail) return;
       var detail = selectedDocumentDetail;
       var item = detail.document || {};
       el('documentDetailTitle').textContent = item.title || 'Untitled document';
       el('documentDetailStatus').textContent = 'Captured ' + time(item.discoveredAt) + ' UTC · Current global state: ' + documentStateLabel(item.state);
       renderDocumentOverview(detail);
-      renderSelectedDocumentTab();
+      if (!keepRetainedHistory || !['steps', 'valuations'].includes(selectedDocumentTab) || !tabState(selectedDocumentTab).historyPaused) renderSelectedDocumentTab();
     }
     function tabState(tab) {
       if (!documentTabCache[tab]) documentTabCache[tab] = { loaded: false, loading: false, items: [], cursor: null, error: null, body: null };
@@ -831,7 +855,7 @@
         selectedDocumentDetail = result.data;
         selectedDocumentLoaded = true;
         el('documentDetailStatus').textContent = '';
-        renderDocumentDetail();
+        renderDocumentDetail(force);
         return true;
       }).catch(function (error) {
         if (!current(revision, requestSequence, 'documents') || error.name === 'AbortError') return false;
@@ -860,6 +884,7 @@
       if (!selectedDocumentId || tab === 'overview' || !credentials().hasAdmin) return Promise.resolve(false);
       var state = tabState(tab);
       if (state.loading || (appendPage && !state.cursor) || (state.loaded && !force && !appendPage)) return Promise.resolve(state.loaded);
+      if (force && state.loaded && state.historyPaused && ['steps', 'valuations'].includes(tab)) return Promise.resolve(true);
       var id = selectedDocumentId;
       var revision = credentials().revision;
       var requestSequence = sequence;
@@ -870,6 +895,7 @@
       return read(documentTabPath(tab, cursor), revision, requestSequence, 'documents').then(function (result) {
         if (!result.current || selectedDocumentId !== id || selectedDocumentTab !== tab) return false;
         if (tab === 'source') state.body = result.data;
+        else if (['steps', 'valuations'].includes(tab)) retainTracePage(state, result.data, appendPage);
         else {
           var incoming = tab === 'events' ? (result.data.events || []) : (result.data.items || []);
           state.items = appendPage ? window.CatalystOperationsModel.mergePage({ items: state.items }, { items: incoming }).items : incoming.slice();
@@ -998,8 +1024,11 @@
         documentPageError = null;
         if (selectedDocumentId) {
           selectedDocumentLoaded = false;
-          var cachedSource = documentTabCache.source;
-          documentTabCache = cachedSource && cachedSource.loaded ? { source: cachedSource } : {};
+          var retained = {};
+          ['source', 'steps', 'valuations'].forEach(function (tab) {
+            if (documentTabCache[tab] && (tab !== 'source' || documentTabCache[tab].loaded)) retained[tab] = documentTabCache[tab];
+          });
+          documentTabCache = retained;
         }
       }
       var tasks = [];
@@ -2437,6 +2466,17 @@
       ['runDocuments', 'runValuations', 'companyValuations'].forEach(function (id) { el(id).innerHTML = ''; });
       ['loadRunDocuments', 'loadRunValuations', 'loadCompanyValuations'].forEach(function (id) { toggleHidden(id, true); });
     }
+    function denyTraceAccess() {
+      if (OPERATIONAL.includes(screen)) {
+        accessRequired();
+        var id = { pipeline: 'pipelineStatus', documents: 'documentStatus', models: 'modelStatus', overview: 'overviewStatus', settings: 'settingsStatus' }[screen];
+        el(id).innerHTML = 'Admin access denied. ' + traceLink('?view=settings', 'Open Settings to update the admin key') + '.';
+      } else {
+        invalidate();
+        clearTraceData();
+        el('companyValuations').innerHTML = '<p class="panel-error">Admin access denied. ' + traceLink('?view=settings', 'Open Settings to update the admin key') + '.</p>';
+      }
+    }
     function configureTrace() {
       var key = [screen, params.get('runId'), params.get('documentId'), params.get('attemptId'), (params.get('ticker') || '').toUpperCase()].join('|');
       var next = params.get('valuationId') || null;
@@ -2479,7 +2519,7 @@
       }).join('');
       if (!state.items.length) html = '<p class="muted">' + (state.loading ? 'Loading cycle documents…' : state.loaded ? 'No documents explicitly linked to this cycle.' : 'Cycle documents have not been loaded.') + '</p>';
       if (state.error) html += '<p class="panel-error">' + esc(state.error) + '</p>';
-      return html;
+      return traceHistoryNotice(state, 'runDocuments') + html;
     }
     function renderTraceCollection(key) {
       var state = tracePage(key);
@@ -2494,6 +2534,7 @@
     function loadTraceCollection(key, appendPage, force) {
       var state = tracePage(key);
       if (!credentials().hasAdmin || state.loading || (appendPage && !state.cursor) || (!appendPage && state.loaded && !force)) return Promise.resolve(state.loaded);
+      if (force && state.loaded && state.historyPaused) return Promise.resolve(true);
       var revision = credentials().revision;
       var requestSequence = sequence;
       var context = traceContext;
@@ -2504,19 +2545,13 @@
       renderTraceCollection(key);
       return read(traceCollectionPath(key, appendPage ? state.cursor : null), revision, requestSequence, expected).then(function (result) {
         if (!result.current || context !== traceContext || (key === 'contributions' && selected !== valuationId)) return false;
-        state.items = appendPage ? window.CatalystOperationsModel.mergePage({ items: state.items }, result.data).items : (result.data.items || []).slice();
-        state.cursor = result.data.nextCursor || null;
+        retainTracePage(state, result.data, appendPage, key === 'contributions' ? 'createdAt' : null);
         state.loaded = true;
         return true;
       }).catch(function (error) {
         if (!current(revision, requestSequence, expected) || context !== traceContext || error.name === 'AbortError') return false;
         state.error = error.status === 403 ? 'Admin access was denied. Update the key in Settings.' : 'Unable to load recorded data. Retry this read.';
-        if (error.status === 403) {
-          invalidate();
-          clearTraceData();
-          if (OPERATIONAL.includes(screen)) accessRequired();
-          else el('companyValuations').innerHTML = '<p class="panel-error">Admin access denied. ' + traceLink('?view=settings', 'Open Settings') + '</p>';
-        }
+        if (error.status === 403) denyTraceAccess();
         return false;
       }).finally(function () {
         if (current(revision, requestSequence, expected) && context === traceContext && tracePages[key] === state) {
@@ -2556,20 +2591,23 @@
       if (!state.items.length) html = '<p class="muted">' + (state.loading ? 'Loading recorded contributions…' : state.loaded ? 'No retained contributions were recorded for this valuation.' : 'Contributions have not been loaded.') + '</p>';
       if (state.cursor) html += '<p class="muted small">Additional contributions remain on later pages; totals above are the saved full calculation.</p>';
       if (state.error) html += '<p class="panel-error">' + esc(state.error) + '</p>';
-      return html;
+      return traceHistoryNotice(state, 'contributions') + html;
     }
     function loadSelectedValuation() {
       if (!valuationId || valuationError || valuationLoading || !credentials().hasAdmin) return Promise.resolve(false);
+      // Its parent was verified before display; only context/key changes clear that proof.
+      if (valuation) return loadTraceCollection('contributions', false, false);
       if (screen === 'documents') {
         var page = tracePage('documentValuations');
         var loadedDocumentValuations = page.items.concat(tabState('valuations').items);
         if (!loadedDocumentValuations.some(function (item) { return sameId(item.id, valuationId); })) {
+          clearValuation();
+          toggleHidden('valuationDetail', false);
           el('valuationStatus').innerHTML = (page.cursor || tabState('valuations').cursor ? 'This valuation is not on the loaded document pages. Load more document valuations to find the recorded connection. ' : 'No recorded connection to this document appears in the loaded valuations. ') +
             traceLink(traceRoute({ documentTab: 'valuations' }), 'Open document valuations');
           return Promise.resolve(false);
         }
       }
-      if (valuation) return loadTraceCollection('contributions', false, false);
       var id = valuationId;
       var revision = credentials().revision;
       var requestSequence = sequence;
@@ -2594,11 +2632,8 @@
         return loadTraceCollection('contributions', false, false);
       }).catch(function (error) {
         if (!current(revision, requestSequence, expected) || id !== valuationId || error.name === 'AbortError') return false;
-        if (error.status === 403) {
-          invalidate();
-          clearTraceData();
-          el('valuationStatus').textContent = 'Admin access denied. Update the key in Settings.';
-        } else el('valuationStatus').textContent = error.code === 'VALUATION_NOT_FOUND' ? 'Recorded valuation not found.' : 'Unable to read this valuation. Use Refresh to retry.';
+        if (error.status === 403) denyTraceAccess();
+        else el('valuationStatus').textContent = error.code === 'VALUATION_NOT_FOUND' ? 'Recorded valuation not found.' : 'Unable to read this valuation. Use Refresh to retry.';
         return false;
       }).finally(function () { if (current(revision, requestSequence, expected) && id === valuationId) valuationLoading = false; });
     }
@@ -2614,7 +2649,7 @@
         tasks.push(loadTraceCollection('runValuations', false, force));
       } else if (screen === 'company' && /^[A-Za-z0-9][A-Za-z0-9.-]{0,14}$/.test(params.get('ticker') || '')) {
         tasks.push(loadTraceCollection('companyValuations', false, force));
-      } else if (screen === 'documents' && selectedDocumentId && documentRouteValid && valuationId) {
+      } else if (screen === 'documents' && selectedDocumentId && documentRouteValid && valuationId && !valuation) {
         if (!tabState('valuations').items.some(function (item) { return sameId(item.id, valuationId); })) tasks.push(loadTraceCollection('documentValuations', false, force));
       }
       var revision = credentials().revision;
@@ -2629,6 +2664,25 @@
         if (event.button > 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
         options.navigate(link.dataset.traceRoute, { returnSearch: currentLocalSearch() });
+        return;
+      }
+      var reload = event.target.closest('[data-reload-trace]');
+      if (reload) {
+        var reloadKey = reload.dataset.reloadTrace;
+        var documentHistory = screen === 'documents' && reloadKey === selectedDocumentTab && ['steps', 'valuations'].includes(reloadKey);
+        var collectionHistory = (screen === 'pipeline' && ['runDocuments', 'runValuations'].includes(reloadKey)) ||
+          (screen === 'company' && reloadKey === 'companyValuations') || (valuation && reloadKey === 'contributions');
+        if (!credentials().hasAdmin || (!documentHistory && !collectionHistory)) return;
+        invalidate();
+        if (documentHistory) delete documentTabCache[reloadKey];
+        else delete tracePages[reloadKey];
+        var context = traceContext;
+        var revision = credentials().revision;
+        var requestSequence = sequence;
+        var loaded = documentHistory ? loadDocumentTab(false, false) : loadTraceCollection(reloadKey, false, false);
+        loaded.then(function () {
+          if (current(revision, requestSequence) && context === traceContext && valuationId) loadSelectedValuation();
+        });
         return;
       }
       var id = event.target.id;

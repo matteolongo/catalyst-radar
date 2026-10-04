@@ -133,3 +133,34 @@ load more to verify the relationship. No unbounded search is performed. Run and
 company detail also check the valuation's stored parent IDs. Key changes clear
 protected records and abort/invalidate stale reads. Existing pipeline execution
 is the only write control; trace navigation never invokes a provider or model.
+
+### History freshness and access denial
+
+The default 30-second refresh and the main **Refresh** action continue reading
+current cycle phases/counters and document overview/queue metadata. For trace
+collections with one loaded page, a latest-page read updates matching rows and
+retains previously loaded rows. An overlapping page keeps the existing next
+cursor; if there is no overlap, the new page's cursor allows the missing interval
+to be traversed manually. Every request remains bounded to 25 rows.
+
+After **Load more** or retention grows beyond 25 rows, that collection pauses
+automatic and main-button history refresh. Its notice shows the earliest/latest
+page-read times from the server. Rows reflect their individual last read values:
+running steps, attempt outcomes and global document state shown in retained cycle
+rows may have changed. Current cycle phases and the document overview continue
+refreshing independently. Load more uses the retained cursor; no automatic loop
+fetches older pages. Paused document history is not repainted by metadata polls.
+
+**Reload latest trace/history** deliberately replaces only that collection with
+its latest 25 rows and resumes its normal refresh behavior. The selected exact
+valuation and its already verified parent relationship stay available in the same
+context and credentials, even if their row is older than this restarted page.
+Reloading contributions keeps the saved valuation summary. A newly selected
+document valuation still requires membership in the loaded frozen document
+valuation pages. Changing run/document/attempt/company context or credentials
+clears the detail and its proof; document filter changes reset document pages.
+
+A denied trace or exact-valuation read clears both trace and existing protected
+Pipeline/Document panels, invalidates concurrent reads, and shows a visible denial
+message with a Settings link. A denial in Company clears only the protected
+valuation subsection; public company analysis remains usable.
