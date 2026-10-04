@@ -11,7 +11,8 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   deferTimeline = false, deferOverview = false, deferConfig = false, documents, documentDetail,
   documentBody, documentAttempts, documentEvents, documentModelRuns,
   deferDocuments = false, deferDocumentList = false, modelSummary, modelCalls, modelDetail,
-  modelPageSize = 25, deferModelSummary = false, deferModelCalls = false, deferModelDetails = false } = {}) {
+  modelPageSize = 25, deferModelSummary = false, deferModelCalls = false, deferModelDetails = false,
+  operationRuns, operationRunDetail, operationIssues, ingestionRuns, pipelineResult, deferPipeline = true } = {}) {
   const requests = [];
   const values = new Map(Object.entries(stored));
   const elements = new Map();
@@ -31,6 +32,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   const modelSummaryResolvers = [];
   const modelCallPageResolvers = [];
   const modelDetailResolvers = new Map();
+  let pipelineResolver;
   const intervals = new Map();
   let nextInterval = 1;
   let historyState = {};
@@ -171,6 +173,33 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
       return answer === 'error' ? response({ detail: 'Model summary unavailable', code: 'TEMPORARY_UNAVAILABLE' }, 503)
         : response(answer || modelSummaryFixture());
     }
+    if (route === '/internal/operations/runs' && method === 'GET') {
+      if (!options.headers?.['X-Admin-Key']) return response({ detail: 'Admin key required', code: 'FORBIDDEN' }, 403);
+      const answer = typeof operationRuns === 'function' ? operationRuns(requestUrl) : operationRuns;
+      return answer === 'error' ? response({ detail: 'Operation runs unavailable', code: 'TEMPORARY_UNAVAILABLE' }, 503)
+        : response(answer || operationRunsPageFixture(0));
+    }
+    const runIssuesMatch = route.match(/^\/internal\/operations\/runs\/([^/]+)\/issues$/);
+    if (runIssuesMatch && method === 'GET') {
+      if (!options.headers?.['X-Admin-Key']) return response({ detail: 'Admin key required', code: 'FORBIDDEN' }, 403);
+      const answer = typeof operationIssues === 'function' ? operationIssues(requestUrl, decodeURIComponent(runIssuesMatch[1])) : operationIssues;
+      return answer === 'error' ? response({ detail: 'Operation issues unavailable', code: 'TEMPORARY_UNAVAILABLE' }, 503)
+        : response(answer || operationIssuesPageFixture());
+    }
+    const runDetailMatch = route.match(/^\/internal\/operations\/runs\/([^/]+)$/);
+    if (runDetailMatch && method === 'GET') {
+      if (!options.headers?.['X-Admin-Key']) return response({ detail: 'Admin key required', code: 'FORBIDDEN' }, 403);
+      const id = decodeURIComponent(runDetailMatch[1]);
+      const answer = typeof operationRunDetail === 'function' ? operationRunDetail(requestUrl, id) : operationRunDetail;
+      return answer === 'error' ? response({ detail: 'Operation run unavailable', code: 'OPERATION_RUN_NOT_FOUND' }, 404)
+        : response(answer || operationRunDetailFixture(id));
+    }
+    if (route === '/internal/operations/ingestion-runs' && method === 'GET') {
+      if (!options.headers?.['X-Admin-Key']) return response({ detail: 'Admin key required', code: 'FORBIDDEN' }, 403);
+      const answer = typeof ingestionRuns === 'function' ? ingestionRuns(requestUrl) : ingestionRuns;
+      return answer === 'error' ? response({ detail: 'Ingestion runs unavailable', code: 'TEMPORARY_UNAVAILABLE' }, 503)
+        : response(answer || ingestionRunsPageFixture(0));
+    }
     if (route === '/internal/operations/model-runs' && method === 'GET') {
       if (!options.headers?.['X-Admin-Key']) return response({ detail: 'Admin key required', code: 'FORBIDDEN' }, 403);
       if (deferModelCalls) return new Promise((resolve) => modelCallPageResolvers.push((body) => resolve(body === 'error'
@@ -209,14 +238,10 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
       return new Promise((resolve) => adminResolvers.push(() => resolve(response({ runs: [] }))));
     }
     if (route === '/internal/ingestion/runs' && method === 'POST') {
-      return new Promise((resolve) => {
-        completePipeline = () => resolve(response({
-          status: 'SUCCESS', documentsProcessed: 1, eventsExtracted: 1,
-          companiesRescored: 1, error: null, documentsSkipped: 0,
-          documentsRetryScheduled: 0, documentsTerminalFailures: 0,
-          alreadyRunning: false,
-        }));
-      });
+      if (!options.headers?.['X-Admin-Key']) return response({ detail: 'Admin key required', code: 'FORBIDDEN' }, 403);
+      if (deferPipeline) return new Promise((resolve) => { pipelineResolver = (body) => resolve(response(body || pipelineResultFixture)); });
+      const answer = typeof pipelineResult === 'function' ? pipelineResult(requestUrl) : pipelineResult;
+      return answer === 'error' ? Promise.reject(new Error('Pipeline response unavailable')) : response(answer || pipelineResultFixture);
     }
     if (route.startsWith('/internal/') && !options.headers?.['X-Admin-Key']) {
       return response({ detail: 'Admin key required' }, 403);
@@ -270,7 +295,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
     click(id, event) { return elementFor(id).trigger('click', event); },
     flush() { return flush(); },
     get reloads() { return reloads; },
-    completePipeline() { completePipeline(); },
+    completePipeline(body) { if (!pipelineResolver) throw new Error('No deferred pipeline response'); pipelineResolver(body); pipelineResolver = null; },
     get historyState() { return historyState; },
     loadedModelRows() { return Array.from(elementFor('modelRows').innerHTML.matchAll(/data-model-run-id="[^"]+"/g)).length; },
   };
@@ -429,6 +454,76 @@ function modelCallsPageFixture(count = 25, extra = {}) {
   return { generatedAt: '2026-10-04T12:05:00Z', window: modelWindowFixture, items, limit: 25, nextCursor: null, ...extra };
 }
 
+const operationWindowFixture = { from: '2026-10-03T12:00:00Z', to: '2026-10-04T12:00:00Z' };
+const operationRunIdFixture = '77777777-7777-4777-8777-777777777777';
+const ingestionRunIdFixture = '88888888-8888-4888-8888-888888888888';
+
+function operationRunFixture(id = operationRunIdFixture, extra = {}) {
+  return {
+    id, kind: 'PIPELINE', trigger: 'SCHEDULED', status: 'SUCCESS', active: false, phase: 'FINISHED',
+    asOf: '2026-10-04T11:00:00Z', startedAt: '2026-10-04T11:00:00Z', finishedAt: '2026-10-04T11:02:00Z',
+    updatedAt: '2026-10-04T11:02:00Z', durationMs: 120000, captureComplete: true,
+    documentsConsidered: 4, documentsCompleted: 2, documentsSkipped: 1, documentsRetryScheduled: 1,
+    documentsTerminalFailures: 0, eventsInserted: 3, eventsReused: 2, companiesConsidered: 2,
+    companiesRescored: 2, companiesFailed: 0, errorCode: null, errorMessage: null, ...extra,
+  };
+}
+
+function operationRunsPageFixture(count = 25, extra = {}) {
+  return {
+    generatedAt: '2026-10-04T12:05:00Z', window: operationWindowFixture,
+    items: Array.from({ length: count }, (_, index) => operationRunFixture(
+      '99999999-9999-4999-8999-' + String(index + 1).padStart(12, '0'),
+    )), limit: 25, nextCursor: null, ...extra,
+  };
+}
+
+function operationRunDetailFixture(id = operationRunIdFixture, extra = {}) {
+  return {
+    generatedAt: '2026-10-04T12:05:00Z', run: operationRunFixture(id), ingestionRuns: 1, documentAttempts: 4, issues: 1,
+    phases: [
+      { phase: 'INGESTION', startedAt: '2026-10-04T11:00:00Z', finishedAt: '2026-10-04T11:00:20Z', durationMs: 20000 },
+      { phase: 'PROCESSING', startedAt: '2026-10-04T11:00:20Z', finishedAt: '2026-10-04T11:01:30Z', durationMs: 70000 },
+      { phase: 'SCORING', startedAt: '2026-10-04T11:01:30Z', finishedAt: '2026-10-04T11:02:00Z', durationMs: 30000 },
+    ], ...extra,
+  };
+}
+
+function operationIssuesPageFixture(count = 1, extra = {}) {
+  return {
+    generatedAt: '2026-10-04T12:05:00Z', window: null,
+    items: Array.from({ length: count }, (_, index) => ({
+      id: 'aaaaaaaa-bbbb-4ccc-8ddd-' + String(index + 1).padStart(12, '0'), runId: operationRunIdFixture,
+      phase: 'PROCESSING', documentId: '11111111-1111-4111-8111-111111111111',
+      companyId: '33333333-3333-4333-8333-333333333333', ticker: 'ACME',
+      errorCode: 'EXTRACTION_FAILED', errorMessage: 'The recorded extraction attempt failed.', createdAt: '2026-10-04T11:01:00Z',
+    })), limit: 25, nextCursor: null, ...extra,
+  };
+}
+
+function ingestionRunFixture(id = ingestionRunIdFixture, extra = {}) {
+  return {
+    id, provider: 'polygon', status: 'SUCCESS', fetched: 8, added: 5, duplicates: 3, error: null,
+    finishedAt: '2026-10-04T11:00:20Z', startedAt: '2026-10-04T11:00:00Z', durationMs: 20000,
+    runId: operationRunIdFixture, errorCode: null, ...extra,
+  };
+}
+
+function ingestionRunsPageFixture(count = 25, extra = {}) {
+  return {
+    generatedAt: '2026-10-04T12:05:00Z', window: operationWindowFixture,
+    items: Array.from({ length: count }, (_, index) => ingestionRunFixture(
+      'bbbbbbbb-cccc-4ddd-8eee-' + String(index + 1).padStart(12, '0'),
+    )), limit: 25, nextCursor: null, ...extra,
+  };
+}
+
+const pipelineResultFixture = {
+  status: 'SUCCESS', documentsProcessed: 2, eventsExtracted: 3, companiesRescored: 2, error: null,
+  documentsSkipped: 1, documentsRetryScheduled: 0, documentsTerminalFailures: 0, alreadyRunning: false,
+  documentsConsidered: 3, documentsCompleted: 2, eventsInserted: 2, eventsReused: 1, runId: null,
+};
+
 function documentBodyFixture(id = '11111111-1111-4111-8111-111111111111', extra = {}) {
   return { id, text: 'Quoted source: <script>alert(1)</script>\nSecond line.', originalCharacters: 50000, truncated: true, ...extra };
 }
@@ -440,4 +535,6 @@ async function flush() {
 module.exports = { startDashboard, waitForRequests, flush, companyFixture, eventFixture, discoveryPage, discoveryFixture,
   overviewFixture, configFixture, documentListItemFixture, documentsPageFixture, documentDetailFixture,
   documentBodyFixture, documentAttemptsPageFixture, documentEventsFixture, documentModelPageFixture,
-  modelUsageFixture, modelSummaryFixture, modelCallFixture, modelCallsPageFixture, modelWindowFixture, html };
+  modelUsageFixture, modelSummaryFixture, modelCallFixture, modelCallsPageFixture, modelWindowFixture,
+  operationWindowFixture, operationRunIdFixture, ingestionRunIdFixture, operationRunFixture, operationRunsPageFixture,
+  operationRunDetailFixture, operationIssuesPageFixture, ingestionRunFixture, ingestionRunsPageFixture, pipelineResultFixture, html };

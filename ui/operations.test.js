@@ -1,6 +1,8 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { startDashboard, modelSummaryFixture, modelCallFixture, modelCallsPageFixture } = require('./test-support');
+const { startDashboard, modelSummaryFixture, modelCallFixture, modelCallsPageFixture, operationRunFixture,
+  operationRunsPageFixture, operationRunDetailFixture, operationIssuesPageFixture, operationRunIdFixture,
+  ingestionRunFixture, ingestionRunsPageFixture, ingestionRunIdFixture, pipelineResultFixture } = require('./test-support');
 const DOC_A = '11111111-1111-4111-8111-111111111111';
 const DOC_B = '22222222-2222-4222-8222-222222222222';
 const DOC_C = '66666666-6666-4666-8666-666666666666';
@@ -28,6 +30,16 @@ function startOperations(options = {}) {
   };
   dashboard.openOverview = async (search = '?view=overview') => {
     dashboard.popstate(search);
+    await dashboard.flush();
+    return dashboard;
+  };
+  dashboard.openPipeline = async (search = '?view=pipeline') => {
+    dashboard.popstate(search);
+    await dashboard.flush();
+    return dashboard;
+  };
+  dashboard.refresh = async () => {
+    dashboard.click('refresh');
     await dashboard.flush();
     return dashboard;
   };
@@ -348,6 +360,301 @@ test('model detail uses the backend not-found error code', async () => {
   const dashboard = startOperations({ storedAdmin: 'admin-secret', modelDetail: 'error', modelCalls: modelCallsPageFixture(0) });
   await dashboard.openModels('?view=models&modelRunId=' + MODEL_CALL);
   assert.equal(dashboard.text('modelDetailStatus'), 'This recorded model call was not found.');
+});
+
+test('manual pipeline execution is never automatically repeated', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', deferPipeline: true });
+  await dashboard.openPipeline();
+  dashboard.click('runNow');
+  dashboard.click('runNow');
+  dashboard.tick();
+  await dashboard.refresh();
+  await dashboard.openOverview();
+  assert.equal(dashboard.requests.filter((request) => request.method === 'POST').length, 1);
+});
+
+test('Pipeline feeds preserve filters, use one resolved window, and paginate by cursor', async () => {
+  const run = operationRunFixture(operationRunIdFixture, {
+    active: true, status: 'RUNNING', phase: 'PROCESSING', captureComplete: false, finishedAt: null, durationMs: null,
+  });
+  const nextRunId = '12121212-1212-4121-8121-121212121212';
+  const ingestion = ingestionRunFixture(ingestionRunIdFixture);
+  const nextIngestionId = '13131313-1313-4131-8131-131313131313';
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret',
+    operationRuns: (url) => url.searchParams.has('cursor')
+      ? operationRunsPageFixture(2, { items: [run, operationRunFixture(nextRunId)], nextCursor: null })
+      : operationRunsPageFixture(1, { items: [run], nextCursor: 'older-cycle' }),
+    ingestionRuns: (url) => url.searchParams.has('cursor')
+      ? ingestionRunsPageFixture(2, { items: [ingestion, ingestionRunFixture(nextIngestionId)], nextCursor: null })
+      : ingestionRunsPageFixture(1, { items: [ingestion], nextCursor: 'older-ingestion' }),
+  });
+  await dashboard.openPipeline('?view=pipeline&range=7d&status=PARTIAL&ingestionProvider=finnhub&ingestionStatus=FAILED');
+
+  const runPage = dashboard.requests.find((request) => new URL(request.url).pathname.endsWith('/operations/runs'));
+  const ingestionPage = dashboard.requests.find((request) => new URL(request.url).pathname.endsWith('/operations/ingestion-runs'));
+  const runQuery = new URL(runPage.url).searchParams;
+  const ingestionQuery = new URL(ingestionPage.url).searchParams;
+  assert.equal(runQuery.get('range'), '7d');
+  assert.equal(runQuery.get('kind'), 'PIPELINE');
+  assert.equal(runQuery.get('status'), 'PARTIAL');
+  assert.equal(runQuery.get('limit'), '25');
+  assert.equal(runPage.headers['X-Admin-Key'], 'admin-secret');
+  assert.equal(runPage.headers.Authorization, undefined);
+  assert.equal(ingestionQuery.get('from'), operationRunsPageFixture(0).window.from);
+  assert.equal(ingestionQuery.get('to'), operationRunsPageFixture(0).window.to);
+  assert.equal(ingestionQuery.has('range'), false);
+  assert.equal(ingestionQuery.get('provider'), 'finnhub');
+  assert.equal(ingestionQuery.get('status'), 'FAILED');
+  assert.equal(ingestionPage.headers['X-Admin-Key'], 'admin-secret');
+  assert.match(dashboard.html('runRows'), /Recorded so far/);
+  assert.equal(dashboard.element('runNow').disabled, true);
+  assert.equal(dashboard.element('pipelineTabCycles').getAttribute('aria-selected'), 'true');
+
+  dashboard.click('loadRuns');
+  dashboard.click('loadIngestion');
+  await dashboard.flush();
+  const runPages = dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/operations/runs'));
+  const ingestionPages = dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/operations/ingestion-runs'));
+  assert.equal(new URL(runPages[1].url).searchParams.get('cursor'), 'older-cycle');
+  assert.equal(new URL(runPages[1].url).searchParams.get('from'), operationRunsPageFixture(0).window.from);
+  assert.equal(new URL(ingestionPages[1].url).searchParams.get('cursor'), 'older-ingestion');
+  assert.equal((dashboard.html('runRows').match(/data-run-id=/g) || []).length, 2);
+  assert.equal((dashboard.html('ingestionRows').match(/data-ingestion-select-id=/g) || []).length, 2);
+});
+
+test('failed first Pipeline and ingestion pages can be retried in place', async () => {
+  let runReads = 0;
+  let ingestionReads = 0;
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret',
+    operationRuns: () => ++runReads === 1 ? 'error' : operationRunsPageFixture(1),
+    ingestionRuns: () => ++ingestionReads === 1 ? 'error' : ingestionRunsPageFixture(1),
+  });
+  await dashboard.openPipeline();
+  assert.equal(dashboard.text('loadRuns'), 'Retry pipeline history');
+  assert.equal(dashboard.text('loadIngestion'), 'Retry ingestion history');
+  dashboard.click('loadRuns');
+  dashboard.click('loadIngestion');
+  await dashboard.flush();
+  assert.equal(runReads, 2);
+  assert.equal(ingestionReads, 2);
+  assert.equal((dashboard.html('runRows').match(/data-run-id=/g) || []).length, 1);
+  assert.equal((dashboard.html('ingestionRows').match(/data-ingestion-select-id=/g) || []).length, 1);
+});
+
+test('a deep-linked unfinished pipeline run loads detail and paginated issues by ID', async () => {
+  const runId = '14141414-1414-4141-8141-141414141414';
+  const documentId = '15151515-1515-4151-8151-151515151515';
+  const issue = operationIssuesPageFixture(1, { items: [Object.assign({}, operationIssuesPageFixture().items[0], {
+    runId, documentId, errorMessage: '<script>private</script>',
+  })] });
+  const detail = operationRunDetailFixture(runId, { run: operationRunFixture(runId, {
+    active: false, status: 'RUNNING', phase: 'PROCESSING', captureComplete: false, finishedAt: null, durationMs: null,
+    errorCode: 'EXTRACTION_FAILED', errorMessage: '<script>private</script>',
+  }), phases: [{ phase: 'PROCESSING', startedAt: '2026-10-04T11:00:00Z', finishedAt: null, durationMs: null }] });
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret', operationRuns: operationRunsPageFixture(0),
+    operationRunDetail: detail, operationIssues: issue,
+  });
+  await dashboard.openPipeline('?view=pipeline&runId=' + runId);
+
+  assert.ok(dashboard.requests.some((request) => new URL(request.url).pathname.endsWith('/runs/' + runId)));
+  assert.ok(dashboard.requests.some((request) => new URL(request.url).pathname.endsWith('/runs/' + runId + '/issues')));
+  assert.match(dashboard.html('runDetailContent'), /Unfinished/);
+  assert.match(dashboard.html('runDetailContent'), /Not finished/);
+  assert.match(dashboard.html('runDetailContent'), /&lt;script&gt;private&lt;\/script&gt;/);
+  assert.doesNotMatch(dashboard.html('runDetailContent'), /<script>/);
+  assert.match(dashboard.html('runIssues'), /EXTRACTION_FAILED/);
+  assert.match(dashboard.html('runIssues'), new RegExp('data-run-document-id="' + documentId + '"'));
+  assert.doesNotMatch(dashboard.html('runDetailContent'), /%/);
+
+  dashboard.click('runIssues', { target: { closest(selector) {
+    return selector === '[data-run-document-id]' ? { dataset: { runDocumentId: documentId } } : null;
+  } } });
+  assert.equal(dashboard.window.location.search, '?view=documents&runId=' + runId + '&documentId=' + documentId);
+  assert.equal(dashboard.historyState.returnSearch, '?view=pipeline&runId=' + runId);
+});
+
+test('cycle issues keep loaded rows while a later page fails and retry the same cursor', async () => {
+  const runId = '16161616-1616-4161-8161-161616161616';
+  const first = operationIssuesPageFixture(1, { items: [Object.assign({}, operationIssuesPageFixture().items[0], { runId })], nextCursor: 'older-issue' });
+  const second = operationIssuesPageFixture(1, { items: [Object.assign({}, operationIssuesPageFixture().items[0], {
+    id: '17171717-1717-4171-8171-171717171717', runId,
+  })] });
+  let continuationReads = 0;
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret', operationRuns: operationRunsPageFixture(0),
+    operationRunDetail: operationRunDetailFixture(runId),
+    operationIssues: (url) => {
+      if (!url.searchParams.has('cursor')) return first;
+      return ++continuationReads === 1 ? 'error' : second;
+    },
+  });
+  await dashboard.openPipeline('?view=pipeline&runId=' + runId);
+  assert.match(dashboard.html('runIssues'), /EXTRACTION_FAILED/);
+
+  dashboard.click('loadRunIssues');
+  await dashboard.flush();
+  assert.equal(dashboard.text('loadRunIssues'), 'Retry loading issues');
+  assert.match(dashboard.html('runIssues'), /EXTRACTION_FAILED/);
+  dashboard.click('loadRunIssues');
+  await dashboard.flush();
+
+  const issueRequests = dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/runs/' + runId + '/issues'));
+  assert.equal(new URL(issueRequests[1].url).searchParams.get('cursor'), 'older-issue');
+  assert.equal(new URL(issueRequests[2].url).searchParams.get('cursor'), 'older-issue');
+  assert.equal((dashboard.html('runIssues').match(/<li>/g) || []).length, 2);
+});
+
+test('selected ingestion lookup is exact, independent of feed filters, and links first-source documents', async () => {
+  const ingestion = ingestionRunFixture(ingestionRunIdFixture, { runId: null });
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret', operationRuns: operationRunsPageFixture(0),
+    ingestionRuns: (url) => url.searchParams.has('ingestionRunId')
+      ? ingestionRunsPageFixture(1, { window: null, items: [ingestion] })
+      : ingestionRunsPageFixture(0),
+  });
+  await dashboard.openPipeline('?view=pipeline&range=7d&ingestionProvider=finnhub&ingestionStatus=FAILED&ingestionRunId=' + ingestionRunIdFixture);
+
+  const exact = dashboard.requests.find((request) => new URL(request.url).searchParams.has('ingestionRunId'));
+  const exactQuery = new URL(exact.url).searchParams;
+  assert.equal(exactQuery.get('ingestionRunId'), ingestionRunIdFixture);
+  assert.equal(exactQuery.get('limit'), '25');
+  for (const key of ['range', 'from', 'to', 'provider', 'status', 'runId', 'cursor']) assert.equal(exactQuery.has(key), false);
+  assert.match(dashboard.html('ingestionDetailContent'), /First-source documents/);
+  assert.doesNotMatch(dashboard.html('ingestionDetailContent'), /Parent operation/);
+
+  dashboard.click('ingestionDetail', { target: { closest(selector) {
+    return selector === '[data-ingestion-source-id]' ? { dataset: { ingestionSourceId: ingestionRunIdFixture } } : null;
+  } } });
+  assert.equal(dashboard.window.location.search, '?view=documents&ingestionRunId=' + ingestionRunIdFixture);
+  assert.equal(dashboard.historyState.returnSearch, '?view=pipeline&range=7d&ingestionProvider=finnhub&ingestionStatus=FAILED&ingestionRunId=' + ingestionRunIdFixture);
+});
+
+test('an empty exact ingestion lookup reports that local record as not found', async () => {
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret', operationRuns: operationRunsPageFixture(0),
+    ingestionRuns: (url) => url.searchParams.has('ingestionRunId')
+      ? ingestionRunsPageFixture(0, { window: null }) : ingestionRunsPageFixture(0),
+  });
+  await dashboard.openPipeline('?view=pipeline&ingestionRunId=' + ingestionRunIdFixture);
+  assert.equal(dashboard.text('ingestionDetailStatus'), 'Ingestion run not found.');
+  assert.match(dashboard.requests.find((request) => new URL(request.url).searchParams.has('ingestionRunId')).url,
+    new RegExp('ingestionRunId=' + ingestionRunIdFixture));
+});
+
+test('invalid Pipeline filter routes show validation and send no operational reads', async () => {
+  for (const search of [
+    '?view=pipeline&kind=UNKNOWN',
+    '?view=pipeline&status=UNKNOWN',
+    '?view=pipeline&ingestionProvider=UNKNOWN',
+    '?view=pipeline&ingestionStatus=UNKNOWN',
+    '?view=pipeline&runId=not-a-uuid',
+  ]) {
+    const dashboard = startOperations({ storedAdmin: 'admin-secret' });
+    await dashboard.openPipeline(search);
+    assert.match(dashboard.text('pipelineStatus'), /Choose|UUID/);
+    assert.equal(dashboard.requests.some((request) => /^\/internal\/operations\/(runs|ingestion-runs|config)(\/|$)/
+      .test(new URL(request.url).pathname)), false);
+  }
+});
+
+test('empty daily history distinguishes a disabled scheduler from an enabled one', async () => {
+  const outcomes = [];
+  for (const enabled of [false, true]) {
+    const config = require('./test-support').configFixture;
+    const dashboard = startOperations({
+      storedAdmin: 'admin-secret', operationRuns: operationRunsPageFixture(0),
+      ingestionRuns: ingestionRunsPageFixture(0), config: { ...config, snapshots: { ...config.snapshots, enabled } },
+    });
+    await dashboard.openPipeline('?view=pipeline&kind=DAILY_SNAPSHOTS');
+    outcomes.push(dashboard.html('runRows'));
+  }
+  assert.match(outcomes[0], /Daily snapshots are disabled\. No cycles are recorded\./);
+  assert.match(outcomes[1], /No recorded cycles yet\./);
+  assert.doesNotMatch(outcomes[1], /Daily snapshots are disabled/);
+});
+
+test('daily history labels unavailable scheduler state after its configuration read fails', async () => {
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret', operationRuns: operationRunsPageFixture(0),
+    ingestionRuns: ingestionRunsPageFixture(0), config: 'error',
+  });
+  await dashboard.openPipeline('?view=pipeline&kind=DAILY_SNAPSHOTS');
+  assert.match(dashboard.html('runRows'), /Scheduler state could not be verified/);
+});
+
+test('busy pipeline response refreshes reads without inventing a history row', async () => {
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret', deferPipeline: false,
+    pipelineResult: { status: 'SKIPPED', alreadyRunning: true, runId: null },
+    operationRuns: operationRunsPageFixture(0), ingestionRuns: ingestionRunsPageFixture(0),
+  });
+  await dashboard.openPipeline();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  assert.equal(dashboard.requests.filter((request) => request.method === 'POST').length, 1);
+  assert.equal(dashboard.text('pipelineStatus'), 'A pipeline cycle is already running');
+  assert.match(dashboard.html('runRows'), /No recorded cycles yet/);
+});
+
+test('unfinished inactive pipeline rows stay inspectable without blocking a new trigger', async () => {
+  const run = operationRunFixture(operationRunIdFixture, {
+    active: false, status: 'RUNNING', phase: 'PROCESSING', captureComplete: false, finishedAt: null, durationMs: null,
+  });
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret', operationRuns: operationRunsPageFixture(1, { items: [run] }),
+  });
+  await dashboard.openPipeline();
+  assert.match(dashboard.html('runRows'), /Unfinished/);
+  assert.equal(dashboard.element('runNow').disabled, false);
+});
+
+test('successful manual result shows distinct partial counters without inventing a run link', async () => {
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret', deferPipeline: false,
+    pipelineResult: { ...pipelineResultFixture, status: 'PARTIAL', documentsCompleted: 2,
+      documentsSkipped: 1, documentsRetryScheduled: 1, documentsTerminalFailures: 1,
+      eventsInserted: 2, eventsReused: 3, error: 'raw provider error', runId: null },
+  });
+  await dashboard.openPipeline();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  assert.match(dashboard.text('pipelineStatus'), /PARTIAL: 2 documents completed, 1 skipped, 1 retry scheduled, 1 terminal failures/);
+  assert.match(dashboard.text('pipelineStatus'), /2 events inserted and 3 reused/);
+  assert.doesNotMatch(dashboard.text('pipelineStatus'), /raw provider error/);
+  assert.equal(new URLSearchParams(dashboard.window.location.search.slice(1)).has('runId'), false);
+  assert.equal(dashboard.requests.filter((request) => request.method === 'POST').length, 1);
+});
+
+test('a credential change prevents a pending pipeline result from repainting or triggering another POST', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', deferPipeline: true });
+  await dashboard.openPipeline();
+  dashboard.click('runNow');
+  const post = dashboard.requests.find((request) => request.method === 'POST');
+  assert.equal(post.headers['X-Admin-Key'], 'admin-secret');
+  assert.equal(post.body, undefined);
+
+  dashboard.element('adminKey').value = 'replacement-admin';
+  dashboard.click('saveKey');
+  await dashboard.flush();
+  dashboard.completePipeline(pipelineResultFixture);
+  await dashboard.flush();
+
+  assert.equal(dashboard.requests.filter((request) => request.method === 'POST').length, 1);
+  assert.doesNotMatch(dashboard.text('pipelineStatus'), /Pipeline SUCCESS/);
+  assert.equal(dashboard.element('runNow').disabled, false);
+});
+
+test('pipeline connection failure is shown without retrying the POST', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', deferPipeline: false, pipelineResult: 'error' });
+  await dashboard.openPipeline();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  await dashboard.refresh();
+  assert.equal(dashboard.requests.filter((request) => request.method === 'POST').length, 1);
+  assert.match(dashboard.text('pipelineStatus'), /response was unavailable.*was not retried/);
 });
 
 test('leaving Models stops model summary and call reads', async () => {

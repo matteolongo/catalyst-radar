@@ -72,20 +72,58 @@
 
         <section id="pipelineView" class="view hidden" aria-labelledby="pipelineTitle">
           <h2 id="pipelineTitle">Pipeline</h2>
-          <p id="pipelineStatus" class="screen-status" role="status">Pipeline workspace is ready for its next implementation step.</p>
-          <div class="panel" id="pipelineWorkspace"></div>
-          <label class="sr-only" for="pipelineKind">Pipeline kind</label><select id="pipelineKind" class="hidden"><option>PIPELINE</option><option>DAILY_SNAPSHOTS</option></select>
-          <label class="sr-only" for="pipelineRunStatusFilter">Run status</label><select id="pipelineRunStatusFilter" class="hidden"></select>
-          <button id="runNow" type="button" class="hidden" disabled>Run pipeline now</button>
-          <div id="runRows" class="hidden"></div><button id="loadRuns" class="hidden" type="button">Load runs</button>
-          <div id="runDetail" class="hidden"></div><p id="runDetailStatus" class="hidden" role="status"></p><button id="closeRun" class="hidden" type="button">Close run</button>
-          <div id="runIssues" class="hidden"></div><button id="loadRunIssues" class="hidden" type="button">Load issues</button>
-          <form id="ingestionFilters" class="hidden">
-            <label for="ingestionProvider">Provider</label><select id="ingestionProvider"><option value="">All</option></select>
-            <label for="ingestionStatusFilter">Status</label><select id="ingestionStatusFilter"><option value="">All</option></select>
-          </form>
-          <div id="ingestionRows" class="hidden"></div><button id="loadIngestion" class="hidden" type="button">Load ingestion runs</button>
-          <div id="ingestionDetail" class="hidden"></div><p id="ingestionDetailStatus" class="hidden" role="status"></p><button id="closeIngestion" class="hidden" type="button">Close ingestion run</button>
+          <p id="pipelineStatus" class="screen-status" role="status">Waiting for an authorized operational read.</p>
+          <div class="pipeline-tabs" role="tablist" aria-label="Operational history">
+            <button id="pipelineTabCycles" type="button" role="tab" data-pipeline-kind="PIPELINE" aria-selected="true">Pipeline cycles</button>
+            <button id="pipelineTabSnapshots" type="button" role="tab" data-pipeline-kind="DAILY_SNAPSHOTS" aria-selected="false">Daily snapshots</button>
+          </div>
+          <label class="sr-only" for="pipelineKind">Pipeline kind</label>
+          <select id="pipelineKind" class="hidden" aria-hidden="true" tabindex="-1"><option>PIPELINE</option><option>DAILY_SNAPSHOTS</option></select>
+          <div class="pipeline-actions">
+            <label for="pipelineRunStatusFilter">Run status</label>
+            <select id="pipelineRunStatusFilter">
+              <option value="">All statuses</option><option>RUNNING</option><option>SUCCESS</option><option>PARTIAL</option>
+              <option>FAILED</option><option>CANCELLED</option><option>INTERRUPTED</option>
+            </select>
+            <button id="runNow" type="button">Run pipeline now</button>
+            <p id="runNowCaption" class="muted small">Fetches news and can use paid model calls.</p>
+          </div>
+          <div class="pipeline-layout">
+            <section class="panel pipeline-history-panel" aria-label="Pipeline history">
+              <div id="runRows" class="pipeline-records" aria-live="polite"></div>
+              <button id="loadRuns" class="ghost hidden" type="button">Load more runs</button>
+            </section>
+            <aside id="runDetail" class="panel pipeline-detail hidden" aria-labelledby="runDetailTitle">
+              <div class="panel-heading"><div><h3 id="runDetailTitle" tabindex="-1">Selected pipeline run</h3>
+                <p id="runDetailStatus" class="screen-status" role="status"></p></div>
+                <button id="closeRun" type="button" class="ghost">Close</button>
+              </div>
+              <div id="runDetailContent"></div>
+              <section class="pipeline-issues" aria-label="Pipeline issues">
+                <h4>Issues</h4><div id="runIssues" aria-live="polite"></div>
+                <button id="loadRunIssues" class="ghost hidden" type="button">Load more issues</button>
+              </section>
+            </aside>
+          </div>
+          <section class="panel ingestion-panel" aria-labelledby="ingestionTitle">
+            <h3 id="ingestionTitle">Provider ingestion runs</h3>
+            <form id="ingestionFilters" class="pipeline-ingestion-filters">
+              <label for="ingestionProvider">Provider</label><select id="ingestionProvider"><option value="">All providers</option><option value="polygon">Polygon</option><option value="finnhub">Finnhub</option></select>
+              <label for="ingestionStatusFilter">Status</label><select id="ingestionStatusFilter">
+                <option value="">All statuses</option><option>RUNNING</option><option>SUCCESS</option><option>PARTIAL</option><option>FAILED</option>
+              </select>
+              <button type="submit" class="ghost">Apply filters</button>
+            </form>
+            <div id="ingestionRows" class="pipeline-records" aria-live="polite"></div>
+            <button id="loadIngestion" class="ghost hidden" type="button">Load more ingestion runs</button>
+          </section>
+          <aside id="ingestionDetail" class="panel ingestion-detail hidden" aria-labelledby="ingestionDetailTitle">
+            <div class="panel-heading"><div><h3 id="ingestionDetailTitle" tabindex="-1">Selected ingestion run</h3>
+              <p id="ingestionDetailStatus" class="screen-status" role="status"></p></div>
+              <button id="closeIngestion" type="button" class="ghost">Close</button>
+            </div>
+            <div id="ingestionDetailContent"></div>
+          </aside>
         </section>
 
         <section id="documentsView" class="view hidden" aria-labelledby="documentsTitle">
