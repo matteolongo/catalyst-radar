@@ -99,6 +99,10 @@
                 <button id="closeRun" type="button" class="ghost">Close</button>
               </div>
               <div id="runDetailContent"></div>
+              <section aria-label="Ingestion runs for selected cycle">
+                <h4>Ingestion runs for this cycle</h4><div id="runIngestionRows" aria-live="polite"></div>
+                <button id="loadRunIngestion" class="ghost hidden" type="button">Load more cycle ingestion runs</button>
+              </section>
               <section class="pipeline-issues" aria-label="Pipeline issues">
                 <h4>Issues</h4><div id="runIssues" aria-live="polite"></div>
                 <button id="loadRunIssues" class="ghost hidden" type="button">Load more issues</button>

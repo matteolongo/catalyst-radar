@@ -86,6 +86,7 @@
     var lastPipelineAt = null;
     var pipelineGeneration = 0;
     var pipelineRuns = [];
+    var knownActivePipelineIds = new Set();
     var pipelineWindow = null;
     var pipelineRunCursor = null;
     var pipelineRunsLoaded = false;
@@ -103,6 +104,12 @@
     var selectedRunLoaded = false;
     var selectedRunLoading = false;
     var selectedRunError = null;
+    var runIngestionItems = [];
+    var runIngestionCursor = null;
+    var runIngestionLoaded = false;
+    var runIngestionLoading = false;
+    var runIngestionError = null;
+    var runIngestionSequence = 0;
     var runIssues = [];
     var runIssueCursor = null;
     var runIssuesLoaded = false;
@@ -151,6 +158,7 @@
       pipelineRunsLoading = false;
       ingestionLoading = false;
       selectedRunLoading = false;
+      runIngestionLoading = false;
       runIssuesLoading = false;
       selectedIngestionLoading = false;
       snapshotScheduleLoading = false;
@@ -852,7 +860,8 @@
         documentPageError = null;
         if (selectedDocumentId) {
           selectedDocumentLoaded = false;
-          documentTabCache = {};
+          var cachedSource = documentTabCache.source;
+          documentTabCache = cachedSource && cachedSource.loaded ? { source: cachedSource } : {};
         }
       }
       var tasks = [];
@@ -862,7 +871,8 @@
         tasks.push(detail.then(function (loaded) {
           if (loaded && selectedDocumentTab !== 'overview') {
             var state = tabState(selectedDocumentTab);
-            return (!state.loaded || force) ? loadDocumentTab(!!force, false) : Promise.resolve(true);
+            var refreshTab = force && selectedDocumentTab !== 'source';
+            return (!state.loaded || refreshTab) ? loadDocumentTab(!!refreshTab, false) : Promise.resolve(true);
           }
           return loaded;
         }));
@@ -1448,6 +1458,7 @@
       selectedRunLoaded = false;
       selectedRunLoading = false;
       selectedRunError = null;
+      resetRunIngestion();
       runIssues = [];
       runIssueCursor = null;
       runIssuesLoaded = false;
@@ -1524,6 +1535,7 @@
         selectedRunLoaded = false;
         selectedRunLoading = false;
         selectedRunError = null;
+        resetRunIngestion();
         runIssues = [];
         runIssueCursor = null;
         runIssuesLoaded = false;
@@ -1620,6 +1632,7 @@
     }
     function renderPipelineStatus() {
       if (!pipelineRouteValid) return;
+      if (lastPipelineAt) el('lastRefresh').textContent = 'Last loaded ' + lastPipelineAt;
       if (pipelineOutcomeText) {
         pipelineStatus(pipelineOutcomeText);
         return;
@@ -1630,7 +1643,6 @@
       else if (pipelineRunsLoaded && ingestionLoaded) {
         var windowText = pipelineWindow ? ' · ' + time(pipelineWindow.from) + ' to ' + time(pipelineWindow.to) + ' UTC' : '';
         pipelineStatus(pipelineRuns.length + ' cycles and ' + ingestionItems.length + ' provider runs loaded' + windowText + '.');
-        if (lastPipelineAt) el('lastRefresh').textContent = 'Last loaded ' + lastPipelineAt;
       } else if (pipelineRunsLoading || ingestionLoading) pipelineStatus('Loading recorded pipeline and ingestion history…');
       else pipelineStatus('Pipeline history has not been loaded. Retry the read.');
     }
@@ -1662,6 +1674,62 @@
         ? (ingestionCursor ? 'Retry loading ingestion runs' : 'Retry ingestion history') : 'Load more ingestion runs';
       el('loadIngestion').disabled = ingestionLoading;
       renderPipelineStatus();
+    }
+    function resetRunIngestion() {
+      runIngestionSequence++;
+      runIngestionItems = [];
+      runIngestionCursor = null;
+      runIngestionLoaded = false;
+      runIngestionLoading = false;
+      runIngestionError = null;
+      el('runIngestionRows').innerHTML = '';
+      toggleHidden('loadRunIngestion', true);
+    }
+    function renderRunIngestion() {
+      var content = runIngestionItems.length ? '<ul class="pipeline-issue-list">' + runIngestionItems.map(function (run) {
+        return '<li><strong>' + esc(run.provider) + '</strong> · ' + esc(run.status) + ' · ' + esc(time(run.startedAt)) +
+          '<br><a href="' + esc(pipelineSearch({ ingestionRunId: run.id })) + '" data-ingestion-select-id="' + esc(run.id) +
+          '">Inspect ingestion run ' + esc(run.id) + '</a></li>';
+      }).join('') + '</ul>' : '<p class="muted">' + (runIngestionLoading ? 'Loading cycle ingestion runs…' : 'No ingestion runs recorded for this cycle.') + '</p>';
+      if (runIngestionError) content += '<p class="panel-error">' + esc(runIngestionError) + '</p>';
+      el('runIngestionRows').innerHTML = content;
+      toggleHidden('loadRunIngestion', runIngestionLoading || (!runIngestionCursor && !runIngestionError));
+      el('loadRunIngestion').disabled = runIngestionLoading;
+      el('loadRunIngestion').textContent = runIngestionError ? 'Retry cycle ingestion runs' : 'Load more cycle ingestion runs';
+    }
+    function loadRunIngestion(appendPage) {
+      if (!selectedRunId || !credentials().hasAdmin || runIngestionLoading || (appendPage && !runIngestionCursor)) return Promise.resolve(false);
+      var id = selectedRunId;
+      var revision = credentials().revision;
+      var requestSequence = sequence;
+      var detailSequence = ++runIngestionSequence;
+      var query = new URLSearchParams({ runId: id, limit: '25' });
+      if (appendPage) query.set('cursor', runIngestionCursor);
+      runIngestionLoading = true;
+      runIngestionError = null;
+      renderRunIngestion();
+      function currentSelection() {
+        return current(revision, requestSequence, 'pipeline') && selectedRunId === id && detailSequence === runIngestionSequence;
+      }
+      return read('/internal/operations/ingestion-runs?' + query.toString(), revision, requestSequence, 'pipeline').then(function (result) {
+        if (!result.current || !currentSelection()) return false;
+        var page = result.data || {};
+        var incoming = Array.isArray(page.items) ? page.items : [];
+        runIngestionItems = appendPage ? window.CatalystOperationsModel.mergePage({ items: runIngestionItems }, { items: incoming }).items : incoming.slice();
+        runIngestionCursor = page.nextCursor || null;
+        runIngestionLoaded = true;
+        return true;
+      }).catch(function (error) {
+        if (!currentSelection() || error.name === 'AbortError') return false;
+        if (error.status === 403 || error.code === 'FORBIDDEN') return accessRequired();
+        runIngestionError = 'Unable to load cycle ingestion runs. Retry the read.';
+        return false;
+      }).finally(function () {
+        if (currentSelection()) {
+          runIngestionLoading = false;
+          renderRunIngestion();
+        }
+      });
     }
     function setRunDetailPane() {
       toggleHidden('runDetail', !selectedRunId || !credentials().hasAdmin);
@@ -1697,7 +1765,7 @@
           esc(phase.startedAt ? time(phase.startedAt) : 'Not recorded') + ' · Finished: ' +
           esc(phase.finishedAt ? time(phase.finishedAt) : 'Not recorded') + ' · Duration: ' +
           esc(phase.durationMs == null ? 'Not recorded' : integer(phase.durationMs) + ' ms') + '</li>'; }).join('') + '</ul></section>' : '';
-      var documents = '<a href="?view=documents&amp;runId=' + encodeURIComponent(run.id) + '" data-run-document-id="' +
+      var documents = '<a href="?view=documents&amp;runId=' + encodeURIComponent(run.id) + '" data-cycle-documents-id="' +
         esc(run.id) + '">Inspect documents for this cycle</a>';
       el('runDetailContent').innerHTML = '<dl class="pipeline-detail-grid">' + records.map(function (entry) {
         return '<div><dt>' + esc(entry[0]) + '</dt><dd>' + esc(entry[1] == null || entry[1] === '' ? 'Unknown' : entry[1]) + '</dd></div>';
@@ -1760,10 +1828,15 @@
       el('ingestionDetailStatus').textContent = selectedIngestionError || '';
     }
     function updateRunNowButton() {
-      var active = pipelineRuns.some(function (run) { return run.kind === 'PIPELINE' && run.active; }) ||
-        !!(selectedRunDetail && selectedRunDetail.run && selectedRunDetail.run.kind === 'PIPELINE' && selectedRunDetail.run.active);
-      el('runNow').disabled = !credentials().hasAdmin || pendingPost || active;
+      el('runNow').disabled = !credentials().hasAdmin || pendingPost || knownActivePipelineIds.size > 0;
       el('runNow').setAttribute('aria-describedby', 'runNowCaption');
+    }
+    function observePipelineRuns(runs) {
+      runs.forEach(function (run) {
+        if (!run || run.kind !== 'PIPELINE' || !validUuid(run.id)) return;
+        if (run.active === true) knownActivePipelineIds.add(run.id);
+        else if (run.active === false) knownActivePipelineIds.delete(run.id);
+      });
     }
     function pipelineWindowParameters(query) {
       if (pipelineWindow && pipelineWindow.from && pipelineWindow.to) {
@@ -1802,6 +1875,7 @@
         var page = result.data || {};
         if (!appendPage && page.window) pipelineWindow = page.window;
         var incoming = Array.isArray(page.items) ? page.items : [];
+        observePipelineRuns(incoming);
         pipelineRuns = appendPage ? window.CatalystOperationsModel.mergePage({ items: pipelineRuns }, { items: incoming }).items : incoming.slice();
         pipelineRunCursor = page.nextCursor || null;
         pipelineGeneratedAt = page.generatedAt || null;
@@ -1864,6 +1938,7 @@
       return read('/internal/operations/runs/' + encodeURIComponent(id), revision, requestSequence, 'pipeline').then(function (result) {
         if (!result.current || selectedRunId !== id || detailSequence !== pipelineDetailSequence) return false;
         selectedRunDetail = result.data;
+        observePipelineRuns([result.data && result.data.run]);
         selectedRunLoaded = true;
         selectedRunError = null;
         renderSelectedRunDetail(result.data);
@@ -1991,6 +2066,7 @@
         selectedRunLoading = false;
         selectedRunLoaded = false;
         selectedRunError = null;
+        resetRunIngestion();
         runIssuesLoading = false;
         runIssuesLoaded = false;
         runIssueCursor = null;
@@ -2021,6 +2097,7 @@
         if (!ingestionLoaded || force) tasks.push(loadIngestionPage(false));
         if (selectedRunId && (!selectedRunLoaded || force)) tasks.push(loadSelectedRun());
         if (selectedRunId && (!runIssuesLoaded || force)) tasks.push(loadRunIssues(false));
+        if (selectedRunId && (!runIngestionLoaded || force)) tasks.push(loadRunIngestion(false));
         if (selectedIngestionRunId && (!selectedIngestionLoaded || force)) tasks.push(loadSelectedIngestion());
         if (pipelineKind === 'DAILY_SNAPSHOTS' && (!snapshotScheduleLoaded || force)) tasks.push(loadSnapshotSchedule());
         return Promise.allSettled(tasks);
@@ -2104,6 +2181,12 @@
       options.navigate(pipelineSearch({ runId: target.dataset.runId }));
     }
     function onRunDetailClick(event) {
+      var cycleDocuments = event.target.closest('[data-cycle-documents-id]');
+      if (cycleDocuments && validUuid(cycleDocuments.dataset.cycleDocumentsId)) {
+        if (event.preventDefault) event.preventDefault();
+        options.navigate('?view=documents&runId=' + encodeURIComponent(cycleDocuments.dataset.cycleDocumentsId), { returnSearch: currentLocalSearch() });
+        return;
+      }
       var documentLink = event.target.closest('[data-run-document-id]');
       if (documentLink) {
         if (event.preventDefault) event.preventDefault();
@@ -2115,9 +2198,10 @@
       if (companyLink) {
         if (event.preventDefault) event.preventDefault();
         options.navigate('?view=company&ticker=' + encodeURIComponent(companyLink.dataset.runCompanyTicker), { returnSearch: currentLocalSearch() });
+        return;
       }
+      onIngestionAssociationClick(event);
     }
-    function onRunIssueClick(event) { onRunDetailClick(event); }
     function onIngestionAssociationClick(event) {
       var select = event.target.closest('[data-ingestion-select-id]');
       if (select && validUuid(select.dataset.ingestionSelectId)) {
@@ -2142,6 +2226,7 @@
     function onRunNowClick() { triggerPipeline(); }
     function onLoadRunsClick() { loadPipelineRunPage(!!pipelineRunCursor); }
     function onLoadRunIssuesClick() { loadRunIssues(!!runIssueCursor); }
+    function onLoadRunIngestionClick() { loadRunIngestion(!!runIngestionCursor); }
     function onLoadIngestionClick() { loadIngestionPage(!!ingestionCursor); }
     function rangeQuery() { return params.get('range') === '7d' ? '?range=7d' : '?range=24h'; }
     function loadOverview(revision, requestSequence) {
@@ -2210,7 +2295,7 @@
       }
       if (autoRefreshEnabled() && POLLED.indexOf(screen) >= 0) refresh();
       else if (!healthLoaded || (screen === 'overview' && !overviewLoaded) ||
-        (screen === 'pipeline' && (!pipelineRunsLoaded || !ingestionLoaded || (selectedRunId && (!selectedRunLoaded || !runIssuesLoaded)) ||
+        (screen === 'pipeline' && (!pipelineRunsLoaded || !ingestionLoaded || (selectedRunId && (!selectedRunLoaded || !runIssuesLoaded || !runIngestionLoaded)) ||
           (selectedIngestionRunId && !selectedIngestionLoaded))) ||
         (screen === 'documents' && (!documentPageLoaded || (selectedDocumentId && !selectedDocumentLoaded) ||
           (selectedDocumentId && selectedDocumentTab !== 'overview' && !tabState(selectedDocumentTab).loaded))) ||
@@ -2239,7 +2324,7 @@
       el('loadRuns').addEventListener('click', onLoadRunsClick);
       el('runDetail').addEventListener('click', onRunDetailClick);
       el('closeRun').addEventListener('click', onCloseRun);
-      el('runIssues').addEventListener('click', onRunIssueClick);
+      el('loadRunIngestion').addEventListener('click', onLoadRunIngestionClick);
       el('loadRunIssues').addEventListener('click', onLoadRunIssuesClick);
       el('ingestionFilters').addEventListener('submit', onIngestionFiltersSubmit);
       el('ingestionRows').addEventListener('click', onIngestionAssociationClick);
@@ -2284,6 +2369,7 @@
       return refresh(false);
     }
     function credentialsChanged() {
+      knownActivePipelineIds.clear();
       if (disposed) return;
       invalidate();
       documentItems = [];
@@ -2342,7 +2428,7 @@
       el('loadRuns').removeEventListener('click', onLoadRunsClick);
       el('runDetail').removeEventListener('click', onRunDetailClick);
       el('closeRun').removeEventListener('click', onCloseRun);
-      el('runIssues').removeEventListener('click', onRunIssueClick);
+      el('loadRunIngestion').removeEventListener('click', onLoadRunIngestionClick);
       el('loadRunIssues').removeEventListener('click', onLoadRunIssuesClick);
       el('ingestionFilters').removeEventListener('submit', onIngestionFiltersSubmit);
       el('ingestionRows').removeEventListener('click', onIngestionAssociationClick);

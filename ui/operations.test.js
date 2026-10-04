@@ -469,11 +469,175 @@ test('a deep-linked unfinished pipeline run loads detail and paginated issues by
   assert.match(dashboard.html('runIssues'), new RegExp('data-run-document-id="' + documentId + '"'));
   assert.doesNotMatch(dashboard.html('runDetailContent'), /%/);
 
-  dashboard.click('runIssues', { target: { closest(selector) {
+  dashboard.click('runDetail', { target: { closest(selector) {
     return selector === '[data-run-document-id]' ? { dataset: { runDocumentId: documentId } } : null;
   } } });
   assert.equal(dashboard.window.location.search, '?view=documents&runId=' + runId + '&documentId=' + documentId);
   assert.equal(dashboard.historyState.returnSearch, '?view=pipeline&runId=' + runId);
+});
+
+test('cycle document links scope the feed without selecting the cycle as a document', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret' });
+  await dashboard.openPipeline('?view=pipeline&runId=' + operationRunIdFixture);
+  const attribute = dashboard.html('runDetailContent').match(/data-([a-z-]+)="[^"]+">Inspect documents for this cycle/)[1];
+  dashboard.click('runDetail', { target: { closest(selector) {
+    if (selector !== '[data-' + attribute + ']') return null;
+    return { dataset: { runDocumentId: operationRunIdFixture, cycleDocumentsId: operationRunIdFixture } };
+  } } });
+  assert.equal(dashboard.window.location.search, '?view=documents&runId=' + operationRunIdFixture);
+});
+
+test('issue document navigation bubbles once through the run detail', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret' });
+  await dashboard.openPipeline('?view=pipeline&runId=' + operationRunIdFixture);
+  const event = { target: { closest(selector) {
+    return selector === '[data-run-document-id]' ? { dataset: { runDocumentId: DOC_A } } : null;
+  } } };
+  const before = dashboard.historyEntries.length;
+  // Dispatch along the native bubbling path: nested issues, then its detail parent.
+  dashboard.click('runIssues', event);
+  dashboard.click('runDetail', event);
+  assert.equal(dashboard.historyEntries.length - before, 1);
+  assert.equal(dashboard.window.location.search, '?view=documents&runId=' + operationRunIdFixture + '&documentId=' + DOC_A);
+});
+
+test('selected cycles load bounded ingestion associations with their recorded run ID', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret',
+    ingestionRuns: (url) => url.searchParams.get('runId') === operationRunIdFixture
+      ? ingestionRunsPageFixture(1, { items: [ingestionRunFixture(ingestionRunIdFixture)] }) : ingestionRunsPageFixture(0),
+  });
+  await dashboard.openPipeline('?view=pipeline&runId=' + operationRunIdFixture);
+  const associated = dashboard.requests.find((request) => new URL(request.url).pathname.endsWith('/ingestion-runs') &&
+    new URL(request.url).searchParams.get('runId') === operationRunIdFixture);
+  assert.ok(associated, 'Selected run must request its recorded ingestion associations');
+  assert.equal(new URL(associated.url).searchParams.get('limit'), '25');
+  assert.equal(new URL(associated.url).searchParams.has('range'), false);
+  assert.match(dashboard.html('runIngestionRows'), new RegExp('data-ingestion-select-id="' + ingestionRunIdFixture + '"'));
+  dashboard.click('runDetail', { target: { closest(selector) {
+    return selector === '[data-ingestion-select-id]' ? { dataset: { ingestionSelectId: ingestionRunIdFixture } } : null;
+  } } });
+  assert.equal(new URLSearchParams(dashboard.window.location.search).get('ingestionRunId'), ingestionRunIdFixture);
+});
+
+test('known active pipelines survive display filters until their own inactive record is read', async () => {
+  const active = operationRunFixture(operationRunIdFixture, { active: true, status: 'RUNNING', finishedAt: null });
+  const dashboard = startOperations({ storedAdmin: 'admin-secret',
+    operationRuns: (url) => url.searchParams.get('kind') === 'PIPELINE' && !url.searchParams.has('status')
+      ? operationRunsPageFixture(1, { items: [active] }) : operationRunsPageFixture(0),
+    operationRunDetail: operationRunDetailFixture(operationRunIdFixture),
+  });
+  await dashboard.openPipeline();
+  assert.equal(dashboard.element('runNow').disabled, true);
+  await dashboard.openPipeline('?view=pipeline&status=SUCCESS');
+  assert.equal(dashboard.element('runNow').disabled, true);
+  await dashboard.openPipeline('?view=pipeline&kind=DAILY_SNAPSHOTS');
+  assert.equal(dashboard.element('runNow').disabled, true);
+  await dashboard.openPipeline('?view=pipeline&kind=DAILY_SNAPSHOTS&runId=' + operationRunIdFixture);
+  assert.equal(dashboard.element('runNow').disabled, false);
+});
+
+test('cycle ingestion paging preserves its run association and retries a failed cursor', async () => {
+  let continuations = 0;
+  const secondId = 'abababab-abab-4bab-8bab-abababababab';
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', ingestionRuns: (url) => {
+    if (!url.searchParams.has('runId')) return ingestionRunsPageFixture(0);
+    if (!url.searchParams.has('cursor')) return ingestionRunsPageFixture(1, {
+      items: [ingestionRunFixture(ingestionRunIdFixture)], nextCursor: 'cycle-ingestion-cursor',
+    });
+    return ++continuations === 1 ? 'error' : ingestionRunsPageFixture(1, { items: [ingestionRunFixture(secondId)] });
+  } });
+  await dashboard.openPipeline('?view=pipeline&runId=' + operationRunIdFixture);
+  dashboard.click('loadRunIngestion');
+  await dashboard.flush();
+  assert.match(dashboard.html('runIngestionRows'), new RegExp(ingestionRunIdFixture));
+  assert.equal(dashboard.text('loadRunIngestion'), 'Retry cycle ingestion runs');
+  dashboard.click('loadRunIngestion');
+  await dashboard.flush();
+  assert.match(dashboard.html('runIngestionRows'), new RegExp(secondId));
+  const reads = dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/ingestion-runs') &&
+    new URL(request.url).searchParams.has('cursor'));
+  assert.equal(reads.length, 2);
+  for (const read of reads) {
+    const query = new URL(read.url).searchParams;
+    assert.equal(query.get('runId'), operationRunIdFixture);
+    assert.equal(query.get('cursor'), 'cycle-ingestion-cursor');
+    assert.equal(query.has('from'), false);
+    assert.equal(query.has('provider'), false);
+  }
+});
+
+test('cycle ingestion resumes an interrupted first read when polling is disabled', async () => {
+  let reads = 0;
+  let release;
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', ingestionRuns: (url) => {
+    if (!url.searchParams.has('runId')) return ingestionRunsPageFixture(0);
+    if (++reads === 1) return new Promise((resolve) => { release = resolve; });
+    return ingestionRunsPageFixture(1, { items: [ingestionRunFixture(ingestionRunIdFixture)] });
+  } });
+  await dashboard.openPipeline('?view=pipeline&runId=' + operationRunIdFixture);
+  dashboard.element('autoRefresh').checked = false;
+  dashboard.setHidden(true);
+  release(ingestionRunsPageFixture(0));
+  await dashboard.flush();
+  dashboard.setHidden(false);
+  await dashboard.flush();
+  assert.equal(reads, 2);
+  assert.match(dashboard.html('runIngestionRows'), new RegExp(ingestionRunIdFixture));
+});
+
+test('successful primary refresh advances freshness while retaining the pipeline POST outcome', async () => {
+  let generatedAt = '2026-10-04T12:05:00Z';
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', deferPipeline: false,
+    pipelineResult: { status: 'SKIPPED', alreadyRunning: true, runId: null },
+    operationRuns: () => operationRunsPageFixture(0, { generatedAt }),
+    ingestionRuns: () => ingestionRunsPageFixture(0, { generatedAt }),
+  });
+  await dashboard.openPipeline();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  const before = dashboard.text('lastRefresh');
+  generatedAt = '2026-10-04T13:05:00Z';
+  await dashboard.refresh();
+  assert.equal(dashboard.text('pipelineStatus'), 'A pipeline cycle is already running');
+  assert.notEqual(dashboard.text('lastRefresh'), before);
+});
+
+test('failed primary reads retain freshness even after a pipeline POST outcome', async () => {
+  let failIngestion = false;
+  let generatedAt = '2026-10-04T12:05:00Z';
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', deferPipeline: false,
+    pipelineResult: { status: 'SKIPPED', alreadyRunning: true, runId: null },
+    operationRuns: () => operationRunsPageFixture(0, { generatedAt }),
+    ingestionRuns: () => failIngestion ? 'error' : ingestionRunsPageFixture(0, { generatedAt }),
+  });
+  await dashboard.openPipeline();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  const before = dashboard.text('lastRefresh');
+  generatedAt = '2026-10-04T13:05:00Z';
+  failIngestion = true;
+  await dashboard.refresh();
+  assert.equal(dashboard.text('pipelineStatus'), 'A pipeline cycle is already running');
+  assert.equal(dashboard.text('lastRefresh'), before);
+});
+
+test('immutable source body remains cached across refresh and polling for the selected document', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret' });
+  await dashboard.openDocument(DOC_A, 'source');
+  const bodyReads = () => dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/body')).length;
+  const source = dashboard.html('documentSource');
+  await dashboard.refresh();
+  assert.equal(bodyReads(), 1);
+  assert.equal(dashboard.html('documentSource'), source);
+  dashboard.tick();
+  await dashboard.flush();
+  assert.equal(bodyReads(), 1);
+  await dashboard.openDocument(DOC_B, 'source');
+  assert.equal(bodyReads(), 2);
+  dashboard.element('adminKey').value = 'replacement-admin';
+  dashboard.click('saveKey');
+  await dashboard.flush();
+  assert.equal(bodyReads(), 3);
 });
 
 test('cycle issues keep loaded rows while a later page fails and retry the same cursor', async () => {

@@ -36,6 +36,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   const intervals = new Map();
   let nextInterval = 1;
   let historyState = {};
+  const historyEntries = [];
   function elementFor(id) {
     if (!ids.has(id)) throw new Error('Unknown static DOM id: ' + id);
     if (!elements.has(id)) {
@@ -89,7 +90,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   };
   const window = {
     location: { origin, search, reload() { reloads++; } },
-    history: { pushState(state, _title, url) { historyState = state || {}; window.location.search = new URL(url, origin).search; }, get state() { return historyState; } },
+    history: { pushState(state, _title, url) { historyState = state || {}; historyEntries.push(url); window.location.search = new URL(url, origin).search; }, get state() { return historyState; } },
     addEventListener(name, handler) { windowHandlers[name] = handler; },
     sessionStorage: {
       getItem(key) { return values.get(key) || null; },
@@ -297,6 +298,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
     get reloads() { return reloads; },
     completePipeline(body) { if (!pipelineResolver) throw new Error('No deferred pipeline response'); pipelineResolver(body); pipelineResolver = null; },
     get historyState() { return historyState; },
+    historyEntries,
     loadedModelRows() { return Array.from(elementFor('modelRows').innerHTML.matchAll(/data-model-run-id="[^"]+"/g)).length; },
   };
 }
