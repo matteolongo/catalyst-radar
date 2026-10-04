@@ -4,6 +4,8 @@ _Status: design baseline — September 2026_
 
 > **Decision baseline:**CatalystRadar is a standalone product. v0.1 is API-only, US-equities-first, Kotlin/Spring Boot, and deliberately excludes any dependency on downstream trading applications.
 
+The explicitly requested optional [operations backoffice](operations-backoffice.md) extends this API-only baseline within the same deployable; its operator contract and historical limits are documented separately.
+
 # 1. Purpose
 
 CatalystRadar continuously ingests company-related information, converts unstructured source material into normalized catalyst events, maintains a point-in-time catalyst state for each company, and exposes discovery and history through a stable REST API.
