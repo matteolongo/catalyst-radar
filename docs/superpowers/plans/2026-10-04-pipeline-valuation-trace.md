@@ -31,6 +31,7 @@
 2. Create `document_processing_steps` with UUID, explicit run/document/attempt foreign keys, stage, sequence, status, started/finished/updated times, bounded result counts and safe error fields. Enforce attempt/document/run consistency. Stages: `SOURCE_NORMALIZATION`, `SOURCE_REGISTRATION`, `COMPANY_RESOLUTION`, `EVENT_EXTRACTION`, `EVENT_VALIDATION`, `EVENT_NORMALIZATION`, `EVENT_CLUSTERING`, `EVENT_PERSISTENCE`. Statuses: `RUNNING`, `SUCCEEDED`, `SKIPPED`, `FAILED`, `INTERRUPTED`.
 3. Create `company_valuation_records` with run/company/snapshot IDs, asOf, creation time, score/taxonomy versions, prior eligible snapshot ID/score/state (nullable), after score/state, stored velocities, transition information, contribution sum/family count/convergence/raw score/normalization scale/cutoff. Unique successful run/company pair.
 4. Create `company_valuation_event_contributions` with valuation/event/cluster IDs and the actual calculator factors/value/sign. Add indexes for the parent feeds and deterministic pagination.
+   Freeze all explicit supporting document IDs in an indexed FK relation, even when the supporting-source text returned in a DTO is capped. Historical lineage must remain available for documents beyond the display cap.
 5. Add focused models and JDBC stores in the existing operations boundary. Reuse the existing `OperationsCursor`, safe errors and `OperationsPage` envelope. Extend existing DTOs with traceVersion; add an operations resource error for missing valuation if needed.
 6. Instrument `SourceDocumentRegistrationService` and its `IngestionService` caller: measure normalization, registration and company resolution for newly saved documents; preserve duplicate candidate counters. Record unresolved company resolution truthfully. Use the operation run context passed explicitly.
 7. Instrument `PipelineService`: record extraction, validation, normalization, clustering and persistence around the real calls. Split validation from preparation in `EventNormalizationService` without changing existing `prepareDocument` behavior. Irrelevant inputs show an explicit skip; later stages never executed must not appear succeeded. Persist successful final stage with `DocumentOutcomePersistenceService`'s existing transaction. Preserve retries and cancellation.
@@ -38,6 +39,7 @@
 9. Extend existing orphan recovery to interrupt active document stages. Preserve partial capture if the process stops.
 10. Expose the following GET endpoints under `/internal/operations`:
     - `/documents/{id}/steps?runId=&attemptId=&limit=&cursor=`
+    - `/documents/{id}/valuations?runId=&limit=&cursor=` (direct frozen provenance membership)
     - `/runs/{id}/valuations?limit=&cursor=`
     - `/valuations/{id}`
     - `/valuations/{id}/contributions?limit=&cursor=`
