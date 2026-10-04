@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { startDashboard } = require('./test-support');
+const { startDashboard, modelSummaryFixture, modelCallFixture, modelCallsPageFixture } = require('./test-support');
 const DOC_A = '11111111-1111-4111-8111-111111111111';
 const DOC_B = '22222222-2222-4222-8222-222222222222';
 const DOC_C = '66666666-6666-4666-8666-666666666666';
@@ -9,6 +9,7 @@ const DOC_UNTRACKED = '99999999-9999-4999-8999-999999999999';
 const DOC_SKIPPED = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const DOC_NEW = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const DOC_OLD = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const MODEL_CALL = '55555555-5555-4555-8555-555555555555';
 
 function startOperations(options = {}) {
   const stored = { ...(options.stored || {}) };
@@ -16,6 +17,16 @@ function startOperations(options = {}) {
   if (options.storedApiKey) stored['catalyst-api-key'] = options.storedApiKey;
   const dashboard = startDashboard({ ...options, stored });
   dashboard.openDocuments = async (search = '?view=documents') => {
+    dashboard.popstate(search);
+    await dashboard.flush();
+    return dashboard;
+  };
+  dashboard.openModels = async (search = '?view=models') => {
+    dashboard.popstate(search);
+    await dashboard.flush();
+    return dashboard;
+  };
+  dashboard.openOverview = async (search = '?view=overview') => {
     dashboard.popstate(search);
     await dashboard.flush();
     return dashboard;
@@ -34,6 +45,319 @@ function startOperations(options = {}) {
   };
   return dashboard;
 }
+
+test('model totals are independent of the currently loaded page', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', modelSummary: modelSummaryFixture(61, 60, 0.60), modelPageSize: 25 });
+  await dashboard.openModels();
+  await dashboard.flush();
+  assert.equal(dashboard.text('modelCallsTotal'), '61');
+  assert.equal(dashboard.text('modelCostTotal'), '$0.600000 · partial (60/61 calls)');
+  assert.equal(dashboard.loadedModelRows(), 25);
+});
+
+test('summary and paginated calls share filters and the summary resolved window', async () => {
+  const summary = modelSummaryFixture(4, 3, 0.04);
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret', modelSummary: summary,
+    modelCalls: (url) => modelCallsPageFixture(1, { nextCursor: url.searchParams.has('cursor') ? null : 'next-page' }),
+  });
+  await dashboard.openModels('?view=models&range=7d&provider=openai&operation=extract&model=gpt-4&success=false' +
+    '&documentId=' + DOC_A + '&attemptId=' + DOC_C + '&runId=' + DOC_B);
+  dashboard.click('loadModels');
+  await dashboard.flush();
+
+  const summaryRequest = dashboard.requests.find((request) => new URL(request.url).pathname.endsWith('/model-summary'));
+  const pages = dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/model-runs'));
+  assert.equal(pages.length, 2);
+  const summaryQuery = new URL(summaryRequest.url).searchParams;
+  assert.equal(summaryQuery.get('range'), '7d');
+  assert.equal(summaryQuery.get('provider'), 'openai');
+  assert.equal(summaryQuery.get('operation'), 'extract');
+  assert.equal(summaryQuery.get('model'), 'gpt-4');
+  assert.equal(summaryQuery.get('success'), 'false');
+  assert.equal(summaryQuery.get('documentId'), DOC_A);
+  assert.equal(summaryQuery.get('attemptId'), DOC_C);
+  assert.equal(summaryQuery.get('runId'), DOC_B);
+  assert.equal(summaryQuery.has('limit'), false);
+
+  for (const [index, request] of pages.entries()) {
+    const query = new URL(request.url).searchParams;
+    assert.equal(query.get('from'), summary.window.from);
+    assert.equal(query.get('to'), summary.window.to);
+    assert.equal(query.has('range'), false);
+    for (const key of ['provider', 'operation', 'model', 'success', 'documentId', 'attemptId', 'runId']) {
+      assert.equal(query.get(key), summaryQuery.get(key));
+    }
+    assert.equal(query.get('limit'), '25');
+    assert.equal(query.get('cursor'), index === 0 ? null : 'next-page');
+    assert.equal(request.headers['X-Admin-Key'], 'admin-secret');
+    assert.equal(request.headers.Authorization, undefined);
+  }
+  assert.equal(summaryRequest.headers['X-Admin-Key'], 'admin-secret');
+});
+
+test('model coverage uses server totals and calls out truncated groups and unknown latency', async () => {
+  const summary = modelSummaryFixture(4, 0, null, { groupsTruncated: true });
+  summary.totals = {
+    calls: 4, successfulCalls: 3, failedCalls: 1,
+    inputTokens: 120, inputTokensKnownCalls: 2,
+    outputTokens: 20, outputTokensExpectedCalls: 3, outputTokensKnownCalls: 2,
+    estimatedCostUsd: null, costKnownCalls: 0,
+    latencyKnownCalls: 0, p50LatencyMs: null, p95LatencyMs: null,
+  };
+  summary.groups = [
+    { provider: 'openai', operation: 'extract', model: 'gpt-4', usage: summary.totals },
+    { provider: 'openai', operation: 'embed', model: 'embed-v1', usage: {
+      ...summary.totals, calls: 1, outputTokens: 999, outputTokensExpectedCalls: 0, outputTokensKnownCalls: 0,
+    } },
+  ];
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', modelSummary: summary, modelCalls: modelCallsPageFixture(0) });
+  await dashboard.openModels();
+
+  assert.equal(dashboard.text('modelCallsTotal'), '4');
+  assert.equal(dashboard.text('modelFailedTotal'), '1');
+  assert.equal(dashboard.text('modelCostTotal'), 'Unknown · no recorded cost (0/4 calls)');
+  assert.match(dashboard.text('modelTokenSummary'), /Input tokens: 120.*2\/4 calls/);
+  assert.match(dashboard.text('modelTokenSummary'), /Output tokens: 20.*2\/3 expected extract calls/);
+  assert.match(dashboard.text('modelLatencySummary'), /p50: Unknown.*p95: Unknown.*0\/4 calls/);
+  assert.match(dashboard.html('modelBreakdown'), /More groups are not shown/);
+  assert.match(dashboard.html('modelBreakdown'), /embed-v1/);
+  assert.equal(dashboard.loadedModelRows(), 0);
+});
+
+test('selected model detail is loaded by ID and links only its explicit associations', async () => {
+  const detail = modelCallFixture(MODEL_CALL, {
+    sourceDocumentId: DOC_A, attemptId: DOC_C, runId: DOC_B,
+    success: false, errorCode: 'MODEL_REJECTED', errorMessage: '<script>alert(1)</script>',
+  });
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', modelDetail: detail, modelCalls: modelCallsPageFixture(1) });
+  await dashboard.openModels('?view=models&range=7d&modelRunId=' + MODEL_CALL);
+
+  const detailRequest = dashboard.requests.find((request) => new URL(request.url).pathname.endsWith('/model-runs/' + MODEL_CALL));
+  assert.ok(detailRequest);
+  assert.equal(detailRequest.headers['X-Admin-Key'], 'admin-secret');
+  assert.equal(new URL(detailRequest.url).search, '');
+  assert.match(dashboard.html('modelDetailContent'), /MODEL_REJECTED/);
+  assert.match(dashboard.html('modelDetailContent'), /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.doesNotMatch(dashboard.html('modelDetailContent'), /<script>/);
+  assert.match(dashboard.html('modelDetailContent'), new RegExp('data-model-source-id="' + DOC_A + '"'));
+  assert.match(dashboard.html('modelDetailContent'), new RegExp('data-model-attempt-id="' + DOC_C + '"'));
+  assert.match(dashboard.html('modelDetailContent'), new RegExp('data-operation-run-id="' + DOC_B + '"'));
+  assert.match(dashboard.html('modelRows'), /data-model-source-id=/);
+  assert.match(dashboard.html('modelRows'), /data-model-attempt-id=/);
+  assert.match(dashboard.html('modelRows'), /data-operation-run-id=/);
+
+  dashboard.click('modelDetail', { target: { closest(selector) {
+    return selector === '[data-model-attempt-id]' ? { dataset: { modelAttemptId: DOC_C } } : null;
+  } } });
+  assert.equal(dashboard.window.location.search, '?view=documents&documentId=' + DOC_A + '&documentTab=attempts&attemptId=' + DOC_C);
+  assert.equal(dashboard.historyState.returnSearch, '?view=models&range=7d&modelRunId=' + MODEL_CALL);
+});
+
+test('an older selected call is fetched by ID and stale detail responses cannot replace it', async () => {
+  const older = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const newer = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', deferModelDetails: true, modelCalls: modelCallsPageFixture(0) });
+  await dashboard.openModels('?view=models&modelRunId=' + older);
+  await dashboard.openModels('?view=models&modelRunId=' + newer);
+  dashboard.resolveModelDetail(older, modelCallFixture(older, { model: 'stale-model' }));
+  dashboard.resolveModelDetail(newer, modelCallFixture(newer, { model: 'current-model' }));
+  await dashboard.flush();
+
+  assert.match(dashboard.html('modelDetailContent'), /current-model/);
+  assert.doesNotMatch(dashboard.html('modelDetailContent'), /stale-model/);
+  assert.equal(dashboard.requests.filter((request) => new URL(request.url).pathname.includes('/model-runs/')).length, 2);
+});
+
+test('changing selected model calls clears the previous detail while the new detail loads or fails', async () => {
+  const older = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const newer = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', deferModelDetails: true, modelCalls: modelCallsPageFixture(0) });
+  await dashboard.openModels('?view=models&modelRunId=' + older);
+  dashboard.resolveModelDetail(older, modelCallFixture(older, { model: 'previous-model' }));
+  await dashboard.flush();
+  assert.match(dashboard.html('modelDetailContent'), /previous-model/);
+
+  await dashboard.openModels('?view=models&modelRunId=' + newer);
+  assert.equal(dashboard.html('modelDetailContent'), '');
+  assert.doesNotMatch(dashboard.html('modelDetailContent'), /previous-model/);
+  dashboard.resolveModelDetail(newer, 'error');
+  await dashboard.flush();
+  assert.equal(dashboard.text('modelDetailStatus'), 'This recorded model call was not found.');
+  assert.equal(dashboard.html('modelDetailContent'), '');
+});
+
+test('unlinked embedding calls keep missing usage unknown and known zero visible', async () => {
+  const embedding = modelCallFixture(MODEL_CALL, {
+    operation: 'embed', model: 'embed-v1', sourceDocumentId: null, attemptId: null, runId: null,
+    inputTokens: null, outputTokens: 0, estimatedCost: null, latencyMs: null,
+  });
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', modelDetail: embedding, modelCalls: modelCallsPageFixture(0) });
+  await dashboard.openModels('?view=models&modelRunId=' + MODEL_CALL);
+  const content = dashboard.html('modelDetailContent');
+  assert.match(content, /No source association recorded/);
+  assert.match(content, /<dt>Input tokens<\/dt><dd>Unknown<\/dd>/);
+  assert.match(content, /<dt>Output tokens<\/dt><dd>0<\/dd>/);
+  assert.match(content, /<dt>Estimated cost<\/dt><dd>Unknown<\/dd>/);
+  assert.match(content, /<dt>Latency<\/dt><dd>Unknown<\/dd>/);
+  assert.doesNotMatch(content, /data-model-source-id|data-model-attempt-id|data-operation-run-id/);
+});
+
+test('empty model history reports known zero cost and token sums', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', modelSummary: modelSummaryFixture(0, 0, 0), modelCalls: modelCallsPageFixture(0) });
+  await dashboard.openModels();
+  assert.equal(dashboard.text('modelCallsTotal'), '0');
+  assert.equal(dashboard.text('modelCostTotal'), '$0.000000 · 0/0 calls');
+  assert.match(dashboard.text('modelTokenSummary'), /Input tokens: 0/);
+  assert.match(dashboard.text('modelTokenSummary'), /Output tokens: 0/);
+});
+
+test('invalid model filters show an inline error and send no malformed model request', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret' });
+  await dashboard.openModels('?view=models&provider=other');
+  assert.match(dashboard.text('modelStatus'), /Choose OpenAI/);
+  assert.equal(dashboard.requests.some((request) => /\/model-(summary|runs)(\/|$)/.test(new URL(request.url).pathname)), false);
+});
+
+test('applying model filters resets the cursor and selected-call route', async () => {
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret',
+    modelCalls: (url) => modelCallsPageFixture(1, { nextCursor: url.searchParams.has('cursor') ? null : 'next-page' }),
+  });
+  await dashboard.openModels('?view=models&range=7d&modelRunId=' + MODEL_CALL);
+  dashboard.click('loadModels');
+  await dashboard.flush();
+  dashboard.element('modelProvider').value = 'openai';
+  dashboard.element('modelOperation').value = 'embed';
+  dashboard.element('modelName').value = 'embed-v1';
+  dashboard.element('modelSuccess').value = 'false';
+  dashboard.element('modelFilters').trigger('submit');
+  await dashboard.flush();
+
+  const route = new URLSearchParams(dashboard.window.location.search.slice(1));
+  assert.equal(route.get('range'), '7d');
+  assert.equal(route.get('provider'), 'openai');
+  assert.equal(route.get('operation'), 'embed');
+  assert.equal(route.get('model'), 'embed-v1');
+  assert.equal(route.get('success'), 'false');
+  assert.equal(route.has('modelRunId'), false);
+  const pages = dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/model-runs'));
+  assert.equal(pages.length, 3);
+  assert.equal(new URL(pages[1].url).searchParams.get('cursor'), 'next-page');
+  const resetPage = new URL(pages[2].url).searchParams;
+  assert.equal(resetPage.has('cursor'), false);
+  assert.equal(resetPage.get('operation'), 'embed');
+  assert.equal(resetPage.get('from'), modelSummaryFixture().window.from);
+  const summaries = dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/model-summary'));
+  assert.equal(summaries.length, 2);
+  assert.equal(new URL(summaries[1].url).searchParams.get('range'), '7d');
+  assert.equal(new URL(summaries[1].url).searchParams.get('operation'), 'embed');
+});
+
+test('stale model pages cannot replace the latest filter result', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', deferModelCalls: true });
+  await dashboard.openModels('?view=models&operation=extract');
+  await dashboard.openModels('?view=models&operation=embed');
+  dashboard.resolveModelCalls(0, modelCallsPageFixture(1, { items: [modelCallFixture(MODEL_CALL, { model: 'stale-page' })] }));
+  dashboard.resolveModelCalls(1, modelCallsPageFixture(1, { items: [modelCallFixture(MODEL_CALL, { model: 'current-page' })] }));
+  await dashboard.flush();
+  assert.match(dashboard.html('modelRows'), /current-page/);
+  assert.doesNotMatch(dashboard.html('modelRows'), /stale-page/);
+});
+
+test('model list associations navigate by their own explicit IDs', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', modelCalls: modelCallsPageFixture(1) });
+  await dashboard.openModels('?view=models&range=7d');
+  dashboard.click('modelRows', { target: { closest(selector) {
+    return selector === '[data-model-source-id]' ? { dataset: { modelSourceId: DOC_A } } : null;
+  } } });
+  assert.equal(dashboard.window.location.search, '?view=documents&documentId=' + DOC_A + '&documentTab=source');
+  assert.equal(dashboard.historyState.returnSearch, '?view=models&range=7d');
+
+  const operationDashboard = startOperations({ storedAdmin: 'admin-secret', modelCalls: modelCallsPageFixture(1) });
+  await operationDashboard.openModels('?view=models&range=7d');
+  operationDashboard.click('modelRows', { target: { closest(selector) {
+    return selector === '[data-operation-run-id]' ? { dataset: { operationRunId: DOC_B } } : null;
+  } } });
+  assert.equal(operationDashboard.window.location.search, '?view=pipeline&runId=' + DOC_B);
+  assert.equal(operationDashboard.historyState.returnSearch, '?view=models&range=7d');
+});
+
+test('a failed first model page retries without inventing a cursor', async () => {
+  let reads = 0;
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', modelCalls: () => ++reads === 1 ? 'error' : modelCallsPageFixture(1) });
+  await dashboard.openModels();
+  assert.match(dashboard.text('modelStatus'), /Unable to load model calls/);
+  dashboard.click('loadModels');
+  await dashboard.flush();
+  assert.equal(reads, 2);
+  assert.equal(dashboard.loadedModelRows(), 1);
+});
+
+test('Load model calls retries a failed summary before requesting its first page', async () => {
+  let summaries = 0;
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret',
+    modelSummary: () => ++summaries === 1 ? 'error' : modelSummaryFixture(),
+    modelCalls: modelCallsPageFixture(1),
+  });
+  await dashboard.openModels();
+  assert.equal(summaries, 1);
+  assert.match(dashboard.text('modelStatus'), /Unable to load model summary/);
+  assert.equal(dashboard.text('loadModels'), 'Retry model summary');
+
+  dashboard.click('loadModels');
+  await dashboard.flush();
+  assert.equal(summaries, 2);
+  assert.equal(dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/model-runs')).length, 1);
+  assert.equal(dashboard.loadedModelRows(), 1);
+});
+
+test('a model feed cannot use its previous window while a refreshed summary is pending', async () => {
+  const first = modelSummaryFixture();
+  first.window = { from: '2026-10-01T00:00:00Z', to: '2026-10-02T00:00:00Z' };
+  const refreshed = modelSummaryFixture();
+  refreshed.window = { from: '2026-10-03T00:00:00Z', to: '2026-10-04T00:00:00Z' };
+  const dashboard = startOperations({
+    storedAdmin: 'admin-secret', deferModelSummary: true, deferModelCalls: true,
+  });
+  await dashboard.openModels();
+  dashboard.resolveModelSummary(0, first);
+  await dashboard.flush();
+  dashboard.resolveModelCalls(0, modelCallsPageFixture(1, { nextCursor: 'older-page' }));
+  await dashboard.flush();
+  assert.equal(dashboard.element('loadModels').disabled, false);
+
+  dashboard.click('refresh');
+  await dashboard.flush();
+  assert.equal(dashboard.element('loadModels').disabled, true);
+  dashboard.click('loadModels');
+  await dashboard.flush();
+  assert.equal(dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/model-runs')).length, 1);
+
+  dashboard.resolveModelSummary(1, refreshed);
+  await dashboard.flush();
+  const pages = dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/model-runs'));
+  assert.equal(pages.length, 2);
+  assert.equal(new URL(pages[1].url).searchParams.get('from'), refreshed.window.from);
+  dashboard.resolveModelCalls(1, modelCallsPageFixture(1));
+  await dashboard.flush();
+});
+
+test('model detail uses the backend not-found error code', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', modelDetail: 'error', modelCalls: modelCallsPageFixture(0) });
+  await dashboard.openModels('?view=models&modelRunId=' + MODEL_CALL);
+  assert.equal(dashboard.text('modelDetailStatus'), 'This recorded model call was not found.');
+});
+
+test('leaving Models stops model summary and call reads', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret' });
+  await dashboard.openModels();
+  const modelReads = () => dashboard.requests.filter((request) => /\/model-(summary|runs)(\/|$)/.test(new URL(request.url).pathname)).length;
+  const beforeNavigation = modelReads();
+  await dashboard.openOverview();
+  assert.equal(modelReads(), beforeNavigation);
+});
 
 test('unauthenticated Overview loads health but no protected data or fake metrics', async () => {
   const dashboard = startOperations();

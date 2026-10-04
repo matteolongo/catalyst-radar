@@ -22,10 +22,14 @@
     return query;
   }
 
-  function modelQuery(filters, range) {
+  function modelFiltersQuery(filters, rangeOrWindow) {
     filters = filters || {};
     var query = new URLSearchParams();
-    append(query, 'range', range);
+    if (typeof rangeOrWindow === 'string') append(query, 'range', rangeOrWindow);
+    else if (rangeOrWindow) {
+      append(query, 'from', rangeOrWindow.from);
+      append(query, 'to', rangeOrWindow.to);
+    }
     append(query, 'provider', filters.provider);
     append(query, 'operation', filters.operation);
     append(query, 'model', filters.model);
@@ -33,9 +37,19 @@
     append(query, 'documentId', filters.documentId);
     append(query, 'attemptId', filters.attemptId);
     append(query, 'runId', filters.runId);
+    return query;
+  }
+
+  function modelQuery(filters, rangeOrWindow) {
+    filters = filters || {};
+    var query = modelFiltersQuery(filters, rangeOrWindow);
     query.set('limit', String(filters.limit || 25));
     append(query, 'cursor', filters.cursor);
     return query;
+  }
+
+  function modelSummaryQuery(filters, range) {
+    return modelFiltersQuery(filters, range);
   }
 
   function mergePage(existing, incoming) {
@@ -64,7 +78,9 @@
   }
 
   function formatKnownCost(value, known, total) {
-    if (value === null || value === undefined || !Number.isFinite(Number(value)) || Number(known) <= 0) return 'Unknown';
+    if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'Unknown';
+    if (Number(total) === 0 && Number(known) === 0 && Number(value) === 0) return '$0.000000';
+    if (Number(known) <= 0) return 'Unknown';
     var cost = '$' + Number(value).toFixed(6);
     if (Number(known) < Number(total)) return cost + ' · partial (' + known + '/' + total + ' calls)';
     return cost;
@@ -106,6 +122,6 @@
     }
   }
 
-  window.CatalystOperationsModel = Object.freeze({ documentQuery: documentQuery, modelQuery: modelQuery,
+  window.CatalystOperationsModel = Object.freeze({ documentQuery: documentQuery, modelQuery: modelQuery, modelSummaryQuery: modelSummaryQuery,
     mergePage: mergePage, utcThroughDate: utcThroughDate, formatKnownCost: formatKnownCost, signalRoute: signalRoute });
 })();

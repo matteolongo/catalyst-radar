@@ -7,6 +7,8 @@
   var ACCESS_STATUS_IDS = ['overviewStatus', 'pipelineStatus', 'documentStatus', 'modelStatus'];
   var DOCUMENT_STATES = ['PENDING', 'PROCESSING', 'COMPLETED', 'SKIPPED', 'RETRYABLE_ERROR', 'TERMINAL_ERROR', 'UNRESOLVED', 'NOT_TRACKED'];
   var DOCUMENT_TABS = ['overview', 'attempts', 'models', 'events', 'source'];
+  var MODEL_PROVIDERS = ['openai'];
+  var MODEL_OPERATIONS = ['extract', 'embed'];
   var SIGNAL_LABELS = {
     DUE_DOCUMENTS: 'Documents due',
     TERMINAL_DOCUMENTS: 'Documents with terminal failures',
@@ -49,6 +51,27 @@
     var selectedDocumentOpener = null;
     var selectedAttemptId = null;
     var documentTabCache = {};
+    var modelRange = '24h';
+    var modelFilters = { provider: '', operation: '', model: '', success: '', documentId: '', attemptId: '', runId: '' };
+    var modelSummary = null;
+    var modelWindow = null;
+    var modelItems = [];
+    var modelCursor = null;
+    var modelSummaryLoaded = false;
+    var modelSummaryError = null;
+    var lastModelSummaryAt = null;
+    var modelPageLoaded = false;
+    var modelSummaryLoading = false;
+    var modelPageLoading = false;
+    var modelPageError = null;
+    var modelRouteValid = true;
+    var modelGeneration = 0;
+    var selectedModelCallId = null;
+    var selectedModelCall = null;
+    var selectedModelLoaded = false;
+    var selectedModelLoading = false;
+    var modelDetailSequence = 0;
+    var modelDetailOpener = null;
 
     function el(id) { return document.getElementById(id); }
     function esc(value) {
@@ -74,6 +97,9 @@
       documentPageLoading = false;
       selectedDocumentLoading = false;
       Object.keys(documentTabCache).forEach(function (tab) { documentTabCache[tab].loading = false; });
+      modelSummaryLoading = false;
+      modelPageLoading = false;
+      selectedModelLoading = false;
     }
     function read(path, revision, requestSequence, expectedScreen) {
       var controller = new AbortController();
@@ -133,6 +159,12 @@
           toggleHidden('documentRows', true);
           toggleHidden('loadDocuments', true);
           toggleHidden('documentDetail', true);
+        } else if (screen === 'models') {
+          clearModelData();
+          toggleHidden('modelFilters', true);
+          toggleHidden('modelRows', true);
+          toggleHidden('loadModels', true);
+          toggleHidden('modelDetail', true);
         }
       }
       el('lastRefresh').textContent = 'No successful refresh yet';
@@ -860,6 +892,456 @@
     function onLoadAttemptsClick() { loadDocumentTab(false, true); }
     function onLoadDocumentModelsClick() { loadDocumentTab(false, true); }
     function onLoadDocumentEventsClick() { loadDocumentTab(false, true); }
+
+    function normalizeModelFilters(filters) {
+      var normalized = Object.assign({}, filters, {
+        provider: String(filters.provider || '').trim().toLowerCase(),
+        operation: String(filters.operation || '').trim().toLowerCase(),
+        model: String(filters.model || '').trim(),
+        success: String(filters.success == null ? '' : filters.success),
+        documentId: String(filters.documentId || '').trim(),
+        attemptId: String(filters.attemptId || '').trim(),
+        runId: String(filters.runId || '').trim(),
+      });
+      if (normalized.provider && !MODEL_PROVIDERS.includes(normalized.provider)) return { error: 'Choose OpenAI as the provider.' };
+      if (normalized.operation && !MODEL_OPERATIONS.includes(normalized.operation)) return { error: 'Choose extract or embed as the operation.' };
+      if (normalized.model.length > 128 || /[\u0000-\u001f\u007f]/.test(normalized.model)) return { error: 'Model name must contain up to 128 printable characters.' };
+      if (normalized.success && normalized.success !== 'true' && normalized.success !== 'false') return { error: 'Choose a valid call outcome.' };
+      if (normalized.documentId && !validUuid(normalized.documentId)) return { error: 'The source document ID is invalid.' };
+      if (normalized.attemptId && !validUuid(normalized.attemptId)) return { error: 'The attempt ID is invalid.' };
+      if (normalized.runId && !validUuid(normalized.runId)) return { error: 'The operation run ID is invalid.' };
+      return { filters: normalized };
+    }
+    function modelFilterKey(filters) {
+      return JSON.stringify({ provider: filters.provider, operation: filters.operation, model: filters.model,
+        success: filters.success, documentId: filters.documentId, attemptId: filters.attemptId, runId: filters.runId });
+    }
+    function modelFiltersFromRoute(route, preserveCurrentFilters) {
+      var keys = ['provider', 'operation', 'model', 'success', 'documentId', 'attemptId', 'runId'];
+      var hasFilters = keys.some(function (key) { return route.has(key); });
+      var next = preserveCurrentFilters && !hasFilters
+        ? Object.assign({}, modelFilters)
+        : { provider: '', operation: '', model: '', success: '', documentId: '', attemptId: '', runId: '' };
+      keys.forEach(function (key) { if (route.has(key)) next[key] = route.get(key); });
+      return normalizeModelFilters(next);
+    }
+    function modelSearch(filters, range, selectedId) {
+      var route = new URLSearchParams();
+      route.set('view', 'models');
+      route.set('range', range === '7d' ? '7d' : '24h');
+      ['provider', 'operation', 'model', 'success', 'documentId', 'attemptId', 'runId'].forEach(function (key) {
+        if (filters[key]) route.set(key, filters[key]);
+      });
+      if (selectedId) route.set('modelRunId', selectedId);
+      return '?' + route.toString();
+    }
+    function renderModelFilters() {
+      el('modelProvider').value = modelFilters.provider;
+      el('modelOperation').value = modelFilters.operation;
+      el('modelName').value = modelFilters.model;
+      el('modelSuccess').value = modelFilters.success;
+    }
+    function modelRangeFromRoute(route, preserveCurrentRange) {
+      if (!route.has('range')) return preserveCurrentRange ? modelRange : '24h';
+      var range = route.get('range');
+      return range === '24h' || range === '7d' ? range : null;
+    }
+    function configureModels(route, preserveCurrentFilters) {
+      var nextRange = modelRangeFromRoute(route, preserveCurrentFilters);
+      var parsed = modelFiltersFromRoute(route, preserveCurrentFilters);
+      var nextId = route.get('modelRunId') || null;
+      var invalid = !nextRange ? 'Choose a valid activity range.' : parsed.error;
+      if (!invalid && nextId && !validUuid(nextId)) invalid = 'Model call ID must be a UUID.';
+      if (invalid) {
+        modelRouteValid = false;
+        clearModelData();
+        selectedModelCallId = nextId && validUuid(nextId) ? nextId : null;
+        modelStatus(invalid);
+        setModelPane();
+        return false;
+      }
+      var changed = nextRange !== modelRange || modelFilterKey(parsed.filters) !== modelFilterKey(modelFilters);
+      modelRange = nextRange;
+      modelFilters = parsed.filters;
+      if (changed) {
+        modelGeneration++;
+        modelSummary = null;
+        modelWindow = null;
+        modelItems = [];
+        modelCursor = null;
+        modelSummaryLoaded = false;
+        modelSummaryError = null;
+        lastModelSummaryAt = null;
+        modelPageLoaded = false;
+        modelPageError = null;
+      }
+      if (selectedModelCallId !== nextId) {
+        selectedModelCallId = nextId;
+        selectedModelCall = null;
+        selectedModelLoaded = false;
+        selectedModelLoading = false;
+        modelDetailSequence++;
+        el('modelDetailTitle').textContent = 'Selected model call';
+        el('modelDetailStatus').textContent = '';
+        el('modelDetailContent').innerHTML = '';
+      }
+      modelRouteValid = true;
+      renderModelFilters();
+      renderModelSummary(modelSummary);
+      renderModelRows();
+      setModelPane();
+      return true;
+    }
+    function modelStatus(message) { el('modelStatus').textContent = message; }
+    function modelCostLabel(value, known, calls) {
+      var label = cost(value, known, calls);
+      if (label === 'Unknown') return calls > 0 && Number(known) === 0
+        ? 'Unknown · no recorded cost (' + integer(known) + '/' + integer(calls) + ' calls)' : label;
+      if (Number(known) === Number(calls) && Number(calls) > 0) return label + ' · ' + integer(known) + '/' + integer(calls) + ' calls';
+      if (Number(calls) === 0) return label + ' · 0/0 calls';
+      return label;
+    }
+    function coverageMeasure(value, known, expected, units) {
+      if (value == null) return 'Unknown · ' + integer(known) + '/' + integer(expected) + ' ' + units;
+      var formatted = integer(value);
+      return Number(known) < Number(expected)
+        ? formatted + ' · partial (' + integer(known) + '/' + integer(expected) + ' ' + units + ')'
+        : formatted + ' · ' + integer(known) + '/' + integer(expected) + ' ' + units;
+    }
+    function latencyValue(value) {
+      return value == null || !Number.isFinite(Number(value)) ? 'Unknown' : String(value) + ' ms';
+    }
+    function renderModelSummary(summary) {
+      if (!summary || !summary.totals) {
+        el('modelCallsTotal').textContent = 'Unknown';
+        el('modelFailedTotal').textContent = 'Unknown';
+        el('modelCostTotal').textContent = 'Unknown';
+        el('modelTokenSummary').textContent = 'Token coverage is not available.';
+        el('modelLatencySummary').textContent = 'Latency coverage is not available.';
+        el('modelBreakdown').innerHTML = '<p class="muted">No model summary loaded.</p>';
+        return;
+      }
+      var totals = summary.totals;
+      el('modelCallsTotal').textContent = integer(totals.calls);
+      el('modelFailedTotal').textContent = integer(totals.failedCalls);
+      el('modelCostTotal').textContent = modelCostLabel(totals.estimatedCostUsd, totals.costKnownCalls, totals.calls);
+      el('modelTokenSummary').textContent = 'Input tokens: ' + coverageMeasure(totals.inputTokens, totals.inputTokensKnownCalls, totals.calls, 'calls') +
+        ' · Output tokens: ' + coverageMeasure(totals.outputTokens, totals.outputTokensKnownCalls,
+          totals.outputTokensExpectedCalls, 'expected extract calls');
+      el('modelLatencySummary').textContent = 'p50: ' + latencyValue(totals.p50LatencyMs) +
+        ' · p95: ' + latencyValue(totals.p95LatencyMs) + ' · latency known for ' + integer(totals.latencyKnownCalls) +
+        '/' + integer(totals.calls) + ' calls';
+      var groups = Array.isArray(summary.groups) ? summary.groups : [];
+      el('modelBreakdown').innerHTML = groups.length ? '<div class="table-scroll"><table class="model-breakdown-table"><caption>Recorded calls grouped by provider, operation and model</caption>' +
+        '<thead><tr><th scope="col">Provider</th><th scope="col">Operation</th><th scope="col">Model</th><th scope="col">Calls</th><th scope="col">Failed</th><th scope="col">Estimated cost</th></tr></thead><tbody>' +
+        groups.map(function (group) {
+          var usage = group.usage || {};
+          return '<tr><td>' + esc(group.provider) + '</td><td>' + esc(group.operation) + '</td><td>' + esc(group.model) + '</td>' +
+            '<td>' + esc(integer(usage.calls)) + '</td><td>' + esc(integer(usage.failedCalls)) + '</td><td>' +
+            esc(modelCostLabel(usage.estimatedCostUsd, usage.costKnownCalls, usage.calls)) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' : '<p class="muted">No model calls are recorded for this window.</p>';
+      if (summary.groupsTruncated) el('modelBreakdown').innerHTML += '<p class="muted">More groups are not shown; the server returned its first 50 groups.</p>';
+    }
+    function modelRowCost(item) {
+      return item.estimatedCost == null ? 'Unknown' : cost(item.estimatedCost, 1, 1);
+    }
+    function renderModelRows() {
+      var content = modelPageLoading && !modelPageLoaded && !modelItems.length
+        ? '<p class="muted">Loading recorded model calls…</p>'
+        : (modelItems.length ? '<div class="table-scroll"><table class="model-calls-table"><caption>' +
+          modelItems.length + ' loaded recorded calls; summary totals cover the full selected window.</caption>' +
+          '<thead><tr><th scope="col">Call</th><th scope="col">Provider / operation / model</th><th scope="col">Outcome</th>' +
+          '<th scope="col">Recorded at (UTC)</th><th scope="col">Input / output tokens</th><th scope="col">Estimated cost</th><th scope="col">Latency</th><th scope="col">Associations</th></tr></thead><tbody>' +
+          modelItems.map(function (item) {
+            return '<tr' + (item.id === selectedModelCallId ? ' class="model-call-selected"' : '') + '><td><button type="button" class="ghost model-row-button" data-model-run-id="' +
+              esc(item.id) + '" aria-current="' + (item.id === selectedModelCallId ? 'true' : 'false') + '">Inspect call</button></td>' +
+              '<td>' + esc(item.provider) + ' · ' + esc(item.operation) + ' · ' + esc(item.model) + '</td>' +
+              '<td><span class="pill ' + (item.success ? 'ok' : 'bad') + '">' + (item.success ? 'Success' : 'Failed') + '</span>' +
+              (item.errorCode ? '<br>' + esc(item.errorCode) : '') + '</td>' +
+              '<td>' + esc(time(item.createdAt)) + '</td><td>' + esc(integer(item.inputTokens)) + ' / ' + esc(integer(item.outputTokens)) + '</td>' +
+              '<td>' + esc(modelRowCost(item)) + '</td><td>' + esc(item.latencyMs == null ? 'Unknown' : integer(item.latencyMs) + ' ms') +
+              '</td><td>' + renderModelLinks(item) + '</td></tr>';
+          }).join('') + '</tbody></table></div>' : '<p class="muted">No recorded model calls match these filters.</p>');
+      if (modelPageError && modelItems.length) content += '<p class="panel-error">' + esc(modelPageError) + '</p>';
+      el('modelRows').innerHTML = content;
+      toggleHidden('modelRows', false);
+      toggleHidden('loadModels', !modelRouteValid || (!modelCursor && modelPageLoaded && !modelPageError));
+      el('loadModels').textContent = modelSummaryError ? 'Retry model summary'
+        : (modelPageError && !modelCursor ? 'Retry model calls' : (modelPageLoaded ? 'Load more' : 'Load model calls'));
+      el('loadModels').disabled = modelPageLoading || modelSummaryLoading || (!modelCursor && modelPageLoaded && !modelPageError);
+      if (modelPageError && !modelItems.length) modelStatus(modelPageError);
+      else if (modelSummaryError) modelStatus(modelSummaryError);
+      else if (modelSummaryLoaded && modelPageLoaded) modelStatus(modelItems.length + ' calls loaded · activity window ' +
+        time(modelWindow && modelWindow.from) + ' to ' + time(modelWindow && modelWindow.to) + ' UTC.');
+      else if (modelPageLoading || modelSummaryLoading) modelStatus('Loading recorded model usage…');
+    }
+    function renderModelLinks(call) {
+      var links = [];
+      var hasSource = validUuid(call.sourceDocumentId);
+      if (hasSource) links.push('<a href="?view=documents&amp;documentId=' + encodeURIComponent(call.sourceDocumentId) +
+        '&amp;documentTab=source" data-model-source-id="' + esc(call.sourceDocumentId) + '">Source document</a>');
+      if (hasSource && validUuid(call.attemptId)) links.push('<a href="?view=documents&amp;documentId=' +
+        encodeURIComponent(call.sourceDocumentId) + '&amp;documentTab=attempts&amp;attemptId=' + encodeURIComponent(call.attemptId) +
+        '" data-model-attempt-id="' + esc(call.attemptId) + '" data-model-attempt-document-id="' + esc(call.sourceDocumentId) + '">Processing attempt</a>');
+      if (validUuid(call.runId)) links.push('<a href="?view=pipeline&amp;runId=' + encodeURIComponent(call.runId) +
+        '" data-operation-run-id="' + esc(call.runId) + '">Operation run</a>');
+      if (!hasSource) links.unshift('<span class="muted">No source association recorded.</span>');
+      return '<p class="model-associations">' + links.join(' · ') + '</p>';
+    }
+    function renderSelectedModelCall(call) {
+      el('modelDetailTitle').textContent = 'Selected model call';
+      el('modelDetailContent').innerHTML = '<dl class="model-detail-grid">' +
+        [['Call ID', call.id], ['Provider', call.provider], ['Operation', call.operation], ['Model', call.model],
+          ['Prompt version', call.promptVersion], ['Extractor version', call.extractorVersion], ['Recorded at (UTC)', time(call.createdAt)],
+          ['Outcome', call.success ? 'Success' : 'Failed'], ['Input tokens', integer(call.inputTokens)],
+          ['Output tokens', integer(call.outputTokens)], ['Estimated cost', modelRowCost(call)],
+          ['Latency', call.latencyMs == null ? 'Unknown' : integer(call.latencyMs) + ' ms'],
+          ['Error category', call.errorCode], ['Safe error message', call.errorMessage]].map(function (entry) {
+          return '<div><dt>' + esc(entry[0]) + '</dt><dd>' + esc(entry[1] == null || entry[1] === '' ? 'Unknown' : entry[1]) + '</dd></div>';
+        }).join('') + '</dl>' + renderModelLinks(call);
+    }
+    function setModelPane() {
+      toggleHidden('modelDetail', !selectedModelCallId || !credentials().hasAdmin);
+      if (!selectedModelCallId) {
+        el('modelDetailStatus').textContent = '';
+        el('modelDetailContent').innerHTML = '';
+        return;
+      }
+      var returnSearch = window.history && window.history.state ? window.history.state.returnSearch : null;
+      el('closeModel').textContent = validLocalReturnSearch(returnSearch) ? 'Back to previous view' : 'Back to model calls';
+      if (selectedModelCall) renderSelectedModelCall(selectedModelCall);
+    }
+    function validLocalReturnSearch(value) {
+      if (typeof value !== 'string' || !value.startsWith('?') || value.startsWith('??') || value.indexOf('#') >= 0 || value.indexOf('\\') >= 0) return false;
+      var view = new URLSearchParams(value.slice(1)).get('view') || 'overview';
+      return ['overview', 'pipeline', 'documents', 'models', 'discover', 'company', 'events'].includes(view);
+    }
+    function clearModelData() {
+      modelSummary = null;
+      modelWindow = null;
+      modelItems = [];
+      modelCursor = null;
+      modelSummaryLoaded = false;
+      modelSummaryError = null;
+      modelPageLoaded = false;
+      modelPageError = null;
+      selectedModelCall = null;
+      selectedModelLoaded = false;
+      selectedModelLoading = false;
+      renderModelSummary(null);
+      renderModelRows();
+      el('modelDetailStatus').textContent = '';
+      el('modelDetailContent').innerHTML = '';
+    }
+    function modelSummaryPath() {
+      var query = window.CatalystOperationsModel.modelSummaryQuery(modelFilters, modelRange);
+      return '/internal/operations/model-summary?' + query.toString();
+    }
+    function modelPagePath(cursor) {
+      var query = window.CatalystOperationsModel.modelQuery(Object.assign({}, modelFilters, { cursor: cursor || null }), modelWindow);
+      return '/internal/operations/model-runs?' + query.toString();
+    }
+    function loadModelSummary(force) {
+      if (modelSummaryLoading || (modelSummaryLoaded && !force)) return Promise.resolve(modelSummaryLoaded);
+      var revision = credentials().revision;
+      var requestSequence = sequence;
+      var generation = modelGeneration;
+      modelSummaryLoading = true;
+      modelSummaryError = null;
+      if (!modelSummaryLoaded) modelStatus('Loading model summary…');
+      renderModelRows();
+      return read(modelSummaryPath(), revision, requestSequence, 'models').then(function (result) {
+        if (!result.current || generation !== modelGeneration) return false;
+        var data = result.data || {};
+        if (!data.window || !data.window.from || !data.window.to || !data.totals) throw new Error('INVALID_MODEL_SUMMARY');
+        modelSummary = data;
+        modelWindow = data.window;
+        modelSummaryLoaded = true;
+        modelSummaryError = null;
+        renderModelSummary(data);
+        if (data.generatedAt) {
+          lastModelSummaryAt = time(data.generatedAt);
+        }
+        return true;
+      }).catch(function (error) {
+        if (!current(revision, requestSequence, 'models') || generation !== modelGeneration || error.name === 'AbortError') return false;
+        modelSummaryError = error.status === 403 || error.code === 'FORBIDDEN'
+          ? 'Admin access required to inspect recorded model usage.' : 'Unable to load model summary. Retry the read.';
+        return false;
+      }).finally(function () {
+        if (current(revision, requestSequence, 'models') && generation === modelGeneration) {
+          modelSummaryLoading = false;
+          if (!modelSummaryLoaded) {
+            renderModelRows();
+            modelStatus(lastModelSummaryAt
+              ? 'Last loaded ' + lastModelSummaryAt + ' · summary refresh failed' : (modelSummaryError || 'Unable to load model summary. Retry the read.'));
+          }
+        }
+      });
+    }
+    function loadModelPage(appendPage) {
+      if (!credentials().hasAdmin || !modelWindow || modelPageLoading || (appendPage && !modelCursor)) return Promise.resolve(false);
+      var revision = credentials().revision;
+      var requestSequence = sequence;
+      var generation = modelGeneration;
+      var cursor = appendPage ? modelCursor : null;
+      modelPageLoading = true;
+      modelPageError = null;
+      renderModelRows();
+      return read(modelPagePath(cursor), revision, requestSequence, 'models').then(function (result) {
+        if (!result.current || generation !== modelGeneration) return false;
+        var incoming = Array.isArray(result.data.items) ? result.data.items : [];
+        modelItems = appendPage ? window.CatalystOperationsModel.mergePage({ items: modelItems }, { items: incoming }).items : incoming.slice();
+        modelCursor = result.data.nextCursor || null;
+        modelPageLoaded = true;
+        modelPageError = null;
+        if (!appendPage && modelSummaryLoaded) {
+          var loadedAt = result.data.generatedAt || (modelSummary && modelSummary.generatedAt);
+          if (loadedAt) el('lastRefresh').textContent = 'Last loaded ' + time(loadedAt);
+        }
+        return true;
+      }).catch(function (error) {
+        if (!current(revision, requestSequence, 'models') || generation !== modelGeneration || error.name === 'AbortError') return false;
+        modelPageError = error.status === 403 || error.code === 'FORBIDDEN'
+          ? 'Admin access required to inspect recorded model calls.' : 'Unable to load model calls. Retry the read.';
+        return false;
+      }).finally(function () {
+        if (current(revision, requestSequence, 'models') && generation === modelGeneration) {
+          modelPageLoading = false;
+          renderModelRows();
+        }
+      });
+    }
+    function loadSelectedModel(force) {
+      if (!selectedModelCallId || !credentials().hasAdmin || selectedModelLoading) return Promise.resolve(false);
+      if (selectedModelLoaded && !force) return Promise.resolve(true);
+      var id = selectedModelCallId;
+      var detailSequence = ++modelDetailSequence;
+      var revision = credentials().revision;
+      var requestSequence = sequence;
+      selectedModelLoading = true;
+      toggleHidden('modelDetail', false);
+      el('modelDetailStatus').textContent = selectedModelLoaded ? 'Refreshing model call details…' : 'Loading recorded model call…';
+      return read('/internal/operations/model-runs/' + encodeURIComponent(id), revision, requestSequence, 'models').then(function (result) {
+        if (!result.current || selectedModelCallId !== id || detailSequence !== modelDetailSequence) return false;
+        selectedModelCall = result.data;
+        selectedModelLoaded = true;
+        el('modelDetailStatus').textContent = '';
+        renderSelectedModelCall(result.data);
+        setModelPane();
+        return true;
+      }).catch(function (error) {
+        if (!current(revision, requestSequence, 'models') || selectedModelCallId !== id || detailSequence !== modelDetailSequence || error.name === 'AbortError') return false;
+        el('modelDetailTitle').textContent = 'Model call unavailable';
+        el('modelDetailStatus').textContent = error.code === 'MODEL_RUN_NOT_FOUND'
+          ? 'This recorded model call was not found.' : (error.status === 403 || error.code === 'FORBIDDEN'
+            ? 'Admin access required to inspect this model call.' : 'Unable to load model call details. Retry the read.');
+        return false;
+      }).finally(function () {
+        if (current(revision, requestSequence, 'models') && selectedModelCallId === id && detailSequence === modelDetailSequence) selectedModelLoading = false;
+      });
+    }
+    function loadModelsScreen(force) {
+      if (!modelRouteValid) return Promise.resolve();
+      if (!credentials().hasAdmin) {
+        accessRequired();
+        return Promise.resolve();
+      }
+      toggleHidden('modelFilters', false);
+      toggleHidden('modelRows', false);
+      if (force) {
+        modelGeneration++;
+        modelSummaryLoading = false;
+        modelPageLoading = false;
+        selectedModelLoading = false;
+        modelDetailSequence++;
+        modelSummaryLoaded = false;
+        modelSummaryError = null;
+        modelPageLoaded = false;
+        modelPageError = null;
+        modelCursor = null;
+        if (selectedModelCallId) selectedModelLoaded = false;
+      }
+      var tasks = [];
+      var summaryTask = !modelSummaryLoaded
+        ? loadModelSummary(!!force).then(function (loaded) { return loaded ? loadModelPage(false) : false; })
+        : (!modelPageLoaded || force ? loadModelPage(false) : Promise.resolve(true));
+      tasks.push(summaryTask);
+      if (selectedModelCallId && (!selectedModelLoaded || force)) tasks.push(loadSelectedModel(!!force));
+      return Promise.allSettled(tasks).then(function () {});
+    }
+    function onModelFiltersSubmit(event) {
+      event.preventDefault();
+      var normalized = normalizeModelFilters(Object.assign({}, modelFilters, {
+        provider: el('modelProvider').value, operation: el('modelOperation').value,
+        model: el('modelName').value, success: el('modelSuccess').value,
+      }));
+      if (normalized.error) {
+        modelStatus(normalized.error);
+        return;
+      }
+      options.navigate(modelSearch(normalized.filters, modelRange, null));
+    }
+    function selectModelCall(id, opener) {
+      if (!validUuid(id)) return;
+      modelDetailOpener = opener || null;
+      options.navigate(modelSearch(modelFilters, modelRange, id));
+    }
+    function closeSelectedModel() {
+      var returnSearch = window.history && window.history.state ? window.history.state.returnSearch : null;
+      var opener = modelDetailOpener;
+      modelDetailOpener = null;
+      if (validLocalReturnSearch(returnSearch)) {
+        options.navigate(returnSearch);
+        return;
+      }
+      options.navigate(modelSearch(modelFilters, modelRange, null));
+      if (opener && typeof opener.focus === 'function') opener.focus();
+      else el('modelRows').focus();
+    }
+    function onModelAssociationClick(event) {
+      var source = event.target.closest('[data-model-source-id]');
+      if (source) {
+        if (event.preventDefault) event.preventDefault();
+        options.navigate('?view=documents&documentId=' + encodeURIComponent(source.dataset.modelSourceId) + '&documentTab=source',
+          { returnSearch: currentLocalSearch() });
+        return true;
+      }
+      var attempt = event.target.closest('[data-model-attempt-id]');
+      var documentId = attempt && (attempt.dataset.modelAttemptDocumentId ||
+        (selectedModelCall && selectedModelCall.sourceDocumentId));
+      if (attempt && validUuid(documentId)) {
+        if (event.preventDefault) event.preventDefault();
+        options.navigate('?view=documents&documentId=' + encodeURIComponent(documentId) + '&documentTab=attempts&attemptId=' +
+          encodeURIComponent(attempt.dataset.modelAttemptId), { returnSearch: currentLocalSearch() });
+        return true;
+      }
+      var run = event.target.closest('[data-operation-run-id]');
+      if (run) {
+        if (event.preventDefault) event.preventDefault();
+        options.navigate('?view=pipeline&runId=' + encodeURIComponent(run.dataset.operationRunId), { returnSearch: currentLocalSearch() });
+        return true;
+      }
+      return false;
+    }
+    function onModelRowsClick(event) {
+      if (onModelAssociationClick(event)) return;
+      var row = event.target.closest('[data-model-run-id]');
+      if (!row) return;
+      if (event.preventDefault) event.preventDefault();
+      selectModelCall(row.dataset.modelRunId, row);
+    }
+    function onModelDetailClick(event) {
+      onModelAssociationClick(event);
+    }
+    function onLoadModelsClick() {
+      if (modelSummaryLoading) return;
+      if (!modelWindow || !modelSummaryLoaded || modelSummaryError) {
+        loadModelsScreen(true);
+        return;
+      }
+      loadModelPage(!!modelCursor);
+    }
     var tabHandlers = {};
     DOCUMENT_TABS.forEach(function (tab) {
       tabHandlers[tab] = function () { selectDocumentTab(tab); };
@@ -915,6 +1397,7 @@
       if (credentials().hasAdmin && screen === 'overview') tasks.push(loadOverview(revision, requestSequence));
       else if (credentials().hasAdmin && screen === 'settings') tasks.push(loadConfig(revision, requestSequence));
       else if (credentials().hasAdmin && screen === 'documents') tasks.push(loadDocumentsScreen(force));
+      else if (credentials().hasAdmin && screen === 'models') tasks.push(loadModelsScreen(force));
       else if (!credentials().hasAdmin) accessRequired();
       var operation = Promise.allSettled(tasks).then(function () {});
       var wrapped = operation.finally(function () { if (pending === wrapped) pending = null; });
@@ -931,6 +1414,7 @@
       else if (!healthLoaded || (screen === 'overview' && !overviewLoaded) ||
         (screen === 'documents' && (!documentPageLoaded || (selectedDocumentId && !selectedDocumentLoaded) ||
           (selectedDocumentId && selectedDocumentTab !== 'overview' && !tabState(selectedDocumentTab).loaded))) ||
+        (screen === 'models' && (!modelSummaryLoaded || !modelPageLoaded || (selectedModelCallId && !selectedModelLoaded))) ||
         (screen === 'settings' && !configLoaded)) refresh(false);
     }
     function onAutoRefreshChange() {
@@ -948,6 +1432,11 @@
       el('loadAttempts').addEventListener('click', onLoadAttemptsClick);
       el('loadDocumentModels').addEventListener('click', onLoadDocumentModelsClick);
       el('loadDocumentEvents').addEventListener('click', onLoadDocumentEventsClick);
+      el('modelFilters').addEventListener('submit', onModelFiltersSubmit);
+      el('modelRows').addEventListener('click', onModelRowsClick);
+      el('modelDetail').addEventListener('click', onModelDetailClick);
+      el('closeModel').addEventListener('click', closeSelectedModel);
+      el('loadModels').addEventListener('click', onLoadModelsClick);
       DOCUMENT_TABS.forEach(function (tab) {
         el('documentTab' + tab[0].toUpperCase() + tab.slice(1)).addEventListener('click', tabHandlers[tab]);
       });
@@ -971,6 +1460,7 @@
         shown = true;
         if (screen === 'documents') configureDocuments(params,
           previousScreen !== 'documents' && !route.fromHistory);
+        if (screen === 'models') configureModels(params, previousScreen !== 'models' && !route.fromHistory);
         if (screen === 'overview' && !overviewLoaded) el('overviewStatus').textContent = 'Loading operational summary…';
         if (screen === 'settings' && !configLoaded) el('settingsStatus').textContent = 'Configuration has not been loaded.';
       }
@@ -991,6 +1481,7 @@
       selectedDocumentLoading = false;
       documentTabCache = {};
       clearDocumentDetailViews();
+      clearModelData();
       setDocumentPane();
       renderDocumentRows();
       if (!credentials().hasAdmin) {
@@ -1028,6 +1519,11 @@
       el('loadAttempts').removeEventListener('click', onLoadAttemptsClick);
       el('loadDocumentModels').removeEventListener('click', onLoadDocumentModelsClick);
       el('loadDocumentEvents').removeEventListener('click', onLoadDocumentEventsClick);
+      el('modelFilters').removeEventListener('submit', onModelFiltersSubmit);
+      el('modelRows').removeEventListener('click', onModelRowsClick);
+      el('modelDetail').removeEventListener('click', onModelDetailClick);
+      el('closeModel').removeEventListener('click', closeSelectedModel);
+      el('loadModels').removeEventListener('click', onLoadModelsClick);
       DOCUMENT_TABS.forEach(function (tab) {
         el('documentTab' + tab[0].toUpperCase() + tab.slice(1)).removeEventListener('click', tabHandlers[tab]);
       });

@@ -10,7 +10,8 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   overview, config, health = { status: 'UP' }, deferDiscovery = false, deferAdmin = false,
   deferTimeline = false, deferOverview = false, deferConfig = false, documents, documentDetail,
   documentBody, documentAttempts, documentEvents, documentModelRuns,
-  deferDocuments = false, deferDocumentList = false } = {}) {
+  deferDocuments = false, deferDocumentList = false, modelSummary, modelCalls, modelDetail,
+  modelPageSize = 25, deferModelSummary = false, deferModelCalls = false, deferModelDetails = false } = {}) {
   const requests = [];
   const values = new Map(Object.entries(stored));
   const elements = new Map();
@@ -27,6 +28,9 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   const configResolvers = [];
   const documentResolvers = new Map();
   const documentListResolvers = [];
+  const modelSummaryResolvers = [];
+  const modelCallPageResolvers = [];
+  const modelDetailResolvers = new Map();
   const intervals = new Map();
   let nextInterval = 1;
   let historyState = {};
@@ -158,6 +162,39 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
     if (route.endsWith('/timeline') && deferTimeline) {
       return new Promise((resolve) => timelineResolvers.push((body) => resolve(body === 'error' ? response({ detail: 'Timeline unavailable' }, 503) : response(body))));
     }
+    if (route === '/internal/operations/model-summary' && method === 'GET') {
+      if (!options.headers?.['X-Admin-Key']) return response({ detail: 'Admin key required', code: 'FORBIDDEN' }, 403);
+      if (deferModelSummary) return new Promise((resolve) => modelSummaryResolvers.push((body) => resolve(body === 'error'
+        ? response({ detail: 'Model summary unavailable', code: 'TEMPORARY_UNAVAILABLE' }, 503)
+        : response(body || modelSummaryFixture()))));
+      const answer = typeof modelSummary === 'function' ? modelSummary(requestUrl) : modelSummary;
+      return answer === 'error' ? response({ detail: 'Model summary unavailable', code: 'TEMPORARY_UNAVAILABLE' }, 503)
+        : response(answer || modelSummaryFixture());
+    }
+    if (route === '/internal/operations/model-runs' && method === 'GET') {
+      if (!options.headers?.['X-Admin-Key']) return response({ detail: 'Admin key required', code: 'FORBIDDEN' }, 403);
+      if (deferModelCalls) return new Promise((resolve) => modelCallPageResolvers.push((body) => resolve(body === 'error'
+        ? response({ detail: 'Model calls unavailable', code: 'TEMPORARY_UNAVAILABLE' }, 503)
+        : response(body || modelCallsPageFixture(modelPageSize)))));
+      const answer = typeof modelCalls === 'function' ? modelCalls(requestUrl) : modelCalls;
+      return answer === 'error' ? response({ detail: 'Model calls unavailable', code: 'TEMPORARY_UNAVAILABLE' }, 503)
+        : response(answer || modelCallsPageFixture(modelPageSize));
+    }
+    const modelDetailMatch = route.match(/^\/internal\/operations\/model-runs\/([^/]+)$/);
+    if (modelDetailMatch && method === 'GET') {
+      if (!options.headers?.['X-Admin-Key']) return response({ detail: 'Admin key required', code: 'FORBIDDEN' }, 403);
+      const id = decodeURIComponent(modelDetailMatch[1]);
+      if (deferModelDetails) return new Promise((resolve) => {
+        const queued = modelDetailResolvers.get(id) || [];
+        queued.push((body) => resolve(body === 'error'
+          ? response({ detail: 'Model call unavailable', code: 'MODEL_RUN_NOT_FOUND' }, 404)
+          : response(body || modelCallFixture(id))));
+        modelDetailResolvers.set(id, queued);
+      });
+      const answer = typeof modelDetail === 'function' ? modelDetail(requestUrl, id) : modelDetail;
+      return answer === 'error' ? response({ detail: 'Model call unavailable', code: 'MODEL_RUN_NOT_FOUND' }, 404)
+        : response(answer || modelCallFixture(id));
+    }
     if (route.startsWith('/v1/companies/')) {
       const companyPath = route.startsWith('/v1/companies/DELL') ? route.replace('/v1/companies/DELL', '') : null;
       if (companyPath === null) throw new Error('Unrecognized company route: ' + route);
@@ -196,12 +233,6 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
         id: 'a7f2cd30-6717-4e3a-8870-4bdba9d7af95', provider: 'polygon', status: 'SUCCESS',
         fetched: 1, added: 1, duplicates: 0, error: null, finishedAt: '2026-10-02T12:00:00Z',
       }] });
-    if (route === '/internal/model-runs' && method === 'GET') return response({ runs: [{
-        id: 'b7f2cd30-6717-4e3a-8870-4bdba9d7af95', provider: 'openai', operation: 'extract',
-        model: 'model', promptVersion: 'prompt-v1', extractorVersion: 'extractor-v1',
-        sourceDocumentId: null, inputTokens: 10, outputTokens: 2, latencyMs: 100,
-        estimatedCost: 0.01, success: true, error: null, createdAt: '2026-10-02T12:01:00Z',
-      }] });
     throw new Error('Unrecognized API request: ' + method + ' ' + route);
   }
   const context = { window, document, fetch, URLSearchParams, URL, AbortController, Promise, setImmediate };
@@ -226,6 +257,9 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
     resolveConfig(index, body) { configResolvers[index](body); },
     resolveDocument(id, body) { const queue = documentResolvers.get(id) || []; const resolve = queue.shift(); if (!resolve) throw new Error('No deferred document request for ' + id); resolve(body); },
     resolveDocumentList(index, body) { documentListResolvers[index](body); },
+    resolveModelSummary(index, body) { modelSummaryResolvers[index](body); },
+    resolveModelCalls(index, body) { modelCallPageResolvers[index](body); },
+    resolveModelDetail(id, body) { const queue = modelDetailResolvers.get(id) || []; const resolve = queue.shift(); if (!resolve) throw new Error('No deferred model detail request for ' + id); resolve(body); },
     popstate(search) { window.location.search = search; windowHandlers.popstate(); },
     setHidden(hidden) { document.hidden = hidden; if (documentHandlers.visibilitychange) documentHandlers.visibilitychange(); },
     tick() { for (const timer of Array.from(intervals.values())) timer.callback(); },
@@ -237,6 +271,8 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
     flush() { return flush(); },
     get reloads() { return reloads; },
     completePipeline() { completePipeline(); },
+    get historyState() { return historyState; },
+    loadedModelRows() { return Array.from(elementFor('modelRows').innerHTML.matchAll(/data-model-run-id="[^"]+"/g)).length; },
   };
 }
 
@@ -353,6 +389,46 @@ const documentModelPageFixture = { generatedAt: '2026-10-04T12:05:00Z', window: 
   success: true, errorCode: null, errorMessage: null, createdAt: '2026-10-03T12:02:01Z',
 }], limit: 25, nextCursor: null };
 
+const modelWindowFixture = { from: '2026-10-03T12:00:00Z', to: '2026-10-04T12:00:00Z' };
+
+function modelUsageFixture(calls, costKnownCalls, cost, extra = {}) {
+  return {
+    calls, successfulCalls: calls, failedCalls: 0,
+    inputTokens: calls === 0 ? 0 : calls * 10, inputTokensKnownCalls: calls,
+    outputTokens: calls === 0 ? 0 : calls * 4, outputTokensExpectedCalls: calls, outputTokensKnownCalls: calls,
+    estimatedCostUsd: cost, costKnownCalls,
+    latencyKnownCalls: calls, p50LatencyMs: calls === 0 ? null : 120, p95LatencyMs: calls === 0 ? null : 240,
+    ...extra,
+  };
+}
+
+function modelSummaryFixture(calls = 1, costKnownCalls = calls, cost = calls === 0 ? 0 : 0.01, extra = {}) {
+  const usage = modelUsageFixture(calls, costKnownCalls, cost);
+  return {
+    generatedAt: '2026-10-04T12:05:00Z', window: modelWindowFixture, totals: usage,
+    groups: [{ provider: 'openai', operation: 'extract', model: 'model-v1', usage }],
+    groupsTruncated: false,
+    ...extra,
+  };
+}
+
+function modelCallFixture(id = '55555555-5555-4555-8555-555555555555', extra = {}) {
+  return {
+    id, provider: 'openai', operation: 'extract', model: 'model-v1', promptVersion: 'prompt-v1', extractorVersion: 'extractor-v1',
+    sourceDocumentId: '11111111-1111-4111-8111-111111111111', attemptId: '33333333-3333-4333-8333-333333333333',
+    runId: '44444444-4444-4444-8444-444444444444', inputTokens: 30, outputTokens: 10, latencyMs: 1200,
+    estimatedCost: 0.0012, success: true, errorCode: null, errorMessage: null, createdAt: '2026-10-03T12:02:01Z',
+    ...extra,
+  };
+}
+
+function modelCallsPageFixture(count = 25, extra = {}) {
+  const items = Array.from({ length: count }, (_, index) => modelCallFixture(
+    'aaaaaaaa-aaaa-4aaa-8aaa-' + String(index + 1).padStart(12, '0'),
+  ));
+  return { generatedAt: '2026-10-04T12:05:00Z', window: modelWindowFixture, items, limit: 25, nextCursor: null, ...extra };
+}
+
 function documentBodyFixture(id = '11111111-1111-4111-8111-111111111111', extra = {}) {
   return { id, text: 'Quoted source: <script>alert(1)</script>\nSecond line.', originalCharacters: 50000, truncated: true, ...extra };
 }
@@ -363,4 +439,5 @@ async function flush() {
 
 module.exports = { startDashboard, waitForRequests, flush, companyFixture, eventFixture, discoveryPage, discoveryFixture,
   overviewFixture, configFixture, documentListItemFixture, documentsPageFixture, documentDetailFixture,
-  documentBodyFixture, documentAttemptsPageFixture, documentEventsFixture, documentModelPageFixture, html };
+  documentBodyFixture, documentAttemptsPageFixture, documentEventsFixture, documentModelPageFixture,
+  modelUsageFixture, modelSummaryFixture, modelCallFixture, modelCallsPageFixture, modelWindowFixture, html };

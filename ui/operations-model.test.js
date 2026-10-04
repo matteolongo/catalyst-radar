@@ -40,6 +40,23 @@ test('model filters and the shared window are encoded consistently', () => {
   ]);
 });
 
+test('summary filters and call pages can reuse the same explicit resolved window', () => {
+  const filters = { provider: 'openai', operation: 'extract', model: 'gpt-test', success: false,
+    documentId: 'doc-1', attemptId: 'attempt-1', runId: 'run-1', cursor: 'cursor-2' };
+  const summary = helper('modelSummaryQuery')(filters, '7d');
+  const page = helper('modelQuery')(filters, { from: '2026-10-01T00:00:00Z', to: '2026-10-04T00:00:00Z' });
+  assert.deepEqual(Array.from(summary.entries()), [
+    ['range', '7d'], ['provider', 'openai'], ['operation', 'extract'], ['model', 'gpt-test'],
+    ['success', 'false'], ['documentId', 'doc-1'], ['attemptId', 'attempt-1'], ['runId', 'run-1'],
+  ]);
+  assert.deepEqual(Array.from(page.entries()), [
+    ['from', '2026-10-01T00:00:00Z'], ['to', '2026-10-04T00:00:00Z'],
+    ['provider', 'openai'], ['operation', 'extract'], ['model', 'gpt-test'],
+    ['success', 'false'], ['documentId', 'doc-1'], ['attemptId', 'attempt-1'], ['runId', 'run-1'],
+    ['limit', '25'], ['cursor', 'cursor-2'],
+  ]);
+});
+
 test('merging pages deduplicates IDs and retains feed order', () => {
   const merged = helper('mergePage')(
     { items: [{ id: 'a' }, { id: 'b' }], nextCursor: 'next-1' },
@@ -58,6 +75,7 @@ test('missing model cost is unknown while a measured zero remains zero', () => {
   const format = helper('formatKnownCost');
   assert.equal(format(null, 0, 3), 'Unknown');
   assert.equal(format(0, 3, 3), '$0.000000');
+  assert.equal(format(0, 0, 0), '$0.000000');
   assert.equal(format(0.1, 2, 3), '$0.100000 · partial (2/3 calls)');
 });
 

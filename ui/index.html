@@ -135,19 +135,39 @@
 
         <section id="modelsView" class="view hidden" aria-labelledby="modelsTitle">
           <h2 id="modelsTitle">Models &amp; costs</h2>
-          <p id="modelStatus" class="screen-status" role="status">Model workspace is ready for its next implementation step.</p>
-          <div class="panel" id="modelsWorkspace"></div>
-          <form id="modelFilters" class="hidden">
-            <label for="modelProvider">Provider</label><select id="modelProvider"><option value="">All</option></select>
-            <label for="modelOperation">Operation</label><select id="modelOperation"><option value="">All</option></select>
-            <label for="modelName">Model</label><input id="modelName">
-            <label for="modelSuccess">Success</label><select id="modelSuccess"><option value="">All</option><option value="true">Success</option><option value="false">Failed</option></select>
+          <p id="modelStatus" class="screen-status" role="status">Recorded model usage has not been loaded.</p>
+          <form id="modelFilters" class="panel model-filters">
+            <label for="modelProvider">Provider</label><select id="modelProvider"><option value="">All providers</option><option value="openai">OpenAI</option></select>
+            <label for="modelOperation">Operation</label><select id="modelOperation"><option value="">All operations</option><option value="extract">Extract</option><option value="embed">Embed</option></select>
+            <label for="modelName">Model</label><input id="modelName" type="search" maxlength="128" autocomplete="off">
+            <label for="modelSuccess">Outcome</label><select id="modelSuccess"><option value="">All outcomes</option><option value="true">Successful</option><option value="false">Failed</option></select>
+            <button type="submit">Apply filters</button>
           </form>
-          <div id="modelCallsTotal" class="hidden"></div><div id="modelFailedTotal" class="hidden"></div>
-          <div id="modelCostTotal" class="hidden"></div><div id="modelTokenSummary" class="hidden"></div>
-          <div id="modelLatencySummary" class="hidden"></div><div id="modelBreakdown" class="hidden"></div>
-          <div id="modelRows" class="hidden"></div><button id="loadModels" class="hidden" type="button">Load model calls</button>
-          <div id="modelDetail" class="hidden"></div><p id="modelDetailStatus" class="hidden" role="status"></p><button id="closeModel" class="hidden" type="button">Close model call</button>
+          <section class="panel model-summary" aria-label="Recorded model usage totals">
+            <div class="model-metrics">
+              <article><h3>Recorded calls</h3><p id="modelCallsTotal" class="metric-value">Unknown</p></article>
+              <article><h3>Failed calls</h3><p id="modelFailedTotal" class="metric-value">Unknown</p></article>
+              <article><h3>Estimated cost</h3><p id="modelCostTotal" class="metric-value">Unknown</p></article>
+            </div>
+            <p id="modelTokenSummary" class="muted" role="status">Token coverage is not available.</p>
+            <p id="modelLatencySummary" class="muted" role="status">Latency coverage is not available.</p>
+          </section>
+          <section class="panel" aria-labelledby="modelBreakdownTitle">
+            <h3 id="modelBreakdownTitle">Operation and model breakdown</h3>
+            <div id="modelBreakdown" role="status"><p class="muted">No model summary loaded.</p></div>
+          </section>
+          <section class="panel" aria-labelledby="modelRowsTitle">
+            <h3 id="modelRowsTitle">Recorded model calls</h3>
+            <div id="modelRows" aria-live="polite"><p class="muted">No model calls loaded.</p></div>
+            <button id="loadModels" class="ghost" type="button" hidden>Load more</button>
+          </section>
+          <aside id="modelDetail" class="panel model-detail hidden" aria-labelledby="modelDetailTitle">
+            <div class="panel-heading"><div><h3 id="modelDetailTitle" tabindex="-1">Selected model call</h3>
+              <p id="modelDetailStatus" class="screen-status" role="status"></p></div>
+              <button id="closeModel" type="button" class="ghost">Back to model calls</button>
+            </div>
+            <div id="modelDetailContent"></div>
+          </aside>
         </section>
 
         <section id="settingsView" class="view hidden" aria-labelledby="settingsTitle">
