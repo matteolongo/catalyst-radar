@@ -3,8 +3,9 @@ package com.catalystradar.api.internal
 import com.catalystradar.application.ingestion.IngestionStatus
 import com.catalystradar.persistence.extraction.ModelRunRecord
 import com.catalystradar.persistence.extraction.ModelRunStore
-import com.catalystradar.persistence.ingestion.IngestionRunRecord
+import com.catalystradar.persistence.ingestion.IngestionRunRow
 import com.catalystradar.persistence.ingestion.IngestionRunStore
+import com.catalystradar.persistence.ingestion.toRecord
 import com.catalystradar.security.ApiKeyService
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
@@ -41,16 +42,18 @@ class InternalRunsControllerTest {
     fun `lists recent ingestion runs`() {
         `when`(ingestionRuns.listRecent(20)).thenReturn(
             listOf(
-                IngestionRunRecord(
+                IngestionRunRow(
                     id = UUID.randomUUID(),
                     provider = "polygon",
-                    status = IngestionStatus.SUCCESS,
+                    status = IngestionStatus.SUCCESS.name,
+                    cursor = null,
                     fetched = 10,
                     added = 7,
                     duplicates = 3,
                     error = null,
+                    startedAt = t0.minusSeconds(60),
                     finishedAt = t0,
-                ),
+                ).toRecord(),
             ),
         )
 
@@ -62,6 +65,9 @@ class InternalRunsControllerTest {
             jsonPath("$.runs.length()") { value(1) }
             jsonPath("$.runs[0].provider") { value("polygon") }
             jsonPath("$.runs[0].status") { value("SUCCESS") }
+            jsonPath("$.runs[0].startedAt") { value(t0.minusSeconds(60).toString()) }
+            jsonPath("$.runs[0].durationMs") { value(60000) }
+            jsonPath("$.items") { doesNotExist() }
         }
     }
 
@@ -84,6 +90,7 @@ class InternalRunsControllerTest {
                     success = true,
                     error = null,
                     createdAt = t0,
+                    processingAttemptId = UUID.randomUUID(),
                 ),
             ),
         )
@@ -96,6 +103,10 @@ class InternalRunsControllerTest {
             jsonPath("$.runs.length()") { value(1) }
             jsonPath("$.runs[0].operation") { value("extract") }
             jsonPath("$.runs[0].inputTokens") { value(100) }
+            jsonPath("$.runs[0].attemptId") { exists() }
+            jsonPath("$.runs[0].runId") { value(org.hamcrest.Matchers.nullValue()) }
+            jsonPath("$.runs[0].errorCode") { value(org.hamcrest.Matchers.nullValue()) }
+            jsonPath("$.items") { doesNotExist() }
         }
     }
 

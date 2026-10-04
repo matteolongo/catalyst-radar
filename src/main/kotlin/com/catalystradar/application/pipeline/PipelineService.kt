@@ -44,6 +44,7 @@ data class PipelineResult(
     val documentsCompleted: Int = 0,
     val eventsInserted: Int = 0,
     val eventsReused: Int = 0,
+    val runId: UUID? = null,
 ) {
     /** Documents taken off the durable queue this cycle. */
     val documentsConsidered: Int get() = documentsProcessed
