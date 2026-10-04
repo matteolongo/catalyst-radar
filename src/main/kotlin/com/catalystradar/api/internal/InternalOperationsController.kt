@@ -139,7 +139,8 @@ class InternalOperationsController(
             require(range == null && from == null && to == null) { "exact ingestion lookup cannot include a window" }
             IngestionQuery(window = null, provider = provider, status = status, runId = runId, ingestionRunId = ingestionRunId, page = page)
         } else {
-            IngestionQuery(window = resolveWindow(range, from, to), provider = provider, status = status, runId = runId, page = page)
+            val window = if (range == null && from == null && to == null && runId != null) null else resolveWindow(range, from, to)
+            IngestionQuery(window = window, provider = provider, status = status, runId = runId, page = page)
         }
         return noStore(operations.ingestionRuns(query).toResponse { it.toResponse() })
     }

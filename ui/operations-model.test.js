@@ -83,7 +83,10 @@ test('signal routes use only known local destinations and encode IDs as query va
   const route = helper('signalRoute');
   const due = route({ code: 'DUE_DOCUMENTS', documentId: 'doc-1' });
   assert.ok(due.startsWith('?view=documents&'));
-  assert.equal(new URLSearchParams(due.slice(1)).get('documentId'), 'doc-1');
+  const dueFilters = new URLSearchParams(due.slice(1));
+  assert.equal(dueFilters.get('documentId'), 'doc-1');
+  assert.deepEqual(dueFilters.getAll('status'), ['PENDING', 'RETRYABLE_ERROR', 'PROCESSING']);
+  assert.equal(dueFilters.get('dueOnly'), 'true');
   assert.ok(route({ code: 'SNAPSHOTS_OVERDUE' }).startsWith('?view=pipeline&'));
   assert.ok(route({ code: 'AUTHENTICATION_FAILURE', provider: 'openai' }).startsWith('?view=models&'));
   assert.equal(route({ code: 'UNTRUSTED', url: 'https://evil.example' }), null);

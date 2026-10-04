@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { startDashboard, modelSummaryFixture, modelCallFixture, modelCallsPageFixture, operationRunFixture,
   operationRunsPageFixture, operationRunDetailFixture, operationIssuesPageFixture, operationRunIdFixture,
-  ingestionRunFixture, ingestionRunsPageFixture, ingestionRunIdFixture, pipelineResultFixture } = require('./test-support');
+  operationWindowFixture, ingestionRunFixture, ingestionRunsPageFixture, ingestionRunIdFixture, pipelineResultFixture } = require('./test-support');
 const DOC_A = '11111111-1111-4111-8111-111111111111';
 const DOC_B = '22222222-2222-4222-8222-222222222222';
 const DOC_C = '66666666-6666-4666-8666-666666666666';
@@ -44,6 +44,77 @@ test('clearing keys during a detail refresh never restores protected data on a l
     assert.equal(dashboard.element('documentDetail').hidden, true);
     assert.equal(dashboard.requests.filter((r) => new URL(r.url).pathname.endsWith('/body')).length, 1);
   }
+});
+
+test('document tab authorization failure clears protected data and links to Settings', async () => {
+  const support = require('./test-support');
+  const dashboard = startOperations({ storedAdmin: 'admin-secret' });
+  await dashboard.openDocument(DOC_A, 'source');
+  assert.match(dashboard.html('documentSource'), /Quoted source/);
+  assert.match(dashboard.html('documentRows'), /Quarterly filing/);
+  await dashboard.selectDocumentTab('attempts');
+
+  const fetch = dashboard.context.fetch;
+  const denyAttempts = true;
+  let releaseDocumentFeed;
+  dashboard.context.fetch = (url, options) => {
+    const path = new URL(url, 'https://ops.example').pathname;
+    if (path === '/internal/operations/documents') {
+      return new Promise((resolve) => {
+        releaseDocumentFeed = () => resolve({ ok: true, status: 200, json: async () => support.documentsPageFixture });
+      });
+    }
+    if (denyAttempts && path.endsWith('/attempts')) {
+      return Promise.resolve({ ok: false, status: 403, json: async () => ({ code: 'FORBIDDEN' }) });
+    }
+    return fetch(url, options);
+  };
+  const refreshing = dashboard.refresh();
+  await dashboard.flush();
+
+  assert.match(dashboard.html('documentStatus'), /data-settings-access/);
+  assert.equal(dashboard.element('documentRows').hidden, true);
+  assert.equal(dashboard.element('documentDetail').hidden, true);
+  assert.equal(dashboard.html('documentRows'), '');
+  assert.equal(dashboard.html('documentSource'), '');
+  assert.equal(dashboard.html('documentAttempts'), '');
+  releaseDocumentFeed();
+  await dashboard.flush();
+  await refreshing;
+  assert.equal(dashboard.html('documentRows'), '');
+  assert.match(dashboard.html('documentStatus'), /data-settings-access/);
+});
+
+test('model authorization failure clears protected data and links to Settings', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', deferModelDetails: true });
+  await dashboard.openModels('?view=models&modelRunId=' + MODEL_CALL);
+  assert.equal(dashboard.text('modelCallsTotal'), '1');
+  assert.match(dashboard.html('modelRows'), /model-v1/);
+  assert.equal(dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/model-runs/' + MODEL_CALL)).length, 1);
+  dashboard.resolveModelDetail(MODEL_CALL, modelCallFixture(MODEL_CALL));
+  await dashboard.flush();
+  assert.match(dashboard.html('modelDetailContent'), /model-v1/);
+
+  const fetch = dashboard.context.fetch;
+  dashboard.context.fetch = (url, options) => {
+    if (new URL(url, 'https://ops.example').pathname.endsWith('/model-summary')) {
+      return Promise.resolve({ ok: false, status: 403, json: async () => ({ code: 'FORBIDDEN' }) });
+    }
+    return fetch(url, options);
+  };
+  const refreshing = dashboard.refresh();
+  await dashboard.flush();
+
+  assert.match(dashboard.html('modelStatus'), /data-settings-access/);
+  assert.equal(dashboard.element('modelRows').hidden, true);
+  assert.equal(dashboard.element('modelDetail').hidden, true);
+  assert.equal(dashboard.text('modelCallsTotal'), 'Unknown');
+  assert.doesNotMatch(dashboard.html('modelRows'), /model-v1/);
+  dashboard.resolveModelDetail(MODEL_CALL, modelCallFixture(MODEL_CALL));
+  await dashboard.flush();
+  await refreshing;
+  assert.equal(dashboard.html('modelDetailContent'), '');
+  assert.match(dashboard.html('modelStatus'), /data-settings-access/);
 });
 
 test('changing a source during an event page fetch discards both late data and errors', async () => {
@@ -716,6 +787,95 @@ test('cycle ingestion paging preserves its run association and retries a failed 
     assert.equal(query.has('from'), false);
     assert.equal(query.has('provider'), false);
   }
+});
+
+test('terminal cycle outcome remains distinct from incomplete captured counts', async () => {
+  const cancelled = operationRunFixture(operationRunIdFixture, {
+    status: 'CANCELLED', captureComplete: false, finishedAt: '2026-10-04T11:01:00Z', durationMs: null,
+  });
+  const dashboard = startOperations({ storedAdmin: 'admin-secret',
+    operationRuns: operationRunsPageFixture(1, { items: [cancelled] }),
+    operationRunDetail: operationRunDetailFixture(operationRunIdFixture, { run: cancelled }),
+  });
+  await dashboard.openPipeline('?view=pipeline&runId=' + operationRunIdFixture);
+
+  assert.match(dashboard.html('runRows'), /CANCELLED/);
+  assert.match(dashboard.html('runRows'), /Recorded so far/);
+  assert.match(dashboard.html('runDetailContent'), /Status<\/dt><dd>CANCELLED/);
+  assert.match(dashboard.html('runDetailContent'), /Capture<\/dt><dd>Recorded so far/);
+});
+
+test('attempt ledger presents running and interrupted outcomes explicitly', async () => {
+  const support = require('./test-support');
+  const attempts = { ...support.documentAttemptsPageFixture, items: [
+    { ...support.documentAttemptsPageFixture.items[0], status: 'RUNNING' },
+    { ...support.documentAttemptsPageFixture.items[0], id: 'abababab-abab-4bab-8bab-abababababab', number: 3, status: 'INTERRUPTED' },
+  ] };
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', documentAttempts: attempts });
+  await dashboard.openDocument(DOC_A, 'attempts');
+
+  assert.match(dashboard.html('documentAttempts'), /Attempt 2 · Running/);
+  assert.match(dashboard.html('documentAttempts'), /Attempt 3 · Interrupted/);
+  assert.doesNotMatch(dashboard.html('documentAttempts'), /Unknown/);
+});
+
+test('unfinished ingestion rows disclose that no final outcome was recorded', async () => {
+  const running = ingestionRunFixture(ingestionRunIdFixture, {
+    status: 'RUNNING', finishedAt: null, durationMs: null, runId: operationRunIdFixture,
+  });
+  const dashboard = startOperations({ storedAdmin: 'admin-secret',
+    ingestionRuns: (url) => ingestionRunsPageFixture(1, { items: [running], window: url.searchParams.has('runId') ? null : operationWindowFixture }),
+  });
+  await dashboard.openPipeline('?view=pipeline&runId=' + operationRunIdFixture);
+
+  assert.match(dashboard.html('ingestionRows'), /No final outcome recorded/);
+  assert.match(dashboard.html('runIngestionRows'), /No final outcome recorded/);
+  dashboard.click('ingestionRows', { target: { closest(selector) {
+    return selector === '[data-ingestion-select-id]' ? { dataset: { ingestionSelectId: ingestionRunIdFixture } } : null;
+  } } });
+  await dashboard.flush();
+  assert.match(dashboard.html('ingestionDetailContent'), /Status<\/dt><dd>No final outcome recorded/);
+});
+
+test('document detail reads do not advance freshness when the primary queue refresh fails', async () => {
+  const support = require('./test-support');
+  let failDocumentFeed = false;
+  let detailAt = '2026-10-04T12:10:00Z';
+  let attemptsAt = '2026-10-04T12:11:00Z';
+  const attemptsPage = () => ({ ...support.documentAttemptsPageFixture, generatedAt: attemptsAt });
+  const dashboard = startOperations({ storedAdmin: 'admin-secret',
+    documents: () => failDocumentFeed ? 'error' : { ...support.documentsPageFixture, generatedAt: '2026-10-04T12:05:00Z' },
+    documentDetail: (_url, id) => support.documentDetailFixture(id, { generatedAt: detailAt }),
+    documentAttempts: attemptsPage,
+  });
+  await dashboard.openDocument(DOC_A, 'attempts');
+  const before = dashboard.text('lastRefresh');
+  failDocumentFeed = true;
+  detailAt = '2026-10-04T13:10:00Z';
+  attemptsAt = '2026-10-04T13:11:00Z';
+  await dashboard.refresh();
+
+  assert.match(dashboard.text('documentStatus'), /Unable to load documents/);
+  assert.equal(dashboard.text('lastRefresh'), before);
+});
+
+test('Pipeline navigation preserves in-memory filters when returning from another screen', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret' });
+  await dashboard.openPipeline('?view=pipeline&range=7d&kind=DAILY_SNAPSHOTS&status=PARTIAL&ingestionProvider=finnhub&ingestionStatus=FAILED');
+  dashboard.click('navOverview');
+  await dashboard.flush();
+  dashboard.click('navPipeline');
+  await dashboard.flush();
+
+  const runRequest = dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/operations/runs')).at(-1);
+  const ingestionRequest = dashboard.requests.filter((request) => new URL(request.url).pathname.endsWith('/operations/ingestion-runs')).at(-1);
+  const runQuery = new URL(runRequest.url).searchParams;
+  const ingestionQuery = new URL(ingestionRequest.url).searchParams;
+  assert.equal(runQuery.get('range'), '7d');
+  assert.equal(runQuery.get('kind'), 'DAILY_SNAPSHOTS');
+  assert.equal(runQuery.get('status'), 'PARTIAL');
+  assert.equal(ingestionQuery.get('provider'), 'finnhub');
+  assert.equal(ingestionQuery.get('status'), 'FAILED');
 });
 
 test('cycle ingestion resumes an interrupted first read when polling is disabled', async () => {

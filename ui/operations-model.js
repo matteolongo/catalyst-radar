@@ -101,7 +101,7 @@
     switch (signal.code) {
       case 'DUE_DOCUMENTS':
         return localRoute('documents', [
-          ['status', ['PENDING', 'RETRYABLE_ERROR']], ['dueOnly', 'true'], ['documentId', signal.documentId],
+          ['status', ['PENDING', 'RETRYABLE_ERROR', 'PROCESSING']], ['dueOnly', 'true'], ['documentId', signal.documentId],
         ]);
       case 'TERMINAL_DOCUMENTS':
         return localRoute('documents', [['status', 'TERMINAL_ERROR']]);

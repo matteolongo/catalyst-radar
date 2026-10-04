@@ -206,6 +206,7 @@
     }
     function accessRequired() {
       var link = 'Admin access required. <a href="?view=settings" data-settings-access>Open Settings to add an admin key</a>.';
+      if (credentials().hasAdmin) invalidate();
       if (screen === 'overview') {
         clearOverview();
         el('overviewStatus').innerHTML = link;
@@ -226,11 +227,14 @@
           toggleHidden('ingestionDetail', true);
           el('runNow').disabled = true;
         } else if (screen === 'documents') {
+          clearDocumentData();
           toggleHidden('documentFilters', true);
           toggleHidden('documentRows', true);
           toggleHidden('loadDocuments', true);
           toggleHidden('documentDetail', true);
         } else if (screen === 'models') {
+          modelGeneration++;
+          modelDetailSequence++;
           clearModelData();
           toggleHidden('modelFilters', true);
           toggleHidden('modelRows', true);
@@ -239,6 +243,7 @@
         }
       }
       el('lastRefresh').textContent = 'No successful refresh yet';
+      return false;
     }
     function metric(title, value, context, link) {
       var linkHtml = link ? ' · <a href="' + esc(link.route) + '" data-local-route="' + esc(link.route) + '">' + esc(link.label) + '</a>' : '';
@@ -435,6 +440,20 @@
       if (state === 'RETRYABLE_ERROR' || state === 'PENDING' || state === 'UNRESOLVED') return 'warn';
       return 'info';
     }
+    function clearDocumentData() {
+      documentItems = [];
+      documentCursor = null;
+      documentGeneratedAt = null;
+      documentPageLoaded = false;
+      documentPageLoading = false;
+      documentPageError = null;
+      selectedDocumentDetail = null;
+      selectedDocumentLoaded = false;
+      selectedDocumentLoading = false;
+      documentTabCache = {};
+      el('documentRows').innerHTML = '';
+      clearDocumentDetailViews();
+    }
     function renderDocumentRows() {
       var initialLoading = documentPageLoading && !documentPageLoaded && !documentItems.length;
       el('documentRows').innerHTML = initialLoading ? '<p class="muted">Loading captured documents…</p>' : (documentItems.length ? documentItems.map(function (item) {
@@ -537,6 +556,10 @@
       var route = '?view=models&modelRunId=' + encodeURIComponent(id);
       return '<a href="' + esc(route) + '" data-model-run-id="' + esc(id) + '">' + esc(id) + '</a>';
     }
+    function attemptStatusLabel(status) {
+      return ({ RUNNING: 'Running', COMPLETED: 'Completed', SKIPPED: 'Skipped', RETRYABLE_ERROR: 'Retryable error',
+        TERMINAL_ERROR: 'Terminal error', INTERRUPTED: 'Interrupted' })[status] || 'Unknown';
+    }
     function renderAttempts(state) {
       var detail = selectedDocumentDetail || {};
       var attemptCount = detail.document && detail.document.attemptCount;
@@ -555,7 +578,7 @@
       html += state.items.map(function (item) {
         var selected = selectedAttemptId === item.id;
         return '<article class="document-record" data-attempt-id="' + esc(item.id) + '" tabindex="-1"' + (selected ? ' aria-current="true"' : '') + '>' +
-          '<strong>Attempt ' + esc(item.number) + ' · ' + esc(documentStateLabel(item.status)) + '</strong>' +
+          '<strong>Attempt ' + esc(item.number) + ' · ' + esc(attemptStatusLabel(item.status)) + '</strong>' +
           '<p>Started ' + esc(time(item.startedAt)) + ' UTC · duration ' + esc(item.durationMs == null ? 'Unknown' : integer(item.durationMs) + ' ms') +
           (item.nextAttemptAt ? ' · next retry ' + esc(time(item.nextAttemptAt)) + ' UTC' : '') + '</p>' +
           '<p>Events inserted/reused: ' + esc(integer(item.eventsInserted)) + ' / ' + esc(integer(item.eventsReused)) +
@@ -667,8 +690,8 @@
         return true;
       }).catch(function (error) {
         if (!current(revision, requestSequence, 'documents') || error.name === 'AbortError') return false;
-        documentPageError = error.status === 403 || error.code === 'FORBIDDEN'
-          ? 'Admin access required to inspect documents.' : 'Unable to load documents. Retry the read.';
+        if (error.status === 403 || error.code === 'FORBIDDEN') return accessRequired();
+        documentPageError = 'Unable to load documents. Retry the read.';
         return false;
       }).finally(function () {
         if (current(revision, requestSequence, 'documents')) {
@@ -694,11 +717,11 @@
         selectedDocumentDetail = result.data;
         selectedDocumentLoaded = true;
         el('documentDetailStatus').textContent = '';
-        if (result.data.generatedAt) el('lastRefresh').textContent = 'Last loaded ' + time(result.data.generatedAt);
         renderDocumentDetail();
         return true;
       }).catch(function (error) {
         if (!current(revision, requestSequence, 'documents') || error.name === 'AbortError') return false;
+        if (error.status === 403 || error.code === 'FORBIDDEN') return accessRequired();
         el('documentDetailTitle').textContent = 'Document unavailable';
         el('documentDetailStatus').textContent = error.code === 'DOCUMENT_NOT_FOUND'
           ? 'This captured document was not found.' : 'Unable to load document details. Retry the read.';
@@ -738,14 +761,13 @@
         }
         state.loaded = true;
         state.error = null;
-        if (result.data.generatedAt) el('lastRefresh').textContent = 'Last loaded ' + time(result.data.generatedAt);
         renderSelectedDocumentTab();
         if (tab === 'attempts' && selectedAttemptId) focusSelectedAttempt(state);
         return true;
       }).catch(function (error) {
         if (!current(revision, requestSequence, 'documents') || selectedDocumentId !== id || error.name === 'AbortError') return false;
-        state.error = error.status === 403 || error.code === 'FORBIDDEN'
-          ? 'Admin access required to inspect this tab.' : 'Unable to load this tab. Retry the read.';
+        if (error.status === 403 || error.code === 'FORBIDDEN') return accessRequired();
+        state.error = 'Unable to load this tab. Retry the read.';
         renderSelectedDocumentTab();
         return false;
       }).finally(function () {
@@ -1238,8 +1260,8 @@
         return true;
       }).catch(function (error) {
         if (!current(revision, requestSequence, 'models') || generation !== modelGeneration || error.name === 'AbortError') return false;
-        modelSummaryError = error.status === 403 || error.code === 'FORBIDDEN'
-          ? 'Admin access required to inspect recorded model usage.' : 'Unable to load model summary. Retry the read.';
+        if (error.status === 403 || error.code === 'FORBIDDEN') return accessRequired();
+        modelSummaryError = 'Unable to load model summary. Retry the read.';
         return false;
       }).finally(function () {
         if (current(revision, requestSequence, 'models') && generation === modelGeneration) {
@@ -1275,8 +1297,8 @@
         return true;
       }).catch(function (error) {
         if (!current(revision, requestSequence, 'models') || generation !== modelGeneration || error.name === 'AbortError') return false;
-        modelPageError = error.status === 403 || error.code === 'FORBIDDEN'
-          ? 'Admin access required to inspect recorded model calls.' : 'Unable to load model calls. Retry the read.';
+        if (error.status === 403 || error.code === 'FORBIDDEN') return accessRequired();
+        modelPageError = 'Unable to load model calls. Retry the read.';
         return false;
       }).finally(function () {
         if (current(revision, requestSequence, 'models') && generation === modelGeneration) {
@@ -1305,10 +1327,10 @@
         return true;
       }).catch(function (error) {
         if (!current(revision, requestSequence, 'models') || selectedModelCallId !== id || detailSequence !== modelDetailSequence || error.name === 'AbortError') return false;
+        if (error.status === 403 || error.code === 'FORBIDDEN') return accessRequired();
         el('modelDetailTitle').textContent = 'Model call unavailable';
         el('modelDetailStatus').textContent = error.code === 'MODEL_RUN_NOT_FOUND'
-          ? 'This recorded model call was not found.' : (error.status === 403 || error.code === 'FORBIDDEN'
-            ? 'Admin access required to inspect this model call.' : 'Unable to load model call details. Retry the read.');
+          ? 'This recorded model call was not found.' : 'Unable to load model call details. Retry the read.';
         return false;
       }).finally(function () {
         if (current(revision, requestSequence, 'models') && selectedModelCallId === id && detailSequence === modelDetailSequence) selectedModelLoading = false;
@@ -1493,12 +1515,14 @@
       toggleHidden('ingestionDetail', true);
       updateRunNowButton();
     }
-    function configurePipeline(route) {
-      var nextRange = route.has('range') ? route.get('range') : '24h';
-      var nextKind = route.has('kind') ? route.get('kind') : 'PIPELINE';
-      var nextStatus = route.get('status') || '';
-      var nextProvider = (route.get('ingestionProvider') || '').toLowerCase();
-      var nextIngestionStatus = route.get('ingestionStatus') || '';
+    function configurePipeline(route, preserveCurrentFilters) {
+      var filterKeys = ['range', 'kind', 'status', 'ingestionProvider', 'ingestionStatus'];
+      var preserve = preserveCurrentFilters && !filterKeys.some(function (key) { return route.has(key); });
+      var nextRange = route.has('range') ? route.get('range') : (preserve ? pipelineRange : '24h');
+      var nextKind = route.has('kind') ? route.get('kind') : (preserve ? pipelineKind : 'PIPELINE');
+      var nextStatus = route.has('status') ? route.get('status') : (preserve ? pipelineRunStatus : '');
+      var nextProvider = route.has('ingestionProvider') ? route.get('ingestionProvider').toLowerCase() : (preserve ? ingestionProvider : '');
+      var nextIngestionStatus = route.has('ingestionStatus') ? route.get('ingestionStatus') : (preserve ? ingestionStatus : '');
       var nextRunId = route.get('runId') || null;
       var nextIngestionId = route.get('ingestionRunId') || null;
       var invalid = null;
@@ -1575,7 +1599,6 @@
     function pipelineStatus(message) { el('pipelineStatus').textContent = message; }
     function runStatusLabel(run) {
       if (run.status === 'RUNNING' && !run.active) return 'Unfinished';
-      if (run.status === 'RUNNING' || !run.captureComplete) return 'Recorded so far';
       return run.status || 'Unknown';
     }
     function runStatusClass(run) {
@@ -1585,8 +1608,11 @@
       return 'info';
     }
     function runDuration(run) {
-      if (run.durationMs == null) return run.captureComplete ? 'Not recorded' : 'Recorded so far';
+      if (run.durationMs == null) return 'Not recorded';
       return integer(run.durationMs) + ' ms';
+    }
+    function ingestionOutcomeLabel(run) {
+      return run.status === 'RUNNING' && !run.finishedAt ? 'No final outcome recorded' : run.status;
     }
     function renderPipelineRows() {
       var content;
@@ -1605,7 +1631,7 @@
           '<th scope="col">Finished / duration</th><th scope="col">Status / phase</th><th scope="col">Document outcomes</th>' +
           '<th scope="col">Events / companies</th></tr></thead><tbody>' + pipelineRuns.map(function (run) {
           var phase = run.active ? run.phase : (run.status === 'RUNNING' ? 'Last recorded: ' + run.phase : run.phase);
-          var outcomes = 'Considered ' + integer(run.documentsConsidered) + ' · completed ' + integer(run.documentsCompleted) +
+          var outcomes = (!run.captureComplete ? 'Recorded so far · ' : '') + 'Considered ' + integer(run.documentsConsidered) + ' · completed ' + integer(run.documentsCompleted) +
             ' · skipped ' + integer(run.documentsSkipped) + ' · retry ' + integer(run.documentsRetryScheduled) +
             ' · terminal ' + integer(run.documentsTerminalFailures);
           return '<tr' + (run.id === selectedRunId ? ' class="pipeline-row-selected"' : '') + '><td data-label="Cycle">' +
@@ -1654,7 +1680,8 @@
       else content = '<div class="table-scroll"><table class="pipeline-table"><caption>' + ingestionItems.length +
         ' recorded provider runs loaded.</caption><thead><tr><th scope="col">Provider run</th><th scope="col">Started / finished</th>' +
         '<th scope="col">Outcome</th><th scope="col">Source / operation</th></tr></thead><tbody>' + ingestionItems.map(function (run) {
-        var outcome = run.status + ' · ' + integer(run.fetched) + ' fetched · ' + integer(run.added) + ' new · ' + integer(run.duplicates) + ' duplicates';
+        var outcome = ingestionOutcomeLabel(run) + ' · ' + integer(run.fetched) +
+          ' fetched · ' + integer(run.added) + ' new · ' + integer(run.duplicates) + ' duplicates';
         if (run.errorCode) outcome += ' · ' + run.errorCode;
         var links = '<a href="?view=documents&amp;ingestionRunId=' + encodeURIComponent(run.id) + '" data-ingestion-source-id="' +
           esc(run.id) + '">First-source documents</a>';
@@ -1687,7 +1714,7 @@
     }
     function renderRunIngestion() {
       var content = runIngestionItems.length ? '<ul class="pipeline-issue-list">' + runIngestionItems.map(function (run) {
-        return '<li><strong>' + esc(run.provider) + '</strong> · ' + esc(run.status) + ' · ' + esc(time(run.startedAt)) +
+        return '<li><strong>' + esc(run.provider) + '</strong> · ' + esc(ingestionOutcomeLabel(run)) + ' · ' + esc(time(run.startedAt)) +
           '<br><a href="' + esc(pipelineSearch({ ingestionRunId: run.id })) + '" data-ingestion-select-id="' + esc(run.id) +
           '">Inspect ingestion run ' + esc(run.id) + '</a></li>';
       }).join('') + '</ul>' : '<p class="muted">' + (runIngestionLoading ? 'Loading cycle ingestion runs…' : 'No ingestion runs recorded for this cycle.') + '</p>';
@@ -1812,7 +1839,7 @@
         el('ingestionDetailStatus').textContent = 'Ingestion run not found.';
         return;
       }
-      var records = [['Ingestion run ID', run.id], ['Provider', run.provider], ['Status', run.status],
+      var records = [['Ingestion run ID', run.id], ['Provider', run.provider], ['Status', ingestionOutcomeLabel(run)],
         ['Started at (UTC)', run.startedAt ? time(run.startedAt) : 'Unknown'],
         ['Finished at (UTC)', run.finishedAt ? time(run.finishedAt) : 'Not finished'],
         ['Duration', run.durationMs == null ? 'Not recorded' : integer(run.durationMs) + ' ms'],
@@ -2360,7 +2387,7 @@
         if (screen === 'documents') configureDocuments(params,
           previousScreen !== 'documents' && !route.fromHistory);
         if (screen === 'models') configureModels(params, previousScreen !== 'models' && !route.fromHistory);
-        if (screen === 'pipeline') configurePipeline(params);
+        if (screen === 'pipeline') configurePipeline(params, previousScreen !== 'pipeline' && !route.fromHistory);
         if (screen === 'overview' && !overviewLoaded) el('overviewStatus').textContent = 'Loading operational summary…';
         if (screen === 'settings' && !configLoaded) el('settingsStatus').textContent = 'Configuration has not been loaded.';
       }

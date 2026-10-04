@@ -219,6 +219,24 @@ class InternalOperationsControllerTest {
     }
 
     @Test
+    fun `selected operation ingestion lookup is independent from the activity window`() {
+        val runId = UUID.randomUUID()
+        `when`(operations.ingestionRuns(any())).thenReturn(OperationsPage(Instant.now(), null, emptyList(), 25, null))
+
+        mockMvc.get("/internal/operations/ingestion-runs?runId=$runId") { header("X-Admin-Key", "test-admin") }.andExpect {
+            status { isOk() }
+            header { string("Cache-Control", "no-store") }
+            jsonPath("$.window") { value(org.hamcrest.Matchers.nullValue()) }
+            jsonPath("$.items") { isEmpty() }
+        }
+
+        val queryCaptor = argumentCaptor<IngestionQuery>()
+        org.mockito.kotlin.verify(operations).ingestionRuns(queryCaptor.capture())
+        kotlin.test.assertNull(queryCaptor.firstValue.window)
+        kotlin.test.assertEquals(runId, queryCaptor.firstValue.runId)
+    }
+
+    @Test
     fun `missing document maps to safe not found problem without caching`() {
         val id = UUID.randomUUID()
         `when`(operations.document(id)).thenThrow(OperationsResourceNotFoundException(OperationsResource.DOCUMENT, id))
