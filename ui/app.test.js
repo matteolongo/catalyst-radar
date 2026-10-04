@@ -4,6 +4,196 @@ const { startDashboard: startDashboardWithRoute, waitForRequests, companyFixture
 
 function startDashboard(options = {}) { return startDashboardWithRoute({ search: '?view=discover', ...options }); }
 
+function sourceClick(dashboard, container, id) {
+  dashboard.click(container, { target: { closest: (selector) => selector === '[data-source-document-id]'
+    ? { dataset: { sourceDocumentId: id } } : null } });
+}
+
+test('source inspection preserves the reconstructed explanation and server state band', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', stored: { 'catalyst-admin-key': 'admin-secret' } });
+  await dashboard.flush();
+  assert.match(dashboard.html('companyExplanation'), /saved snapshot does not retain its original driver list/);
+  assert.match(dashboard.html('companyExplanation'), /documentId=source-1.*Inspect source in backoffice/s);
+  assert.match(dashboard.html('companyEvents'), /documentId=source-1.*Inspect source in backoffice/s);
+  assert.match(dashboard.html('companyScore'), /68\.0.*CATALYZED.*65\.0.*80\.0/s);
+  assert.match(dashboard.html('companyScore'), /Saved as of.*UTC/s);
+  assert.doesNotMatch(dashboard.html('companyScore'), /Live/);
+  assert.equal(dashboard.requests.some(({ url }) => new URL(url).pathname.startsWith('/internal/')), false);
+});
+
+test('source inspection requires independent admin access and resumes the local Source tab after setup', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const route = '?view=documents&documentId=' + id + '&documentTab=source';
+  const dashboard = startDashboard({ search: '?view=events', stored: { 'catalyst-api-key': 'public-secret' },
+    events: { events: [{ ...eventFixture.events[0], sourceDocumentId: id }], nextCursor: null } });
+  await dashboard.flush();
+  assert.match(dashboard.html('eventResults'), /href="\?view=settings"[^>]*data-source-document-id=.*Inspect source in backoffice/);
+  sourceClick(dashboard, 'eventResults', id);
+  await dashboard.flush();
+  assert.equal(dashboard.window.location.search, '?view=settings');
+  assert.deepEqual(Object.keys(dashboard.historyState), ['returnSearch']);
+  assert.equal(dashboard.historyState.returnSearch, route);
+  assert.equal(dashboard.requests.some(({ url }) => new URL(url).pathname.startsWith('/internal/')), false);
+  dashboard.element('adminKey').value = 'admin-secret';
+  dashboard.click('saveKey');
+  await dashboard.flush();
+  assert.equal(dashboard.window.location.search, route);
+  const body = dashboard.requests.find(({ url }) => new URL(url).pathname.endsWith('/body'));
+  assert.ok(body);
+  assert.equal(body.headers['X-Admin-Key'], 'admin-secret');
+  assert.equal(body.headers.Authorization, undefined);
+});
+
+test('authorized source links use the supplied ID safely and absent IDs produce no inspection link', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const dashboard = startDashboard({ search: '?view=events', stored: { 'catalyst-admin-key': 'admin-secret' },
+    events: { events: [{ ...eventFixture.events[0], sourceDocumentId: id, source: null }], nextCursor: null } });
+  await dashboard.flush();
+  assert.match(dashboard.html('eventResults'), /href="\?view=documents&amp;documentId=.*documentTab=source/);
+  sourceClick(dashboard, 'eventResults', id);
+  await dashboard.flush();
+  assert.equal(dashboard.window.location.search, '?view=documents&documentId=' + id + '&documentTab=source');
+  assert.equal(dashboard.historyState.returnSearch, '?view=events');
+  const absent = startDashboard({ search: '?view=events', events: { events: [{ ...eventFixture.events[0], source: {
+    ...eventFixture.events[0].source, sourceDocumentId: null } }], nextCursor: null } });
+  await absent.flush();
+  assert.doesNotMatch(absent.html('eventResults'), /Inspect source in backoffice/);
+  const unsafe = startDashboard({ search: '?view=events', events: { events: [{ ...eventFixture.events[0], sourceDocumentId: '\"><script>x</script>' }], nextCursor: null } });
+  await unsafe.flush();
+  assert.doesNotMatch(unsafe.html('eventResults'), /<script>/);
+});
+
+test('company return controls preserve Discover and Events openers and reject unsafe destinations', async () => {
+  for (const [origin, container] of [['?view=discover&sector=Technology', 'discoveryResults'], ['?view=events&ticker=DELL', 'eventResults']]) {
+    const dashboard = startDashboard({ search: origin });
+    await dashboard.flush();
+    dashboard.click(container, { target: { closest: (selector) => selector === '[data-ticker]' ? { dataset: { ticker: 'DELL' } } : null } });
+    assert.equal(dashboard.historyState.returnSearch, origin);
+    assert.deepEqual(Object.keys(dashboard.historyState), ['returnSearch']);
+    assert.equal(dashboard.element('navIntelligence').getAttribute('aria-current'), 'page');
+    dashboard.click('backToResults');
+    assert.equal(dashboard.window.location.search, origin);
+  }
+  for (const unsafe of ['https://evil.example', '//evil.example', '??view=events', '?view=unknown', '?view=events#remote', '?view=events\\remote', '?view=events&q=\\remote']) {
+    const dashboard = startDashboard({ search: '?view=company&ticker=DELL' });
+    dashboard.window.history.pushState({ returnSearch: unsafe }, '', '?view=company&ticker=DELL');
+    dashboard.click('backToResults');
+    assert.equal(dashboard.window.location.search, '?view=discover', unsafe);
+  }
+});
+
+test('public timestamps explicitly label UTC for discovery and contextual event dates', async () => {
+  const dashboard = startDashboard();
+  await dashboard.flush();
+  assert.match(dashboard.text('discoveryAsOf'), /UTC/);
+  assert.match(dashboard.html('discoveryResults'), /Company as of.*UTC/s);
+  dashboard.click('navEvents');
+  await dashboard.flush();
+  assert.match(dashboard.html('eventResults'), /Event date:.*UTC.*First captured:.*UTC.*Source publication date:.*UTC/s);
+});
+
+test('history renders at most 200 stored snapshots and transitions without replaying', async () => {
+  const snapshots = Array.from({ length: 201 }, (_, index) => ({ score: index % 100, state: 'WATCH', asOf: new Date(Date.UTC(2026, 0, index + 1)).toISOString() }));
+  const transitions = snapshots.map((point) => ({ from: 'NORMAL', to: 'WATCH', score: point.score, at: point.asOf, scoreVersion: 'score-v1' }));
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/timeline': { ticker: 'DELL', snapshots, transitions } } });
+  await dashboard.flush();
+  assert.equal((dashboard.html('companyHistory').match(/class="score-point"/g) || []).length, 200);
+  assert.equal((dashboard.html('companyHistory').match(/class="transition-mark"/g) || []).length, 200);
+  assert.equal(dashboard.requests.some(({ method, url }) => method !== 'GET' || /replay|recalculate/.test(url)), false);
+});
+
+test('stored-history chart tooltips and date columns display UTC even for offset instants', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/timeline': {
+    ticker: 'DELL', snapshots: [{ score: 44, state: 'WATCH', asOf: '2026-10-01T23:30:00-05:00' }],
+    transitions: [{ from: 'NORMAL', to: 'WATCH', score: 44, at: '2026-10-01T23:30:00-05:00', scoreVersion: 'score-v1' }],
+  } } });
+  await dashboard.flush();
+  assert.match(dashboard.html('companyHistory'), /<td>2026-10-02<\/td>/);
+  assert.match(dashboard.html('companyHistory'), /<title>10\/2\/2026, 4:30:00 AM UTC · 44\.0 · WATCH<\/title>/);
+  assert.match(dashboard.html('companyHistory'), /<title>10\/2\/2026, 4:30:00 AM UTC · NORMAL → WATCH<\/title>/);
+});
+
+for (const [name, search, path, panel, fresh] of [
+  ['Discovery', '?view=discover', '/v1/discovery/catalyzed', 'discoveryResults', discoveryPage('DELL')],
+  ['Events', '?view=events', '/v1/events', 'eventResults', eventFixture],
+  ['company metadata', '?view=company&ticker=DELL', '/v1/companies/DELL', 'companyOverview', companyFixture.metadata],
+  ['company catalyst', '?view=company&ticker=DELL', '/v1/companies/DELL/catalyst', 'companyScore', companyFixture['/catalyst']],
+  ['company history', '?view=company&ticker=DELL', '/v1/companies/DELL/timeline', 'companyHistory', companyFixture['/timeline']],
+  ['company events', '?view=company&ticker=DELL', '/v1/companies/DELL/events', 'companyEvents', companyFixture['/events']],
+]) {
+  test(name + ' aborts pending reads when credentials change on the same route', async () => {
+    const dashboard = startDashboard({ search, deferPublicPaths: [path] });
+    await dashboard.flush();
+    const obsolete = dashboard.requests.find(({ url }) => new URL(url).pathname === path);
+    dashboard.element('apiKey').value = 'replacement-public-key';
+    dashboard.click('saveKey');
+    await dashboard.flush();
+    assert.equal(obsolete.signal && obsolete.signal.aborted, true);
+    dashboard.resolvePublic(path, 0, 'error');
+    await dashboard.flush();
+    assert.doesNotMatch(dashboard.text('banner'), /Obsolete public failure/);
+    assert.doesNotMatch(dashboard.text(panel), /Unable to load/);
+    dashboard.resolvePublic(path, 1, fresh);
+    await dashboard.flush();
+    assert.notEqual(dashboard.html(panel), '');
+  });
+  for (const credential of ['apiKey', 'adminKey']) {
+    for (const outcome of ['success', 'error']) {
+      test(name + ' rejects stale ' + outcome + ' after hidden ' + credential + ' changes', async () => {
+        const dashboard = startDashboard({ search, deferPublicPaths: [path] });
+        await dashboard.flush();
+        dashboard.click('navSettings');
+        dashboard.element(credential).value = 'replacement-secret';
+        dashboard.click('saveKey');
+        dashboard.popstate(search);
+        await dashboard.flush();
+        // A late old finally must also leave the replacement request pending.
+        dashboard.resolvePublic(path, 0, outcome === 'error' ? 'error' : fresh);
+        await dashboard.flush();
+        assert.equal(dashboard.html(panel), '', 'obsolete response repainted the panel');
+        assert.doesNotMatch(dashboard.text(panel), /Unable to load/);
+        assert.doesNotMatch(dashboard.text('banner'), /Obsolete public failure/);
+        if (name === 'Events') assert.equal(dashboard.element('loadEvents').disabled, true);
+        if (name === 'Discovery') assert.equal(dashboard.element('nextPage').disabled, true);
+        dashboard.resolvePublic(path, 1, fresh);
+        await dashboard.flush();
+        assert.notEqual(dashboard.html(panel), '');
+      });
+    }
+  }
+}
+
+test('clearing keys immediately removes public evidence cached on hidden screens', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL' });
+  await dashboard.flush();
+  dashboard.click('navEvents');
+  await dashboard.flush();
+  dashboard.click('navDiscover');
+  await dashboard.flush();
+  dashboard.click('navSettings');
+  dashboard.click('clearKey');
+  for (const panel of ['companyOverview', 'companyScore', 'companyHistory', 'companyExplanation', 'companyEvents', 'eventResults', 'discoveryResults']) {
+    assert.equal(dashboard.html(panel), '', panel + ' retains old credential evidence');
+  }
+});
+
+test('obsolete invalid-company validation cannot replace Discovery after a credential change', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=INVALID!', deferDiscovery: true });
+  await dashboard.flush();
+  dashboard.click('navSettings');
+  dashboard.element('apiKey').value = 'replacement-public-key';
+  dashboard.click('saveKey');
+  dashboard.click('navDiscover');
+  await dashboard.flush();
+  dashboard.resolveDiscovery(1, discoveryPage('DELL'));
+  await dashboard.flush();
+  dashboard.resolveDiscovery(0, discoveryPage('OLD'));
+  await dashboard.flush();
+  assert.equal(dashboard.text('discoveryStatus'), '1 matching companies');
+  assert.match(dashboard.html('discoveryResults'), /DELL/);
+  assert.doesNotMatch(dashboard.html('discoveryResults'), /OLD/);
+});
+
 
 test('the dashboard sends requests only to the origin serving it', async () => {
   const dashboard = startDashboard({

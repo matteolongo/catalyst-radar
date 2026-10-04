@@ -12,7 +12,8 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   documentBody, documentAttempts, documentEvents, documentModelRuns,
   deferDocuments = false, deferDocumentList = false, modelSummary, modelCalls, modelDetail,
   modelPageSize = 25, deferModelSummary = false, deferModelCalls = false, deferModelDetails = false,
-  operationRuns, operationRunDetail, operationIssues, ingestionRuns, pipelineResult, deferPipeline = true } = {}) {
+  operationRuns, operationRunDetail, operationIssues, ingestionRuns, pipelineResult, deferPipeline = true,
+  deferPublicPaths = [] } = {}) {
   const requests = [];
   const values = new Map(Object.entries(stored));
   const elements = new Map();
@@ -27,6 +28,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   const timelineResolvers = [];
   const overviewResolvers = [];
   const configResolvers = [];
+  const publicResolvers = new Map();
   const documentResolvers = new Map();
   const documentListResolvers = [];
   const modelSummaryResolvers = [];
@@ -110,6 +112,12 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
     const method = (options.method || 'GET').toUpperCase();
     requests.push({ url: requestUrl.href, method, headers: options.headers || {}, body: options.body, signal: options.signal });
     const route = requestUrl.pathname;
+    if (deferPublicPaths.includes(route) && method === 'GET') return new Promise((resolve) => {
+      const queued = publicResolvers.get(route) || [];
+      queued.push((body) => resolve(body === 'error'
+        ? response({ detail: 'Obsolete public failure' }, 503) : response(body)));
+      publicResolvers.set(route, queued);
+    });
     if (route === '/actuator/health' && method === 'GET') {
       if (health === 'error') return response({ detail: 'Health unavailable', code: 'TEMPORARY_UNAVAILABLE', status: 503, requestId: 'request-health' }, 503);
       return response(typeof health === 'function' ? health(requestUrl) : health);
@@ -277,6 +285,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   return {
     requests, elements, values, window, document, html, context,
     resolveDiscovery(index, body) { discoveryResolvers[index](body); },
+    resolvePublic(route, index, body) { publicResolvers.get(route)[index](body); },
     resolveTimeline(index, body) { timelineResolvers[index](body); },
     resolveAdmin(index) { adminResolvers[index](); },
     resolveOverview(index, body) { overviewResolvers[index](body); },

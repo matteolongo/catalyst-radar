@@ -6,6 +6,7 @@
   var ADMIN_KEY_NAME = 'catalyst-admin-key';
   var API_KEY_NAME = 'catalyst-api-key';
   var credentialRevision = 0;
+  var publicRequests = new Set();
   var operations;
   var currentView = 'overview';
   var discoveryOffset = 0;
@@ -85,16 +86,57 @@
       headers['Content-Type'] = 'application/json';
       fetchOptions.body = JSON.stringify(options.body);
     }
-    var response = await fetch(url.href, fetchOptions);
-    var body = await response.json().catch(function () { return {}; });
-    if (!response.ok) {
-      var error = new Error(body.detail || body.title || ('HTTP ' + response.status));
-      error.status = body.status || response.status;
-      error.code = body.code;
-      error.requestId = body.requestId;
-      throw error;
+    var controller;
+    if (method === 'GET' && url.pathname.startsWith('/v1/') && !options.signal) {
+      controller = new AbortController();
+      publicRequests.add(controller);
+      fetchOptions.signal = controller.signal;
     }
-    return body;
+    try {
+      var response = await fetch(url.href, fetchOptions);
+      var body = await response.json().catch(function () { return {}; });
+      if (!response.ok) {
+        var error = new Error(body.detail || body.title || ('HTTP ' + response.status));
+        error.status = body.status || response.status;
+        error.code = body.code;
+        error.requestId = body.requestId;
+        throw error;
+      }
+      return body;
+    } finally {
+      if (controller) publicRequests.delete(controller);
+    }
+  }
+
+  function abortPublicReads() {
+    publicRequests.forEach(function (controller) { controller.abort(); });
+    publicRequests.clear();
+  }
+
+  function invalidatePublicCredentials() {
+    abortPublicReads();
+    discoveryRequest++;
+    companyRequest++;
+    historyRequest++;
+    eventRequest++;
+    discoveryLoading = false;
+    companyEventsLoading = false;
+    eventLoading = false;
+    eventLoaded = false;
+    currentCompany = '';
+    companyEvents = [];
+    companyNextCursor = null;
+    eventItems = [];
+    eventNextCursor = null;
+    ['discoveryResults', 'discoveryAsOf', 'pageSummary', 'companyOverview', 'companyScore', 'companyHistory',
+      'companyExplanation', 'companyEvents', 'companyEventsStatus', 'eventResults'].forEach(function (id) {
+      $(id).innerHTML = '';
+      $(id).textContent = '';
+    });
+    $('companyTitle').textContent = 'Company analysis';
+    ['discoveryStatus', 'eventStatus'].forEach(function (id) { $(id).textContent = 'Credentials changed. Refresh to load data.'; });
+    ['previousPage', 'nextPage', 'loadCompanyEvents', 'loadEvents'].forEach(function (id) { $(id).disabled = true; });
+    clearError();
   }
 
   function statusPill(status) {
@@ -124,7 +166,25 @@
   }
 
   function timeLabel(value) {
-    return '<time datetime="' + esc(value || '') + '">' + esc(fmtTime(value)) + '</time>';
+    return '<time datetime="' + esc(value || '') + '">' + esc(fmtTime(value)) + (value ? ' UTC' : '') + '</time>';
+  }
+
+  function sourceInspection(report) {
+    var id = report.sourceDocumentId || (report.source && report.source.sourceDocumentId);
+    if (!id) return '';
+    var route = '?view=documents&documentId=' + encodeURIComponent(id) + '&documentTab=source';
+    return '<a href="' + esc(currentCredentials().hasAdmin ? route : '?view=settings') +
+      '" data-source-document-id="' + esc(id) + '">Inspect source in backoffice</a>';
+  }
+
+  function inspectSource(event) {
+    var link = event.target.closest('[data-source-document-id]');
+    if (!link || !link.dataset.sourceDocumentId) return false;
+    event.preventDefault();
+    var route = '?view=documents&documentId=' + encodeURIComponent(link.dataset.sourceDocumentId) + '&documentTab=source';
+    if (currentCredentials().hasAdmin) navigate(route, { returnSearch: window.location.search });
+    else navigate('?view=settings', { returnSearch: route });
+    return true;
   }
 
   function sourceLabel(source) {
@@ -177,7 +237,7 @@
       '<div><dt>7-day velocity</dt><dd>' + esc(fmtScore(data.velocity7d)) + '</dd></div>' +
       '<div><dt>Total events</dt><dd>' + esc(fmtInt(data.totalEvents)) + '</dd></div>' +
       '<div><dt>Events 7d</dt><dd>' + esc(fmtInt(data.events7d)) + '</dd></div>' +
-      '<div><dt>As of</dt><dd>' + timeLabel(data.asOf) + '</dd></div>' +
+      '<div><dt>Saved as of</dt><dd>' + timeLabel(data.asOf) + '</dd></div>' +
       '<div><dt>Score version</dt><dd>' + esc(data.scoreVersion) + '</dd></div>' +
       '<div><dt>Taxonomy version</dt><dd>' + esc(data.taxonomyVersion) + '</dd></div></dl>';
     if (data.explanationStatus !== 'RECONSTRUCTED_SCORE_MATCH') {
@@ -195,7 +255,7 @@
       return '<article class="driver"><h4>' + esc(driver.direction) + ' · ' + esc(driver.family || 'Unclassified') + ' / ' + esc(driver.type) + '</h4>' +
         '<p>Raw event contribution: ' + esc(fmtScore(driver.contribution)) + '</p>' +
         '<p>Event date: ' + timeLabel(driver.eventTimestamp) + ' · First captured: ' + timeLabel(driver.discoveredAt) + '</p>' +
-        evidenceList(driver.evidence) + '<p>' + sourceLabel(driver.source) + '</p>' +
+        evidenceList(driver.evidence) + '<p>' + sourceLabel(driver.source) + '</p><p>' + sourceInspection(driver) + '</p>' +
         '<details><summary>Scoring details</summary><p>Score version: ' + esc(data.scoreVersion) + '</p>' + factorDetails(driver) + '</details></article>';
     }).join('');
     var calcFields = ['contributionSum', 'familyCount', 'convergenceMultiplier', 'rawScore', 'normalizationScale', 'contributionCutoff'];
@@ -222,8 +282,8 @@
   }
 
   function renderHistory(data) {
-    var snapshots = (data.snapshots || []).slice().sort(function (a, b) { return new Date(a.asOf) - new Date(b.asOf); });
-    var transitions = (data.transitions || []).slice().sort(function (a, b) { return new Date(a.at) - new Date(b.at); });
+    var snapshots = (data.snapshots || []).slice(0, 200).sort(function (a, b) { return new Date(a.asOf) - new Date(b.asOf); });
+    var transitions = (data.transitions || []).slice(0, 200).sort(function (a, b) { return new Date(a.at) - new Date(b.at); });
     var transitionList = transitions.length ? '<p>State transitions at persisted times:</p><ul>' + transitions.map(function (t) {
       return '<li>' + timeLabel(t.at) + ' · ' + esc(t.from) + ' → ' + esc(t.to) + ' · score ' + esc(fmtScore(t.score)) + '</li>';
     }).join('') + '</ul>' : '';
@@ -240,10 +300,10 @@
     var chart = (snapshots.length === 1 ? '<p>Insufficient history for a trend chart. One stored snapshot is available.</p>' : '') +
       '<p class="muted small">Only stored snapshot points are shown; gaps have no implied values.</p><svg viewBox="0 0 600 150" role="img" aria-label="Stored catalyst score snapshot points and state transitions; data table follows">' +
       '<line x1="30" y1="130" x2="570" y2="130" class="axis"/><line x1="30" y1="20" x2="30" y2="130" class="axis"/>' +
-      snapshots.map(function (s) { return '<circle class="score-point" cx="' + x(s.asOf) + '" cy="' + y(s.score) + '" r="4"><title>' + esc(s.asOf) + ' · ' + esc(fmtScore(s.score)) + ' · ' + esc(s.state) + '</title></circle>'; }).join('') +
-      transitions.map(function (t) { return '<path class="transition-mark" d="M' + x(t.at) + ' 20V130"><title>' + esc(t.at) + ' · ' + esc(t.from) + ' → ' + esc(t.to) + '</title></path>'; }).join('') + '</svg>';
+      snapshots.map(function (s) { return '<circle class="score-point" cx="' + x(s.asOf) + '" cy="' + y(s.score) + '" r="4"><title>' + esc(fmtTime(s.asOf)) + ' UTC · ' + esc(fmtScore(s.score)) + ' · ' + esc(s.state) + '</title></circle>'; }).join('') +
+      transitions.map(function (t) { return '<path class="transition-mark" d="M' + x(t.at) + ' 20V130"><title>' + esc(fmtTime(t.at)) + ' UTC · ' + esc(t.from) + ' → ' + esc(t.to) + '</title></path>'; }).join('') + '</svg>';
     $('companyHistory').innerHTML = chart + '<div class="history-table"><table><caption>Stored score snapshots</caption><thead><tr><th>Date</th><th>Score</th><th>State</th><th>As of</th></tr></thead><tbody>' +
-      snapshots.map(function (s) { return '<tr><td>' + esc((s.asOf || '').slice(0, 10)) + '</td><td>' + esc(fmtScore(s.score)) + '</td><td>' + esc(s.state) + '</td><td>' + timeLabel(s.asOf) + '</td></tr>'; }).join('') +
+      snapshots.map(function (s) { return '<tr><td>' + esc(s.asOf && !isNaN(new Date(s.asOf)) ? new Date(s.asOf).toISOString().slice(0, 10) : '–') + '</td><td>' + esc(fmtScore(s.score)) + '</td><td>' + esc(s.state) + '</td><td>' + timeLabel(s.asOf) + '</td></tr>'; }).join('') +
       '</tbody></table></div>' + transitionList;
   }
 
@@ -258,7 +318,7 @@
       return '<article class="event-cluster"><h4>' + (group.length > 1 ? 'Reports about one catalyst' : 'Event report') + '</h4>' + group.map(function (event) {
         return '<div class="event-report"><strong>' + esc(event.direction) + ' · ' + esc(event.family) + ' / ' + esc(event.type) + '</strong>' +
           '<p>Event date: ' + timeLabel(event.eventTimestamp) + ' · First captured: ' + timeLabel(event.discoveredAt) + '</p>' +
-          evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p></div>';
+          evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p><p>' + sourceInspection(event) + '</p></div>';
       }).join('') + '</article>';
     }).join('') : '<p>No company events found.</p>';
     $('loadCompanyEvents').classList[companyNextCursor ? 'remove' : 'add']('hidden');
@@ -286,7 +346,7 @@
         '<strong>' + esc(event.direction) + ' · ' + esc(event.family) + ' / ' + esc(event.type) + '</strong>' +
         '<p>Event date: ' + timeLabel(event.eventTimestamp) + ' · First captured: ' + timeLabel(event.discoveredAt) + '</p>' +
         '<p class="muted small">Cluster: ' + esc(event.clusterId || 'unclustered') + '</p>' +
-        evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p></article>';
+        evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p><p>' + sourceInspection(event) + '</p></article>';
     }).join('') : '<p>No events match these filters.</p>';
     $('loadEvents').classList[eventNextCursor ? 'remove' : 'add']('hidden');
     $('loadEvents').disabled = !eventNextCursor || eventLoading;
@@ -304,25 +364,26 @@
     var query = new URLSearchParams(appliedEventFilters);
     if (!reset) query.set('cursor', eventNextCursor);
     var request = ++eventRequest;
+    var revision = credentialRevision;
     eventLoading = true;
     eventLoaded = true;
     $('eventStatus').textContent = 'Loading events…';
     $('loadEvents').disabled = true;
     try {
       var page = await api('/v1/events?' + query.toString());
-      if (request !== eventRequest) return;
+      if (revision !== credentialRevision || request !== eventRequest || currentView !== 'events') return;
       eventItems = eventItems.concat(page.events || []);
       eventNextCursor = page.nextCursor || null;
       $('eventStatus').textContent = eventItems.length + ' loaded reports' + (eventNextCursor ? '; more available.' : '.');
       renderEvents();
     } catch (err) {
-      if (request !== eventRequest) return;
+      if (revision !== credentialRevision || request !== eventRequest || currentView !== 'events') return;
       $('eventStatus').textContent = reset ? 'Unable to load events. Try searching again.' : 'Unable to load more events. Try again.';
       if (reset) $('eventResults').textContent = '';
       else renderEvents();
       showError('Events: ' + err.message);
     } finally {
-      if (request === eventRequest) {
+      if (revision === credentialRevision && request === eventRequest && currentView === 'events') {
         eventLoading = false;
         $('loadEvents').disabled = !eventNextCursor;
       }
@@ -331,6 +392,7 @@
 
   async function loadCompanyEvents(ticker, request, reset) {
     if (companyEventsLoading || (!reset && !companyNextCursor)) return;
+    var revision = credentialRevision;
     companyEventsLoading = true;
     $('companyEventsStatus').textContent = '';
     if (reset) { companyEvents = []; companyNextCursor = null; $('companyEvents').textContent = 'Loading events…'; }
@@ -340,13 +402,13 @@
     if (!reset) query.set('cursor', companyNextCursor);
     try {
       var page = await api(companyPath(ticker, '/events', query));
-      if (request !== companyRequest) return;
+      if (revision !== credentialRevision || request !== companyRequest || currentView !== 'company') return;
       companyEvents = companyEvents.concat(page.events || []);
       companyNextCursor = page.nextCursor;
       companyEventsLoading = false;
       renderCompanyEvents();
     } catch (_) {
-      if (request === companyRequest) {
+      if (revision === credentialRevision && request === companyRequest && currentView === 'company') {
         companyEventsLoading = false;
         if (reset) companyPanelError('companyEvents', 'company events');
         else {
@@ -354,20 +416,22 @@
           renderCompanyEvents();
         }
       }
-    } finally { if (request === companyRequest) companyEventsLoading = false; }
+    } finally { if (revision === credentialRevision && request === companyRequest && currentView === 'company') companyEventsLoading = false; }
   }
 
   async function loadCompanyHistory(ticker, request) {
     var sequence = ++historyRequest;
+    var revision = credentialRevision;
     $('companyHistory').textContent = 'Loading score history…';
     try {
       var data = await api(companyPath(ticker, '/timeline', historyQuery()));
-      if (request === companyRequest && sequence === historyRequest) renderHistory(data);
-    } catch (_) { if (request === companyRequest && sequence === historyRequest) companyPanelError('companyHistory', 'score history'); }
+      if (revision === credentialRevision && request === companyRequest && sequence === historyRequest && currentView === 'company') renderHistory(data);
+    } catch (_) { if (revision === credentialRevision && request === companyRequest && sequence === historyRequest && currentView === 'company') companyPanelError('companyHistory', 'score history'); }
   }
 
   function refreshCompany(ticker) {
     var request = ++companyRequest;
+    var revision = credentialRevision;
     historyRequest++;
     currentCompany = ticker;
     companyEvents = [];
@@ -381,12 +445,12 @@
     $('companyEventsStatus').textContent = '';
     $('loadCompanyEvents').classList.add('hidden');
     api(companyPath(ticker, '')).then(function (company) {
-      if (request === companyRequest) renderCompanyOverview(company);
-    }).catch(function () { if (request === companyRequest) companyPanelError('companyOverview', 'company'); });
+      if (revision === credentialRevision && request === companyRequest && currentView === 'company') renderCompanyOverview(company);
+    }).catch(function () { if (revision === credentialRevision && request === companyRequest && currentView === 'company') companyPanelError('companyOverview', 'company'); });
     api(companyPath(ticker, '/catalyst')).then(function (data) {
-      if (request === companyRequest) renderCatalyst(data);
+      if (revision === credentialRevision && request === companyRequest && currentView === 'company') renderCatalyst(data);
     }).catch(function () {
-      if (request === companyRequest) { companyPanelError('companyScore', 'current score'); companyPanelError('companyExplanation', 'explanation'); }
+      if (revision === credentialRevision && request === companyRequest && currentView === 'company') { companyPanelError('companyScore', 'current score'); companyPanelError('companyExplanation', 'explanation'); }
     });
     loadCompanyHistory(ticker, request);
     loadCompanyEvents(ticker, request, true);
@@ -401,6 +465,7 @@
   async function refreshDiscovery() {
     var page;
     var request = ++discoveryRequest;
+    var revision = credentialRevision;
     var path = discoveryPath();
     var requestOffset = discoveryOffset;
     var requestLimit = discoveryLimit;
@@ -411,7 +476,7 @@
     try {
       page = await api(path);
     } catch (err) {
-      if (request !== discoveryRequest) return;
+      if (revision !== credentialRevision || request !== discoveryRequest || currentView !== 'discover') return;
       discoveryLoading = false;
       $('discoveryResults').innerHTML = '';
       $('discoveryStatus').textContent = 'Unable to load discovery results.';
@@ -422,10 +487,10 @@
       showError('Discovery: ' + err.message);
       return;
     }
-    if (request !== discoveryRequest) return;
+    if (revision !== credentialRevision || request !== discoveryRequest || currentView !== 'discover') return;
     discoveryLoading = false;
     discoveryTotal = page.total;
-    $('discoveryAsOf').textContent = 'Discovery query as of ' + fmtTime(page.asOf);
+    $('discoveryAsOf').textContent = 'Discovery query as of ' + fmtTime(page.asOf) + (page.asOf ? ' UTC' : '');
     $('pageSummary').textContent = page.total ?
       'Results ' + (requestOffset + 1) + '–' + (requestOffset + page.results.length) + ' of ' + page.total : '0 results';
     $('previousPage').disabled = requestOffset === 0;
@@ -444,7 +509,7 @@
         '<div><dt>7-day velocity</dt><dd>' + esc(Number(entry.velocity7d).toFixed(1)) + '</dd></div>' +
         '<div><dt>Events 7d</dt><dd>' + fmtInt(entry.events7d) + '</dd></div>' +
         '<div><dt>Score version</dt><dd>' + esc(entry.scoreVersion) + '</dd></div>' +
-        '<div><dt>Company as of</dt><dd>' + esc(fmtTime(entry.asOf)) + '</dd></div></dl></article>';
+        '<div><dt>Company as of</dt><dd>' + timeLabel(entry.asOf) + '</dd></div></dl></article>';
     }).join('');
   }
 
@@ -461,10 +526,10 @@
   }
 
   function safeReturnSearch(value) {
-    if (typeof value !== 'string' || !value.startsWith('?') || value.startsWith('??') || value.indexOf('#') >= 0) return null;
+    if (typeof value !== 'string' || !value.startsWith('?') || value.startsWith('??') || value.indexOf('#') >= 0 || value.indexOf('\\') >= 0) return null;
     var view = new URLSearchParams(value.slice(1)).get('view') || 'overview';
     if (view === 'operations') view = 'pipeline';
-    return ['overview', 'pipeline', 'documents', 'models', 'discover', 'company', 'events'].includes(view) ? value : null;
+    return ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events'].includes(view) ? value : null;
   }
 
   function localSearch(value) {
@@ -497,6 +562,15 @@
       invalidTicker = true;
     }
     if (!['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events'].includes(view)) view = 'overview';
+    if (currentView !== view) {
+      abortPublicReads();
+      if (currentView === 'events' && eventLoading) {
+        eventRequest++;
+        eventLoading = false;
+        eventLoaded = false;
+      }
+      if (currentView === 'discover') { discoveryRequest++; discoveryLoading = false; }
+    }
     currentView = view;
 
     ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events'].forEach(function (name) {
@@ -529,8 +603,12 @@
     }
     if (view === 'discover') {
       var discoverRead = refreshDiscovery();
+      var validationRequest = discoveryRequest;
+      var validationRevision = credentialRevision;
       if (invalidTicker) Promise.resolve(discoverRead).then(function () {
-        $('discoveryStatus').textContent = 'Enter a valid ticker to open a company.';
+        if (validationRevision === credentialRevision && validationRequest === discoveryRequest && currentView === 'discover') {
+          $('discoveryStatus').textContent = 'Enter a valid ticker to open a company.';
+        }
       });
     }
     if (view === 'events' && !eventLoaded) loadEvents(true);
@@ -552,6 +630,7 @@
     if (savedApiKey) $('apiKey').value = savedApiKey;
     $('saveKey').addEventListener('click', function () {
       credentialRevision++;
+      invalidatePublicCredentials();
       var adminKey = $('adminKey').value.trim();
       var apiKey = $('apiKey').value.trim();
       if (adminKey) window.sessionStorage.setItem(ADMIN_KEY_NAME, adminKey);
@@ -565,6 +644,7 @@
     });
     $('clearKey').addEventListener('click', function () {
       credentialRevision++;
+      invalidatePublicCredentials();
       window.sessionStorage.removeItem(ADMIN_KEY_NAME);
       window.sessionStorage.removeItem(API_KEY_NAME);
       $('adminKey').value = '';
@@ -615,6 +695,8 @@
     $('loadCompanyEvents').addEventListener('click', function () {
       if (currentCompany) return loadCompanyEvents(currentCompany, companyRequest, false);
     });
+    $('companyExplanation').addEventListener('click', inspectSource);
+    $('companyEvents').addEventListener('click', inspectSource);
     $('eventFilters').addEventListener('submit', function (event) {
       event.preventDefault();
       clearError();
@@ -622,6 +704,7 @@
     });
     $('loadEvents').addEventListener('click', function () { return loadEvents(false); });
     $('eventResults').addEventListener('click', function (event) {
+      if (inspectSource(event)) return;
       var link = event.target.closest('[data-ticker]');
       if (!link) return;
       if (event.preventDefault) event.preventDefault();

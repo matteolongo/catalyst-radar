@@ -13,6 +13,25 @@ const DOC_NEW = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const DOC_OLD = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const MODEL_CALL = '55555555-5555-4555-8555-555555555555';
 
+test('Documents opens company Intelligence and the return control restores the document context', async () => {
+  const origin = '?view=documents&status=COMPLETED&documentId=' + DOC_A + '&documentTab=events';
+  const dashboard = startDashboard({ search: origin, stored: { 'catalyst-admin-key': 'admin-secret' } });
+  await dashboard.flush();
+  dashboard.click('documentDetail', { target: { closest: (selector) => selector === '[data-document-company]'
+    ? { dataset: { documentCompany: 'DELL' } } : null } });
+  await dashboard.flush();
+  assert.equal(dashboard.window.location.search, '?view=company&ticker=DELL');
+  assert.equal(dashboard.historyState.returnSearch, origin);
+  assert.deepEqual(Object.keys(dashboard.historyState), ['returnSearch']);
+  assert.equal(dashboard.element('navIntelligence').getAttribute('aria-current'), 'page');
+  assert.equal(dashboard.element('navDocuments').getAttribute('aria-current'), null);
+  dashboard.click('backToResults');
+  await dashboard.flush();
+  assert.equal(dashboard.window.location.search, origin);
+  assert.equal(dashboard.element('documentDetail').hidden, false);
+  assert.equal(dashboard.element('documentEvents').hidden, false);
+});
+
 function startOperations(options = {}) {
   const stored = { ...(options.stored || {}) };
   if (options.storedAdmin) stored['catalyst-admin-key'] = options.storedAdmin;

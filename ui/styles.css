@@ -198,6 +198,7 @@ footer { padding: 0 24px 24px; }
 .driver h4, .event-cluster h4 { margin: 0; }
 .event-report + .event-report { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
 .source-date { display: block; color: var(--muted); }
+a[data-source-document-id] { display: inline-flex; align-items: center; min-height: 44px; overflow-wrap: anywhere; }
 .evidence-list { padding-left: 20px; }
 .evidence-list blockquote { margin: 4px 0; }
 .history-table, .table-scroll { max-width: 100%; overflow-x: auto; }
