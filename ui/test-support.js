@@ -8,7 +8,9 @@ const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
 function startDashboard({ search = '', stored = {}, origin = 'https://ops.example', discovery, events, company = {},
   overview, config, health = { status: 'UP' }, deferDiscovery = false, deferAdmin = false,
-  deferTimeline = false, deferOverview = false, deferConfig = false } = {}) {
+  deferTimeline = false, deferOverview = false, deferConfig = false, documents, documentDetail,
+  documentBody, documentAttempts, documentEvents, documentModelRuns,
+  deferDocuments = false, deferDocumentList = false } = {}) {
   const requests = [];
   const values = new Map(Object.entries(stored));
   const elements = new Map();
@@ -23,6 +25,8 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   const timelineResolvers = [];
   const overviewResolvers = [];
   const configResolvers = [];
+  const documentResolvers = new Map();
+  const documentListResolvers = [];
   const intervals = new Map();
   let nextInterval = 1;
   let historyState = {};
@@ -68,6 +72,12 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
     removeEventListener(name, handler) { if (documentHandlers[name] === handler) delete documentHandlers[name]; },
     querySelectorAll(selector) {
       if (selector === '[data-ticker]') return Array.from(elements.values()).filter((element) => element.dataset.ticker);
+      if (selector === '[data-attempt-id]') {
+        const source = elementFor('documentAttempts').innerHTML;
+        return Array.from(source.matchAll(/data-attempt-id="([^"]+)"/g), (match) => ({
+          dataset: { attemptId: match[1] }, focus() { document.activeElement = this; },
+        }));
+      }
       return [];
     },
   };
@@ -114,6 +124,36 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
       const answer = typeof config === 'function' ? config(requestUrl) : config;
       return answer === 'error' ? response({ detail: 'Configuration unavailable', code: 'TEMPORARY_UNAVAILABLE', status: 503, requestId: 'request-config' }, 503)
         : response(answer || configFixture);
+    }
+    if (route === '/internal/operations/documents' && method === 'GET') {
+      if (!options.headers?.['X-Admin-Key']) return response({ detail: 'Admin key required', code: 'FORBIDDEN', status: 403 }, 403);
+      if (deferDocumentList) return new Promise((resolve) => documentListResolvers.push((body) => resolve(body === 'error'
+        ? response({ detail: 'Documents unavailable', code: 'TEMPORARY_UNAVAILABLE', status: 503 }, 503)
+        : response(body || documentsPageFixture))));
+      const answer = typeof documents === 'function' ? documents(requestUrl) : documents;
+      return answer === 'error' ? response({ detail: 'Documents unavailable', code: 'TEMPORARY_UNAVAILABLE', status: 503 }, 503)
+        : response(answer || documentsPageFixture);
+    }
+    const documentMatch = route.match(/^\/internal\/operations\/documents\/([^/]+)(?:\/(body|events|attempts|model-runs))?$/);
+    if (documentMatch && method === 'GET') {
+      if (!options.headers?.['X-Admin-Key']) return response({ detail: 'Admin key required', code: 'FORBIDDEN', status: 403 }, 403);
+      const id = decodeURIComponent(documentMatch[1]);
+      const resource = documentMatch[2] || 'detail';
+      if (resource === 'detail' && deferDocuments) return new Promise((resolve) => {
+        const queued = documentResolvers.get(id) || [];
+        queued.push((body) => resolve(body === 'error'
+          ? response({ detail: 'Document unavailable', code: 'DOCUMENT_NOT_FOUND', status: 404 }, 404)
+          : response(body || documentDetailFixture(id))));
+        documentResolvers.set(id, queued);
+      });
+      const configured = { detail: documentDetail, body: documentBody, attempts: documentAttempts,
+        events: documentEvents, 'model-runs': documentModelRuns }[resource];
+      const value = typeof configured === 'function' ? configured(requestUrl, id) : configured;
+      const fallback = { detail: documentDetailFixture(id), body: documentBodyFixture(id),
+        attempts: documentAttemptsPageFixture, events: documentEventsFixture,
+        'model-runs': documentModelPageFixture }[resource];
+      return value === 'error' ? response({ detail: 'Document tab unavailable', code: 'TEMPORARY_UNAVAILABLE', status: 503 }, 503)
+        : response(value || fallback);
     }
     if (route.endsWith('/timeline') && deferTimeline) {
       return new Promise((resolve) => timelineResolvers.push((body) => resolve(body === 'error' ? response({ detail: 'Timeline unavailable' }, 503) : response(body))));
@@ -184,12 +224,15 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
     resolveAdmin(index) { adminResolvers[index](); },
     resolveOverview(index, body) { overviewResolvers[index](body); },
     resolveConfig(index, body) { configResolvers[index](body); },
+    resolveDocument(id, body) { const queue = documentResolvers.get(id) || []; const resolve = queue.shift(); if (!resolve) throw new Error('No deferred document request for ' + id); resolve(body); },
+    resolveDocumentList(index, body) { documentListResolvers[index](body); },
     popstate(search) { window.location.search = search; windowHandlers.popstate(); },
     setHidden(hidden) { document.hidden = hidden; if (documentHandlers.visibilitychange) documentHandlers.visibilitychange(); },
     tick() { for (const timer of Array.from(intervals.values())) timer.callback(); },
     get intervalCount() { return intervals.size; },
     text(id) { return elementFor(id).textContent; },
     html(id) { return elementFor(id).innerHTML; },
+    element(id) { return elementFor(id); },
     click(id, event) { return elementFor(id).trigger('click', event); },
     flush() { return flush(); },
     get reloads() { return reloads; },
@@ -260,8 +303,64 @@ const configFixture = {
   versions: { score: 'score-v1', taxonomy: 'taxonomy-v1', prompt: 'prompt-v1', extractor: 'extractor-v1', extractionModel: 'model', embeddingModel: 'embed-model' },
 };
 
+function documentListItemFixture(id = '11111111-1111-4111-8111-111111111111', extra = {}) {
+  return {
+    id, provider: 'polygon', title: 'Quarterly filing', publishedAt: '2026-10-03T11:00:00Z',
+    discoveredAt: '2026-10-03T12:00:00Z', createdAt: '2026-10-03T12:01:00Z', state: 'RETRYABLE_ERROR',
+    attemptCount: 2, nextAttemptAt: '2026-10-04T12:00:00Z', updatedAt: '2026-10-03T12:02:00Z',
+    lastErrorCode: 'PROVIDER_TIMEOUT', lastErrorMessage: 'The provider request timed out.',
+    tickers: ['ACME'], tickersTruncated: false, eventReports: 1, canonicalClusters: 1,
+    firstIngestionRunId: '11111111-1111-4111-8111-111111111111', ...extra,
+  };
+}
+
+function documentDetailFixture(id = '11111111-1111-4111-8111-111111111111', extra = {}) {
+  return {
+    generatedAt: '2026-10-04T12:05:00Z', document: documentListItemFixture(id, { title: 'Source ' + id }),
+    canonicalUrl: 'https://example.com/filing', providerDocumentId: 'provider-doc-1',
+    completedAt: null, maxAttempts: 5, capturedAttemptCount: 1, unrecordedAttemptCount: 1,
+    historyAvailable: true,
+    companies: [{ id: '22222222-2222-4222-8222-222222222222', ticker: 'ACME', name: 'Acme Corporation',
+      latestSnapshotAsOf: '2026-10-03T13:00:00Z', latestSnapshotCreatedAt: '2026-10-03T13:01:00Z' }],
+    companiesTotal: 1, companiesTruncated: false, modelCallsRecorded: 1, eventReports: 1, canonicalClusters: 1,
+    ...extra,
+  };
+}
+
+const documentsPageFixture = { generatedAt: '2026-10-04T12:05:00Z', window: null,
+  items: [documentListItemFixture()], limit: 25, nextCursor: null };
+const documentAttemptsPageFixture = { generatedAt: '2026-10-04T12:05:00Z', window: null, items: [{
+  id: '33333333-3333-4333-8333-333333333333', documentId: '11111111-1111-4111-8111-111111111111', runId: '44444444-4444-4444-8444-444444444444',
+  number: 2, status: 'RETRYABLE_ERROR', startedAt: '2026-10-03T12:02:00Z', finishedAt: '2026-10-03T12:02:03Z',
+  updatedAt: '2026-10-03T12:02:03Z', durationMs: 3000, nextAttemptAt: '2026-10-04T12:00:00Z',
+  eventsInserted: 0, eventsReused: 0, errorCode: 'PROVIDER_TIMEOUT', errorMessage: 'The provider request timed out.',
+  modelCallIds: ['55555555-5555-4555-8555-555555555555'], modelCallsTotal: 1, modelCallsTruncated: false,
+}], limit: 25, nextCursor: null };
+const documentEventsFixture = { events: [{
+  id: '66666666-6666-4666-8666-666666666666', type: 'GUIDANCE_RAISE', family: 'GUIDANCE', direction: 'POSITIVE',
+  confidence: 0.9, magnitude: null, surprise: null, materiality: null, sourceQuality: 'PRIMARY',
+  expectedHorizon: 'SHORT_TERM', directness: 'DIRECT', scheduled: false,
+  eventTimestamp: '2026-10-03T10:00:00Z', discoveredAt: '2026-10-03T12:00:00Z', clusterId: '77777777-7777-4777-8777-777777777777',
+  sourceDocumentId: '11111111-1111-4111-8111-111111111111', taxonomyVersion: 'taxonomy-v1', extractorVersion: 'extractor-v1',
+  evidence: [{ quoteOrFact: 'Raised full-year guidance.', sourceOffsetHint: null }], ticker: 'ACME', companyName: 'Acme Corporation',
+  source: { sourceDocumentId: '11111111-1111-4111-8111-111111111111', title: 'Quarterly filing', provider: 'polygon', publishedAt: '2026-10-03T11:00:00Z', canonicalUrl: 'https://example.com/filing' },
+}], nextCursor: null };
+const documentModelPageFixture = { generatedAt: '2026-10-04T12:05:00Z', window: null, items: [{
+  id: '55555555-5555-4555-8555-555555555555', provider: 'openai', operation: 'extract', model: 'model-v1',
+  promptVersion: 'prompt-v1', extractorVersion: 'extractor-v1', sourceDocumentId: '11111111-1111-4111-8111-111111111111',
+  attemptId: '33333333-3333-4333-8333-333333333333', runId: '44444444-4444-4444-8444-444444444444',
+  inputTokens: 30, outputTokens: 10, latencyMs: 1200, estimatedCost: 0.0012,
+  success: true, errorCode: null, errorMessage: null, createdAt: '2026-10-03T12:02:01Z',
+}], limit: 25, nextCursor: null };
+
+function documentBodyFixture(id = '11111111-1111-4111-8111-111111111111', extra = {}) {
+  return { id, text: 'Quoted source: <script>alert(1)</script>\nSecond line.', originalCharacters: 50000, truncated: true, ...extra };
+}
+
 async function flush() {
   for (let index = 0; index < 20; index++) await new Promise((resolve) => setImmediate(resolve));
 }
 
-module.exports = { startDashboard, waitForRequests, flush, companyFixture, eventFixture, discoveryPage, discoveryFixture, overviewFixture, configFixture, html };
+module.exports = { startDashboard, waitForRequests, flush, companyFixture, eventFixture, discoveryPage, discoveryFixture,
+  overviewFixture, configFixture, documentListItemFixture, documentsPageFixture, documentDetailFixture,
+  documentBodyFixture, documentAttemptsPageFixture, documentEventsFixture, documentModelPageFixture, html };

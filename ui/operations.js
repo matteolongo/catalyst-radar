@@ -5,6 +5,8 @@
   var POLLED = ['overview', 'pipeline', 'documents', 'models'];
   var OPERATIONAL = ['overview', 'pipeline', 'documents', 'models', 'settings'];
   var ACCESS_STATUS_IDS = ['overviewStatus', 'pipelineStatus', 'documentStatus', 'modelStatus'];
+  var DOCUMENT_STATES = ['PENDING', 'PROCESSING', 'COMPLETED', 'SKIPPED', 'RETRYABLE_ERROR', 'TERMINAL_ERROR', 'UNRESOLVED', 'NOT_TRACKED'];
+  var DOCUMENT_TABS = ['overview', 'attempts', 'models', 'events', 'source'];
   var SIGNAL_LABELS = {
     DUE_DOCUMENTS: 'Documents due',
     TERMINAL_DOCUMENTS: 'Documents with terminal failures',
@@ -31,6 +33,22 @@
     var configLoaded = false;
     var lastConfigAt = null;
     var healthLoaded = false;
+    var documentFilters = { q: '', provider: '', ticker: '', statuses: [], from: '', to: '', dueOnly: false, runId: '', ingestionRunId: '' };
+    var documentItems = [];
+    var documentCursor = null;
+    var documentGeneratedAt = null;
+    var documentPageLoaded = false;
+    var documentPageLoading = false;
+    var documentPageError = null;
+    var documentRouteValid = true;
+    var selectedDocumentId = null;
+    var selectedDocumentDetail = null;
+    var selectedDocumentLoaded = false;
+    var selectedDocumentLoading = false;
+    var selectedDocumentTab = 'overview';
+    var selectedDocumentOpener = null;
+    var selectedAttemptId = null;
+    var documentTabCache = {};
 
     function el(id) { return document.getElementById(id); }
     function esc(value) {
@@ -53,6 +71,9 @@
       requests.forEach(function (controller) { controller.abort(); });
       requests.clear();
       pending = null;
+      documentPageLoading = false;
+      selectedDocumentLoading = false;
+      Object.keys(documentTabCache).forEach(function (tab) { documentTabCache[tab].loading = false; });
     }
     function read(path, revision, requestSequence, expectedScreen) {
       var controller = new AbortController();
@@ -107,6 +128,12 @@
       } else {
         var statusId = { pipeline: 'pipelineStatus', documents: 'documentStatus', models: 'modelStatus' }[screen];
         if (statusId) el(statusId).innerHTML = link;
+        if (screen === 'documents') {
+          toggleHidden('documentFilters', true);
+          toggleHidden('documentRows', true);
+          toggleHidden('loadDocuments', true);
+          toggleHidden('documentDetail', true);
+        }
       }
       el('lastRefresh').textContent = 'No successful refresh yet';
     }
@@ -195,6 +222,648 @@
         '<div><dt>Models</dt><dd>Extraction ' + esc(v.extractionModel) + ' · embedding ' + esc(v.embeddingModel) + '</dd></div>' +
         '</dl><h4>Provider configuration</h4><ul class="provider-list">' + providers + '</ul>';
     }
+    function toggleHidden(id, hidden) {
+      el(id).classList.toggle('hidden', hidden);
+      if (hidden) el(id).setAttribute('hidden', '');
+      else el(id).removeAttribute('hidden');
+    }
+    function validInstant(value) {
+      if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(value)) return false;
+      var parsed = new Date(value);
+      return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 19) === value.slice(0, 19);
+    }
+    function validUuid(value) {
+      return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+    }
+    function normalizeDocumentFilters(filters) {
+      var normalized = Object.assign({}, filters, {
+        q: String(filters.q || '').trim(),
+        provider: String(filters.provider || '').trim().toLowerCase(),
+        ticker: String(filters.ticker || '').trim().toUpperCase(),
+        statuses: Array.from(new Set(filters.statuses || [])),
+      });
+      if (normalized.q.length > 120 || /[\u0000-\u001f\u007f]/.test(normalized.q)) return { error: 'Title search must contain 1–120 printable characters.' };
+      if (normalized.provider && !['polygon', 'finnhub'].includes(normalized.provider)) return { error: 'Choose Polygon or Finnhub as the provider.' };
+      if (normalized.ticker && !/^[A-Z0-9][A-Z0-9.-]{0,14}$/.test(normalized.ticker)) return { error: 'Enter a valid ticker.' };
+      if (normalized.statuses.some(function (state) { return !DOCUMENT_STATES.includes(state); })) return { error: 'Choose valid document states.' };
+      if (normalized.from && !validInstant(normalized.from)) return { error: 'Captured-from must be an ISO UTC timestamp.' };
+      if (normalized.to && !validInstant(normalized.to)) return { error: 'Captured-through must be an ISO UTC timestamp.' };
+      if (normalized.from && normalized.to && Date.parse(normalized.from) >= Date.parse(normalized.to)) return { error: 'Captured-from must be earlier than the exclusive captured-through boundary.' };
+      if (normalized.runId && !validUuid(normalized.runId)) return { error: 'The operation run ID is invalid.' };
+      if (normalized.ingestionRunId && !validUuid(normalized.ingestionRunId)) return { error: 'The ingestion run ID is invalid.' };
+      return { filters: normalized };
+    }
+    function documentFilterKey(filters) {
+      return JSON.stringify({ q: filters.q, provider: filters.provider, ticker: filters.ticker,
+        statuses: filters.statuses.slice().sort(), from: filters.from, to: filters.to, dueOnly: filters.dueOnly,
+        runId: filters.runId, ingestionRunId: filters.ingestionRunId });
+    }
+    function documentFiltersFromRoute(route, preserveWhenOmitted) {
+      var filterKeys = ['q', 'provider', 'ticker', 'status', 'from', 'to', 'dueOnly', 'runId', 'ingestionRunId'];
+      var hasRouteFilters = filterKeys.some(function (key) { return route.has(key); });
+      var next = preserveWhenOmitted && !hasRouteFilters
+        ? Object.assign({}, documentFilters, { statuses: documentFilters.statuses.slice() })
+        : { q: '', provider: '', ticker: '', statuses: [], from: '', to: '', dueOnly: false, runId: '', ingestionRunId: '' };
+      if (route.has('q')) next.q = route.get('q');
+      if (route.has('provider')) next.provider = route.get('provider');
+      if (route.has('ticker')) next.ticker = route.get('ticker');
+      if (route.has('status')) next.statuses = route.getAll('status');
+      if (route.has('from')) next.from = route.get('from');
+      if (route.has('to')) next.to = route.get('to');
+      if (route.has('dueOnly')) {
+        var dueOnly = route.get('dueOnly');
+        if (dueOnly !== 'true' && dueOnly !== 'false') return { error: 'Due-only must be true or false.' };
+        next.dueOnly = dueOnly === 'true';
+      }
+      if (route.has('runId')) next.runId = route.get('runId');
+      if (route.has('ingestionRunId')) next.ingestionRunId = route.get('ingestionRunId');
+      return normalizeDocumentFilters(next);
+    }
+    function documentDateInput(value, through) {
+      if (!value || !validInstant(value)) return '';
+      var date = new Date(value);
+      if (through) date.setUTCDate(date.getUTCDate() - 1);
+      return date.toISOString().slice(0, 10);
+    }
+    function renderDocumentFilters() {
+      el('documentTitleFilter').value = documentFilters.q;
+      el('documentProvider').value = documentFilters.provider;
+      el('documentTicker').value = documentFilters.ticker;
+      el('documentFrom').value = documentDateInput(documentFilters.from, false);
+      el('documentTo').value = documentDateInput(documentFilters.to, true);
+      el('documentDueOnly').checked = documentFilters.dueOnly;
+      Array.from(el('documentStates').options || []).forEach(function (option) {
+        option.selected = documentFilters.statuses.includes(option.value);
+      });
+    }
+    function documentSearch(filters, selection) {
+      var route = new URLSearchParams();
+      route.set('view', 'documents');
+      if (filters.q) route.set('q', filters.q);
+      if (filters.provider) route.set('provider', filters.provider);
+      if (filters.ticker) route.set('ticker', filters.ticker);
+      filters.statuses.forEach(function (state) { route.append('status', state); });
+      if (filters.from) route.set('from', filters.from);
+      if (filters.to) route.set('to', filters.to);
+      if (filters.dueOnly) route.set('dueOnly', 'true');
+      if (filters.runId) route.set('runId', filters.runId);
+      if (filters.ingestionRunId) route.set('ingestionRunId', filters.ingestionRunId);
+      if (selection && selection.id) route.set('documentId', selection.id);
+      if (selection && selection.tab && selection.tab !== 'overview') route.set('documentTab', selection.tab);
+      if (selection && selection.attemptId) route.set('attemptId', selection.attemptId);
+      return '?' + route.toString();
+    }
+    function currentLocalSearch() {
+      var route = new URLSearchParams(params);
+      route.set('view', screen);
+      return '?' + route.toString();
+    }
+    function documentRequestPath(cursor) {
+      var query = window.CatalystOperationsModel.documentQuery(Object.assign({}, documentFilters, { limit: 25, cursor: cursor || null }));
+      return '/internal/operations/documents?' + query.toString();
+    }
+    function documentStateLabel(state) {
+      return ({ PENDING: 'Pending', PROCESSING: 'Processing', COMPLETED: 'Completed', SKIPPED: 'Skipped',
+        RETRYABLE_ERROR: 'Retryable error', TERMINAL_ERROR: 'Terminal error', UNRESOLVED: 'Unresolved', NOT_TRACKED: 'Not tracked' })[state] || 'Unknown';
+    }
+    function documentStateClass(state) {
+      if (state === 'COMPLETED') return 'ok';
+      if (state === 'TERMINAL_ERROR') return 'bad';
+      if (state === 'RETRYABLE_ERROR' || state === 'PENDING' || state === 'UNRESOLVED') return 'warn';
+      return 'info';
+    }
+    function renderDocumentRows() {
+      var initialLoading = documentPageLoading && !documentPageLoaded && !documentItems.length;
+      el('documentRows').innerHTML = initialLoading ? '<p class="muted">Loading captured documents…</p>' : (documentItems.length ? documentItems.map(function (item) {
+        var id = esc(item.id);
+        var tickers = Array.isArray(item.tickers) && item.tickers.length ? item.tickers.join(', ') : 'No supported company linked';
+        if (item.tickersTruncated) tickers += ' · first 100 tickers shown';
+        var attempts = item.attemptCount == null ? 'Attempt count unknown' : 'Attempt ' + item.attemptCount;
+        return '<button type="button" class="document-row" data-document-id="' + id + '"' +
+          (selectedDocumentId === item.id ? ' aria-current="true"' : '') + '>' +
+          '<span class="document-row-title">' + esc(item.title || 'Untitled document') + '</span>' +
+          '<span class="document-row-meta"><span>' + esc(item.provider) + '</span><span>' + esc(tickers) + '</span>' +
+          '<span>' + esc(time(item.discoveredAt)) + ' UTC</span><span class="pill ' + documentStateClass(item.state) + '">' + esc(documentStateLabel(item.state)) + '</span>' +
+          '<span>' + esc(attempts) + '</span>' + (item.nextAttemptAt ? '<span>Next retry ' + esc(time(item.nextAttemptAt)) + ' UTC</span>' : '') +
+          '</span></button>';
+      }).join('') : '<p class="muted">No captured documents match these filters.</p>');
+      var loaded = documentItems.length + ' loaded document' + (documentItems.length === 1 ? '' : 's');
+      var status = documentPageError
+        ? (documentItems.length ? loaded + ' · ' + documentPageError : documentPageError)
+        : (initialLoading ? 'Loading captured documents…' : (loaded + (documentGeneratedAt ? ' · updated ' + time(documentGeneratedAt) + ' UTC' : '')));
+      el('documentStatus').textContent = status;
+      var showLoad = !documentPageLoading && (!!documentCursor || !documentPageLoaded);
+      toggleHidden('loadDocuments', !showLoad);
+      el('loadDocuments').disabled = documentPageLoading || (!documentCursor && documentPageLoaded);
+      el('loadDocuments').textContent = documentPageLoaded ? (documentPageError && !documentCursor ? 'Retry documents' : 'Load more') : 'Load documents';
+    }
+    function documentTime(label, value) {
+      return '<div><dt>' + esc(label) + '</dt><dd>' + (value ? '<time datetime="' + esc(value) + '">' + esc(time(value)) + ' UTC</time>' : 'Unknown') + '</dd></div>';
+    }
+    function timeMark(value) {
+      return value ? '<time datetime="' + esc(value) + '">' + esc(time(value)) + ' UTC</time>' : 'Unknown';
+    }
+    function safeSourceUrl(value) {
+      if (!value) return null;
+      try {
+        var url = new URL(value);
+        return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+      } catch (error) { return null; }
+    }
+    function externalSourceLink(value, label) {
+      var url = safeSourceUrl(value);
+      return url ? '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(label) + '</a>' : '<span class="muted">Source link unavailable</span>';
+    }
+    function renderDocumentOverview(detail) {
+      var item = detail.document || {};
+      var companies = (detail.companies || []).map(function (company) {
+        var route = '?view=company&ticker=' + encodeURIComponent(company.ticker);
+        return '<div class="document-record"><strong><a href="' + esc(route) + '" data-document-company="' + esc(company.ticker) + '">' +
+          esc(company.ticker) + ' · ' + esc(company.name) + '</a></strong><p>Latest saved snapshot: ' +
+          esc(company.latestSnapshotAsOf ? time(company.latestSnapshotAsOf) + ' UTC' : 'Unknown') +
+          ' · recorded ' + esc(company.latestSnapshotCreatedAt ? time(company.latestSnapshotCreatedAt) + ' UTC' : 'Unknown') + '</p></div>';
+      }).join('');
+      var ingestion = item.firstIngestionRunId
+        ? '<a href="?view=pipeline&ingestionRunId=' + encodeURIComponent(item.firstIngestionRunId) + '" data-ingestion-run-id="' + esc(item.firstIngestionRunId) + '">Open origin ingestion run</a>'
+        : '<span class="muted">No origin ingestion run recorded</span>';
+      var error = item.lastErrorMessage ? '<h4>Latest safe error reason</h4><p class="panel-error">' + esc(item.lastErrorMessage) + '</p>' : '';
+      var unrecorded = Number(detail.unrecordedAttemptCount || 0);
+      el('documentOverview').innerHTML = '<dl>' +
+        '<div><dt>Current state</dt><dd><span class="pill ' + documentStateClass(item.state) + '">' + esc(documentStateLabel(item.state)) + '</span></dd></div>' +
+        '<div><dt>Latest processing attempt count</dt><dd>' + esc(integer(item.attemptCount)) + ' / ' + esc(integer(detail.maxAttempts)) + '</dd></div>' +
+        '<div><dt>Next retry</dt><dd>' + esc(item.nextAttemptAt ? time(item.nextAttemptAt) + ' UTC' : 'Not scheduled') + '</dd></div>' +
+        documentTime('Published', item.publishedAt) + documentTime('Discovered', item.discoveredAt) +
+        documentTime('Stored', item.createdAt) + documentTime('Last processing update', item.updatedAt) +
+        documentTime('Document processing completed', detail.completedAt) +
+        '<div><dt>Recorded model calls</dt><dd>' + esc(integer(detail.modelCallsRecorded)) + '</dd></div>' +
+        '<div><dt>Event reports / canonical clusters</dt><dd>' + esc(integer(detail.eventReports)) + ' / ' + esc(integer(detail.canonicalClusters)) + '</dd></div>' +
+        '</dl><h4>Source</h4><p>' + externalSourceLink(detail.canonicalUrl, 'Open original source') +
+        (detail.providerDocumentId ? ' · Provider document ID: ' + esc(detail.providerDocumentId) : '') + '</p>' +
+        '<h4>Origin</h4><p>' + ingestion + '</p>' + error +
+        '<h4>Supported companies (' + esc(integer(detail.companiesTotal)) + (detail.companiesTruncated ? '+)' : ')') + '</h4>' +
+        (companies || '<p class="muted">No supported company association is recorded.</p>') +
+        (detail.companiesTruncated ? '<p class="muted small">Showing the first 100 supported companies.</p>' : '') +
+        (unrecorded > 0 ? '<p class="muted small">' + esc(String(unrecorded)) + ' processing attempt(s) have no individual captured ledger row.</p>' : '');
+    }
+    function setDocumentPane() {
+      var hasSelection = !!selectedDocumentId;
+      toggleHidden('documentDetail', !hasSelection);
+      DOCUMENT_TABS.forEach(function (tab) {
+        el('documentTab' + tab[0].toUpperCase() + tab.slice(1)).setAttribute('aria-selected', String(tab === selectedDocumentTab));
+        toggleHidden('document' + tab[0].toUpperCase() + tab.slice(1), !hasSelection || tab !== selectedDocumentTab);
+      });
+      if (!hasSelection) {
+        el('documentDetailTitle').textContent = '';
+        el('documentDetailStatus').textContent = '';
+      }
+    }
+    function renderDocumentDetail() {
+      if (!selectedDocumentId || !selectedDocumentDetail) return;
+      var detail = selectedDocumentDetail;
+      var item = detail.document || {};
+      el('documentDetailTitle').textContent = item.title || 'Untitled document';
+      el('documentDetailStatus').textContent = 'Captured ' + time(item.discoveredAt) + ' UTC · ' + documentStateLabel(item.state);
+      renderDocumentOverview(detail);
+      renderSelectedDocumentTab();
+    }
+    function tabState(tab) {
+      if (!documentTabCache[tab]) documentTabCache[tab] = { loaded: false, loading: false, items: [], cursor: null, error: null, body: null };
+      return documentTabCache[tab];
+    }
+    function modelCallLink(id) {
+      var route = '?view=models&modelRunId=' + encodeURIComponent(id);
+      return '<a href="' + esc(route) + '" data-model-run-id="' + esc(id) + '">' + esc(id) + '</a>';
+    }
+    function renderAttempts(state) {
+      var detail = selectedDocumentDetail || {};
+      var attemptCount = detail.document && detail.document.attemptCount;
+      var html = '<p class="muted small">Latest processing attempt count: ' + esc(integer(attemptCount)) + '. ' +
+        'Captured ledger rows: ' + esc(integer(detail.capturedAttemptCount)) + '.</p>';
+      if (Number(detail.unrecordedAttemptCount || 0) > 0) {
+        html += '<p class="muted small">' + esc(integer(detail.unrecordedAttemptCount)) + ' earlier processing attempt(s) have no captured individual record.</p>';
+      }
+      if (state.error) return html + '<p class="panel-error">' + esc(state.error) + '</p>';
+      if (!state.loaded) return html + (state.loading ? '<p class="muted">Loading attempts…</p>' : '<p class="muted">Attempts have not been loaded.</p>');
+      if (!state.items.length) {
+        html += Number(detail.capturedAttemptCount || 0) === 0
+          ? '<p class="muted">No individual attempts recorded.</p>'
+          : '<p class="muted">No attempt rows are available on this page.</p>';
+      }
+      html += state.items.map(function (item) {
+        var selected = selectedAttemptId === item.id;
+        return '<article class="document-record" data-attempt-id="' + esc(item.id) + '" tabindex="-1"' + (selected ? ' aria-current="true"' : '') + '>' +
+          '<strong>Attempt ' + esc(item.number) + ' · ' + esc(documentStateLabel(item.status)) + '</strong>' +
+          '<p>Started ' + esc(time(item.startedAt)) + ' UTC · duration ' + esc(item.durationMs == null ? 'Unknown' : integer(item.durationMs) + ' ms') +
+          (item.nextAttemptAt ? ' · next retry ' + esc(time(item.nextAttemptAt)) + ' UTC' : '') + '</p>' +
+          '<p>Events inserted/reused: ' + esc(integer(item.eventsInserted)) + ' / ' + esc(integer(item.eventsReused)) +
+          ' · <a href="?view=pipeline&runId=' + encodeURIComponent(item.runId) + '" data-operation-run-id="' + esc(item.runId) + '">Open operation run</a></p>' +
+          (item.errorMessage ? '<p class="panel-error">' + esc(item.errorMessage) + '</p>' : '') +
+          (item.modelCallIds && item.modelCallIds.length ? '<p>Recorded model calls: ' + item.modelCallIds.map(modelCallLink).join(', ') +
+            (item.modelCallsTruncated ? ' · more calls recorded' : '') + '</p>' : '<p>No model call IDs recorded.</p>') + '</article>';
+      }).join('');
+      if (selectedAttemptId && !state.items.some(function (item) { return item.id === selectedAttemptId; })) {
+        html += state.cursor
+          ? '<p class="muted">Attempt ' + esc(selectedAttemptId) + ': Load older attempts to locate this record.</p>'
+          : '<p class="muted">Selected attempt ' + esc(selectedAttemptId) + ' is not in the loaded records.</p>';
+      }
+      toggleHidden('loadAttempts', !state.cursor);
+      el('loadAttempts').disabled = state.loading;
+      return html;
+    }
+    function renderDocumentModels(state) {
+      if (state.error) return '<p class="panel-error">' + esc(state.error) + '</p>';
+      if (!state.loaded) return '<p class="muted">' + (state.loading ? 'Loading model calls…' : 'Model calls have not been loaded.') + '</p>';
+      if (!state.items.length) return '<p class="muted">No explicitly source-linked model calls are recorded.</p>';
+      return state.items.map(function (item) {
+        var usage = (item.inputTokens == null ? 'Unknown' : integer(item.inputTokens)) + ' input · ' +
+          (item.outputTokens == null ? 'Unknown' : integer(item.outputTokens)) + ' output tokens';
+        var price = item.estimatedCost == null ? 'Unknown cost' : cost(item.estimatedCost, 1, 1);
+        return '<article class="document-record"><strong>' + modelCallLink(item.id) + ' · ' + esc(item.provider) + ' ' + esc(item.operation) + '</strong>' +
+          '<p>' + esc(item.model) + ' · ' + esc(time(item.createdAt)) + ' UTC · ' + esc(usage) + ' · ' + esc(price) + '</p>' +
+          '<p>' + (item.success ? '<span class="pill ok">Recorded call succeeded</span>' : '<span class="pill bad">Recorded call failed</span>') +
+          (item.errorMessage ? ' · ' + esc(item.errorMessage) : '') + '</p></article>';
+      }).join('');
+    }
+    function renderDocumentEvents(state) {
+      if (state.error) return '<p class="panel-error">' + esc(state.error) + '</p>';
+      if (!state.loaded) return '<p class="muted">' + (state.loading ? 'Loading event reports…' : 'Event reports have not been loaded.') + '</p>';
+      if (!state.items.length) return '<p class="muted">No stored event reports are linked to this document.</p>';
+      var groups = {};
+      state.items.forEach(function (item) {
+        var key = item.clusterId || 'Unclustered';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(item);
+      });
+      var keys = Object.keys(groups);
+      return '<p class="muted small">Showing ' + esc(integer(state.items.length)) + ' loaded reports in ' + esc(integer(keys.length)) +
+        ' loaded cluster group(s); a cluster may contain additional reports.</p>' + keys.map(function (clusterId) {
+        return '<section class="event-cluster"><h4>Cluster ' + esc(clusterId) + '</h4>' + groups[clusterId].map(function (item) {
+          var company = item.ticker ? '<a href="?view=company&ticker=' + encodeURIComponent(item.ticker) + '" data-document-company="' + esc(item.ticker) + '">' +
+            esc(item.ticker) + (item.companyName ? ' · ' + esc(item.companyName) : '') + '</a>' : 'No linked company';
+          var evidence = (item.evidence || []).map(function (entry) { return '<blockquote>' + esc(entry.quoteOrFact) + '</blockquote>'; }).join('');
+          return '<article class="event-report"><strong>' + esc(item.type) + ' · ' + esc(item.family) + ' · ' + esc(item.direction) + '</strong>' +
+            '<p>Event ' + timeMark(item.eventTimestamp) + ' · source published ' + timeMark(item.source && item.source.publishedAt) +
+            ' · captured ' + timeMark(item.discoveredAt) + '</p><p>' + company + '</p>' + evidence + '</article>';
+        }).join('') + '</section>';
+      }).join('');
+    }
+    function renderDocumentSource(state) {
+      if (state.error) return '<p class="panel-error">' + esc(state.error) + '</p>';
+      if (!state.body) return '<p class="muted">' + (state.loading ? 'Loading source text…' : 'Source text has not been loaded.') + '</p>';
+      var body = state.body;
+      var item = selectedDocumentDetail && selectedDocumentDetail.document || {};
+      var html = '<h4>' + esc(item.title || 'Untitled document') + '</h4><p>' + esc(item.provider || 'Unknown provider') +
+        (item.publishedAt ? ' · published ' + esc(time(item.publishedAt)) + ' UTC' : '') + '</p><p>' +
+        externalSourceLink(selectedDocumentDetail.canonicalUrl, 'Open original source') + '</p>';
+      if (body.truncated) html += '<p class="muted small">Source text truncated to ' + esc(integer(body.text.length)) + ' of ' + esc(integer(body.originalCharacters)) + ' characters.</p>';
+      return html + '<pre class="document-source-body">' + esc(body.text) + '</pre>';
+    }
+    function renderSelectedDocumentTab() {
+      if (!selectedDocumentId) return;
+      if (selectedDocumentTab === 'overview') {
+        if (selectedDocumentDetail) renderDocumentOverview(selectedDocumentDetail);
+        return;
+      }
+      var state = tabState(selectedDocumentTab);
+      var id = 'document' + selectedDocumentTab[0].toUpperCase() + selectedDocumentTab.slice(1);
+      var html = selectedDocumentTab === 'attempts' ? renderAttempts(state)
+        : (selectedDocumentTab === 'models' ? renderDocumentModels(state)
+          : (selectedDocumentTab === 'events' ? renderDocumentEvents(state) : renderDocumentSource(state)));
+      el(id).innerHTML = html;
+      if (selectedDocumentTab === 'attempts') {
+        toggleHidden('loadAttempts', !state.cursor);
+        el('loadAttempts').disabled = state.loading;
+      } else if (selectedDocumentTab === 'models') {
+        toggleHidden('loadDocumentModels', !state.cursor);
+        el('loadDocumentModels').disabled = state.loading;
+      } else if (selectedDocumentTab === 'events') {
+        toggleHidden('loadDocumentEvents', !state.cursor);
+        el('loadDocumentEvents').disabled = state.loading;
+      }
+    }
+    function loadDocumentPage(appendPage) {
+      if (documentPageLoading || (appendPage && !documentCursor) || !credentials().hasAdmin) return Promise.resolve(false);
+      var revision = credentials().revision;
+      var requestSequence = sequence;
+      var cursor = appendPage ? documentCursor : null;
+      documentPageLoading = true;
+      documentPageError = null;
+      renderDocumentRows();
+      var path = documentRequestPath(cursor);
+      return read(path, revision, requestSequence, 'documents').then(function (result) {
+        if (!result.current) return false;
+        var incoming = Array.isArray(result.data.items) ? result.data.items : [];
+        documentItems = appendPage
+          ? window.CatalystOperationsModel.mergePage({ items: documentItems }, { items: incoming }).items
+          : incoming.slice();
+        documentCursor = result.data.nextCursor || null;
+        documentGeneratedAt = result.data.generatedAt || null;
+        documentPageLoaded = true;
+        documentPageError = null;
+        if (documentGeneratedAt) el('lastRefresh').textContent = 'Last loaded ' + time(documentGeneratedAt);
+        return true;
+      }).catch(function (error) {
+        if (!current(revision, requestSequence, 'documents') || error.name === 'AbortError') return false;
+        documentPageError = error.status === 403 || error.code === 'FORBIDDEN'
+          ? 'Admin access required to inspect documents.' : 'Unable to load documents. Retry the read.';
+        return false;
+      }).finally(function () {
+        if (current(revision, requestSequence, 'documents')) {
+          documentPageLoading = false;
+          renderDocumentRows();
+        }
+      });
+    }
+    function loadSelectedDocument(force) {
+      if (!selectedDocumentId || !credentials().hasAdmin || selectedDocumentLoading) return Promise.resolve(false);
+      if (selectedDocumentLoaded && !force) return Promise.resolve(true);
+      var id = selectedDocumentId;
+      var revision = credentials().revision;
+      var requestSequence = sequence;
+      selectedDocumentLoading = true;
+      toggleHidden('documentDetail', false);
+      if (!selectedDocumentLoaded) {
+        el('documentDetailTitle').textContent = 'Loading document…';
+        el('documentDetailStatus').textContent = 'Loading document details…';
+      } else el('documentDetailStatus').textContent = 'Refreshing document details…';
+      return read('/internal/operations/documents/' + encodeURIComponent(id), revision, requestSequence, 'documents').then(function (result) {
+        if (!result.current || selectedDocumentId !== id) return false;
+        selectedDocumentDetail = result.data;
+        selectedDocumentLoaded = true;
+        el('documentDetailStatus').textContent = '';
+        if (result.data.generatedAt) el('lastRefresh').textContent = 'Last loaded ' + time(result.data.generatedAt);
+        renderDocumentDetail();
+        return true;
+      }).catch(function (error) {
+        if (!current(revision, requestSequence, 'documents') || error.name === 'AbortError') return false;
+        el('documentDetailTitle').textContent = 'Document unavailable';
+        el('documentDetailStatus').textContent = error.code === 'DOCUMENT_NOT_FOUND'
+          ? 'This captured document was not found.' : 'Unable to load document details. Retry the read.';
+        return false;
+      }).finally(function () {
+        if (current(revision, requestSequence, 'documents') && selectedDocumentId === id) selectedDocumentLoading = false;
+      });
+    }
+    function documentTabPath(tab, cursor) {
+      var base = '/internal/operations/documents/' + encodeURIComponent(selectedDocumentId);
+      if (tab === 'source') return base + '/body';
+      var suffix = tab === 'attempts' ? 'attempts' : (tab === 'models' ? 'model-runs' : 'events');
+      var query = new URLSearchParams();
+      query.set('limit', '25');
+      if (cursor) query.set('cursor', cursor);
+      return base + '/' + suffix + '?' + query.toString();
+    }
+    function loadDocumentTab(force, appendPage) {
+      var tab = selectedDocumentTab;
+      if (!selectedDocumentId || tab === 'overview' || !credentials().hasAdmin) return Promise.resolve(false);
+      var state = tabState(tab);
+      if (state.loading || (appendPage && !state.cursor) || (state.loaded && !force && !appendPage)) return Promise.resolve(state.loaded);
+      var id = selectedDocumentId;
+      var revision = credentials().revision;
+      var requestSequence = sequence;
+      var cursor = appendPage ? state.cursor : null;
+      state.loading = true;
+      state.error = null;
+      renderSelectedDocumentTab();
+      return read(documentTabPath(tab, cursor), revision, requestSequence, 'documents').then(function (result) {
+        if (!result.current || selectedDocumentId !== id || selectedDocumentTab !== tab) return false;
+        if (tab === 'source') state.body = result.data;
+        else {
+          var incoming = tab === 'events' ? (result.data.events || []) : (result.data.items || []);
+          state.items = appendPage ? window.CatalystOperationsModel.mergePage({ items: state.items }, { items: incoming }).items : incoming.slice();
+          state.cursor = result.data.nextCursor || null;
+        }
+        state.loaded = true;
+        state.error = null;
+        if (result.data.generatedAt) el('lastRefresh').textContent = 'Last loaded ' + time(result.data.generatedAt);
+        renderSelectedDocumentTab();
+        if (tab === 'attempts' && selectedAttemptId) focusSelectedAttempt(state);
+        return true;
+      }).catch(function (error) {
+        if (!current(revision, requestSequence, 'documents') || selectedDocumentId !== id || error.name === 'AbortError') return false;
+        state.error = error.status === 403 || error.code === 'FORBIDDEN'
+          ? 'Admin access required to inspect this tab.' : 'Unable to load this tab. Retry the read.';
+        renderSelectedDocumentTab();
+        return false;
+      }).finally(function () {
+        if (current(revision, requestSequence, 'documents') && selectedDocumentId === id) {
+          state.loading = false;
+          renderSelectedDocumentTab();
+        }
+      });
+    }
+    function focusSelectedAttempt(state) {
+      var row = Array.from(document.querySelectorAll('[data-attempt-id]')).find(function (item) {
+        return item.dataset.attemptId === selectedAttemptId;
+      });
+      if (row) row.focus();
+      else if (state.cursor) el('documentDetailStatus').textContent = 'Attempt ' + selectedAttemptId + ': Load older attempts to locate this record.';
+    }
+    function clearDocumentDetailViews() {
+      ['documentOverview', 'documentAttempts', 'documentModels', 'documentEvents', 'documentSource'].forEach(function (panel) {
+        el(panel).innerHTML = '';
+      });
+      el('documentDetailTitle').textContent = '';
+      el('documentDetailStatus').textContent = '';
+    }
+    function resetSelectedDocument(id) {
+      selectedDocumentId = id;
+      selectedDocumentDetail = null;
+      selectedDocumentLoaded = false;
+      selectedDocumentLoading = false;
+      documentTabCache = {};
+      selectedAttemptId = null;
+      clearDocumentDetailViews();
+    }
+    function resetDocuments(clearPage) {
+      documentPageLoading = false;
+      documentPageError = null;
+      if (clearPage) {
+        documentItems = [];
+        documentCursor = null;
+        documentGeneratedAt = null;
+        documentPageLoaded = false;
+      }
+      resetSelectedDocument(null);
+      selectedDocumentOpener = null;
+      setDocumentPane();
+      renderDocumentRows();
+      el('documentStatus').textContent = credentials().hasAdmin ? 'Loading captured documents…' : 'Admin access required.';
+    }
+    function configureDocuments(route, preserveCurrentFilters) {
+      var parsed = documentFiltersFromRoute(route, preserveCurrentFilters);
+      if (parsed.error) {
+        documentRouteValid = false;
+        renderDocumentFilters();
+        el('documentStatus').textContent = parsed.error;
+        setDocumentPane();
+        return false;
+      }
+      var nextFilters = parsed.filters;
+      var filtersChanged = documentFilterKey(nextFilters) !== documentFilterKey(documentFilters);
+      documentFilters = nextFilters;
+      if (filtersChanged) {
+        documentItems = [];
+        documentCursor = null;
+        documentGeneratedAt = null;
+        documentPageLoaded = false;
+        documentPageError = null;
+      }
+      renderDocumentFilters();
+      var nextId = route.get('documentId') || null;
+      var nextTab = route.get('documentTab') || 'overview';
+      var nextAttemptId = route.get('attemptId') || null;
+      var invalidIdMessage = nextId && !validUuid(nextId) ? 'Document ID must be a UUID.'
+        : (nextAttemptId && !validUuid(nextAttemptId) ? 'Attempt ID must be a UUID.'
+          : (nextAttemptId && !nextId ? 'Attempt ID requires a selected document.' : null));
+      if (invalidIdMessage) {
+        documentRouteValid = false;
+        resetSelectedDocument(null);
+        selectedDocumentOpener = null;
+        renderDocumentFilters();
+        setDocumentPane();
+        el('documentStatus').textContent = invalidIdMessage;
+        return false;
+      }
+      if (nextAttemptId) nextTab = 'attempts';
+      if (!DOCUMENT_TABS.includes(nextTab)) {
+        documentRouteValid = false;
+        el('documentStatus').textContent = 'Choose a valid document detail tab.';
+        setDocumentPane();
+        return false;
+      }
+      if (nextId !== selectedDocumentId) resetSelectedDocument(nextId);
+      selectedAttemptId = nextAttemptId;
+      selectedDocumentTab = nextTab;
+      documentRouteValid = true;
+      setDocumentPane();
+      if (selectedDocumentId && selectedDocumentDetail) renderDocumentDetail();
+      if (selectedDocumentId && !selectedDocumentLoaded) {
+        el('documentDetailTitle').textContent = 'Loading document…';
+        el('documentDetailStatus').textContent = 'Loading document details…';
+      }
+      return true;
+    }
+    function loadDocumentsScreen(force) {
+      if (!documentRouteValid) return Promise.resolve();
+      if (!credentials().hasAdmin) {
+        accessRequired();
+        return Promise.resolve();
+      }
+      toggleHidden('documentFilters', false);
+      toggleHidden('documentRows', false);
+      if (force) {
+        documentPageLoaded = false;
+        documentPageError = null;
+        if (selectedDocumentId) {
+          selectedDocumentLoaded = false;
+          documentTabCache = {};
+        }
+      }
+      var tasks = [];
+      if (!documentPageLoaded) tasks.push(loadDocumentPage(false));
+      if (selectedDocumentId) {
+        var detail = (!selectedDocumentLoaded || force) ? loadSelectedDocument(!!force) : Promise.resolve(true);
+        tasks.push(detail.then(function (loaded) {
+          if (loaded && selectedDocumentTab !== 'overview') {
+            var state = tabState(selectedDocumentTab);
+            return (!state.loaded || force) ? loadDocumentTab(!!force, false) : Promise.resolve(true);
+          }
+          return loaded;
+        }));
+      }
+      return Promise.allSettled(tasks).then(function () {});
+    }
+    function onDocumentFiltersSubmit(event) {
+      event.preventDefault();
+      var selected = Array.from(el('documentStates').selectedOptions || []).map(function (option) { return option.value; });
+      var fromDate = el('documentFrom').value;
+      var throughDate = el('documentTo').value;
+      var candidate = {
+        q: el('documentTitleFilter').value,
+        provider: el('documentProvider').value,
+        ticker: el('documentTicker').value,
+        statuses: selected,
+        from: fromDate ? fromDate + 'T00:00:00.000Z' : '',
+        to: throughDate ? window.CatalystOperationsModel.utcThroughDate(throughDate) : '',
+        dueOnly: el('documentDueOnly').checked,
+        runId: documentFilters.runId,
+        ingestionRunId: documentFilters.ingestionRunId,
+      };
+      var normalized = normalizeDocumentFilters(candidate);
+      var nextFilters = normalized.filters || candidate;
+      documentFilters = nextFilters;
+      documentItems = [];
+      documentCursor = null;
+      documentGeneratedAt = null;
+      documentPageError = normalized.error || null;
+      documentPageLoaded = !!normalized.error;
+      documentPageLoading = false;
+      resetSelectedDocument(null);
+      selectedDocumentOpener = null;
+      selectedAttemptId = null;
+      documentRouteValid = !normalized.error;
+      renderDocumentFilters();
+      setDocumentPane();
+      if (normalized.error) el('documentStatus').textContent = normalized.error;
+      options.navigate(documentSearch(nextFilters, null));
+    }
+    function selectDocument(id, opener) {
+      selectedDocumentOpener = opener || null;
+      options.navigate(documentSearch(documentFilters, { id: id, tab: 'overview' }));
+    }
+    function closeSelectedDocument() {
+      if (!selectedDocumentId) return;
+      var opener = selectedDocumentOpener;
+      selectedDocumentOpener = null;
+      options.navigate(documentSearch(documentFilters, null));
+      if (opener && typeof opener.focus === 'function') opener.focus();
+      else el('documentRows').focus();
+    }
+    function selectDocumentTab(tab) {
+      if (!selectedDocumentId || !DOCUMENT_TABS.includes(tab)) return;
+      var attemptId = tab === 'attempts' ? selectedAttemptId : null;
+      options.navigate(documentSearch(documentFilters, { id: selectedDocumentId, tab: tab, attemptId: attemptId }));
+    }
+    function onDocumentRowsClick(event) {
+      var row = event.target.closest('[data-document-id]');
+      if (!row) return;
+      if (event.preventDefault) event.preventDefault();
+      selectDocument(row.dataset.documentId, row);
+    }
+    function onDocumentDetailClick(event) {
+      var runLink = event.target.closest('[data-operation-run-id]');
+      if (runLink) {
+        if (event.preventDefault) event.preventDefault();
+        options.navigate('?view=pipeline&runId=' + encodeURIComponent(runLink.dataset.operationRunId), { returnSearch: currentLocalSearch() });
+        return;
+      }
+      var ingestionLink = event.target.closest('[data-ingestion-run-id]');
+      if (ingestionLink) {
+        if (event.preventDefault) event.preventDefault();
+        options.navigate('?view=pipeline&ingestionRunId=' + encodeURIComponent(ingestionLink.dataset.ingestionRunId), { returnSearch: currentLocalSearch() });
+        return;
+      }
+      var modelLink = event.target.closest('[data-model-run-id]');
+      if (modelLink) {
+        if (event.preventDefault) event.preventDefault();
+        options.navigate('?view=models&modelRunId=' + encodeURIComponent(modelLink.dataset.modelRunId), { returnSearch: currentLocalSearch() });
+        return;
+      }
+      var companyLink = event.target.closest('[data-document-company]');
+      if (companyLink) {
+        if (event.preventDefault) event.preventDefault();
+        options.navigate('?view=company&ticker=' + encodeURIComponent(companyLink.dataset.documentCompany), { returnSearch: currentLocalSearch() });
+      }
+    }
+    function onLoadDocumentsClick() { loadDocumentPage(!!documentCursor); }
+    function onLoadAttemptsClick() { loadDocumentTab(false, true); }
+    function onLoadDocumentModelsClick() { loadDocumentTab(false, true); }
+    function onLoadDocumentEventsClick() { loadDocumentTab(false, true); }
+    var tabHandlers = {};
+    DOCUMENT_TABS.forEach(function (tab) {
+      tabHandlers[tab] = function () { selectDocumentTab(tab); };
+    });
     function rangeQuery() { return params.get('range') === '7d' ? '?range=7d' : '?range=24h'; }
     function loadOverview(revision, requestSequence) {
       var status = el('overviewStatus');
@@ -235,8 +904,9 @@
           : 'Unable to load configuration. Retry the read.';
       });
     }
-    function refresh() {
+    function refresh(force) {
       if (disposed) return Promise.resolve();
+      if (force === undefined) force = true;
       if (pending) return pending;
       var revision = credentials().revision;
       var requestSequence = sequence;
@@ -244,6 +914,7 @@
       var tasks = [loadHealth(revision, requestSequence, expectedScreen)];
       if (credentials().hasAdmin && screen === 'overview') tasks.push(loadOverview(revision, requestSequence));
       else if (credentials().hasAdmin && screen === 'settings') tasks.push(loadConfig(revision, requestSequence));
+      else if (credentials().hasAdmin && screen === 'documents') tasks.push(loadDocumentsScreen(force));
       else if (!credentials().hasAdmin) accessRequired();
       var operation = Promise.allSettled(tasks).then(function () {});
       var wrapped = operation.finally(function () { if (pending === wrapped) pending = null; });
@@ -258,7 +929,9 @@
       }
       if (autoRefreshEnabled() && POLLED.indexOf(screen) >= 0) refresh();
       else if (!healthLoaded || (screen === 'overview' && !overviewLoaded) ||
-        (screen === 'settings' && !configLoaded)) refresh();
+        (screen === 'documents' && (!documentPageLoaded || (selectedDocumentId && !selectedDocumentLoaded) ||
+          (selectedDocumentId && selectedDocumentTab !== 'overview' && !tabState(selectedDocumentTab).loaded))) ||
+        (screen === 'settings' && !configLoaded)) refresh(false);
     }
     function onAutoRefreshChange() {
       if (!document.hidden && autoRefreshEnabled() && POLLED.indexOf(screen) >= 0) refresh();
@@ -267,6 +940,17 @@
       if (disposed) return;
       el('autoRefresh').checked = true;
       el('autoRefresh').addEventListener('change', onAutoRefreshChange);
+      el('documentFilters').addEventListener('submit', onDocumentFiltersSubmit);
+      el('documentRows').addEventListener('click', onDocumentRowsClick);
+      el('documentDetail').addEventListener('click', onDocumentDetailClick);
+      el('closeDocument').addEventListener('click', closeSelectedDocument);
+      el('loadDocuments').addEventListener('click', onLoadDocumentsClick);
+      el('loadAttempts').addEventListener('click', onLoadAttemptsClick);
+      el('loadDocumentModels').addEventListener('click', onLoadDocumentModelsClick);
+      el('loadDocumentEvents').addEventListener('click', onLoadDocumentEventsClick);
+      DOCUMENT_TABS.forEach(function (tab) {
+        el('documentTab' + tab[0].toUpperCase() + tab.slice(1)).addEventListener('click', tabHandlers[tab]);
+      });
       document.addEventListener('visibilitychange', onVisibilityChange);
       if (!timer) timer = window.setInterval(function () {
         if (document.hidden || !autoRefreshEnabled() || POLLED.indexOf(screen) < 0) return;
@@ -275,6 +959,7 @@
     }
     function show(route) {
       if (disposed || !route) return Promise.resolve();
+      var previousScreen = screen;
       var nextScreen = route.view || 'overview';
       var nextParams = route.params instanceof URLSearchParams ? route.params : new URLSearchParams();
       var nextSearch = nextParams.toString();
@@ -284,16 +969,30 @@
         screen = nextScreen;
         params = new URLSearchParams(nextSearch);
         shown = true;
+        if (screen === 'documents') configureDocuments(params,
+          previousScreen !== 'documents' && !route.fromHistory);
         if (screen === 'overview' && !overviewLoaded) el('overviewStatus').textContent = 'Loading operational summary…';
         if (screen === 'settings' && !configLoaded) el('settingsStatus').textContent = 'Configuration has not been loaded.';
       }
       if (OPERATIONAL.indexOf(screen) >= 0 && !credentials().hasAdmin) accessRequired();
       if (!changed) return Promise.resolve();
-      return refresh();
+      return refresh(false);
     }
     function credentialsChanged() {
       if (disposed) return;
       invalidate();
+      documentItems = [];
+      documentCursor = null;
+      documentGeneratedAt = null;
+      documentPageLoaded = false;
+      documentPageError = null;
+      selectedDocumentDetail = null;
+      selectedDocumentLoaded = false;
+      selectedDocumentLoading = false;
+      documentTabCache = {};
+      clearDocumentDetailViews();
+      setDocumentPane();
+      renderDocumentRows();
       if (!credentials().hasAdmin) {
         clearOverview();
         clearConfig();
@@ -302,7 +1001,7 @@
         overviewLoaded = false;
         configLoaded = false;
       }
-      return refresh();
+      return refresh(false);
     }
     function ownsView(view) { return OPERATIONAL.indexOf(view) >= 0; }
     function onAccessClick(event) {
@@ -321,6 +1020,17 @@
       timer = null;
       document.removeEventListener('visibilitychange', onVisibilityChange);
       el('autoRefresh').removeEventListener('change', onAutoRefreshChange);
+      el('documentFilters').removeEventListener('submit', onDocumentFiltersSubmit);
+      el('documentRows').removeEventListener('click', onDocumentRowsClick);
+      el('documentDetail').removeEventListener('click', onDocumentDetailClick);
+      el('closeDocument').removeEventListener('click', closeSelectedDocument);
+      el('loadDocuments').removeEventListener('click', onLoadDocumentsClick);
+      el('loadAttempts').removeEventListener('click', onLoadAttemptsClick);
+      el('loadDocumentModels').removeEventListener('click', onLoadDocumentModelsClick);
+      el('loadDocumentEvents').removeEventListener('click', onLoadDocumentEventsClick);
+      DOCUMENT_TABS.forEach(function (tab) {
+        el('documentTab' + tab[0].toUpperCase() + tab.slice(1)).removeEventListener('click', tabHandlers[tab]);
+      });
       el('overviewSignals').removeEventListener('click', onLocalRouteClick);
       el('overviewMetrics').removeEventListener('click', onLocalRouteClick);
       ACCESS_STATUS_IDS.forEach(function (id) { el(id).removeEventListener('click', onAccessClick); });

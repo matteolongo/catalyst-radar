@@ -488,7 +488,7 @@
     if (currentView === 'company') return refreshCompany(new URLSearchParams(window.location.search).get('ticker'));
   }
 
-  function showView(moveFocus) {
+  function showView(moveFocus, fromHistory) {
     var route = new URLSearchParams(window.location.search);
     var view = routeView(route);
     var invalidTicker = false;
@@ -534,7 +534,7 @@
       });
     }
     if (view === 'events' && !eventLoaded) loadEvents(true);
-    if (operations) operations.show({ view: view, params: route });
+    if (operations) operations.show({ view: view, params: route, fromHistory: !!fromHistory });
 
     if (moveFocus) {
       if (view === 'company') $('companyTitle').focus();
@@ -637,7 +637,7 @@
         navigate(item[1]);
       });
     });
-    window.addEventListener('popstate', function () { showView(true); });
+    window.addEventListener('popstate', function () { showView(true, true); });
     operations = window.CatalystOperations.create({ api: api, navigate: navigate, credentials: currentCredentials,
       format: { escape: esc, time: fmtTime, integer: fmtInt, cost: fmtCost } });
     operations.init();

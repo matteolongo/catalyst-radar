@@ -90,25 +90,47 @@
 
         <section id="documentsView" class="view hidden" aria-labelledby="documentsTitle">
           <h2 id="documentsTitle">Documents</h2>
-          <p id="documentStatus" class="screen-status" role="status">Document workspace is ready for its next implementation step.</p>
-          <div class="panel" id="documentsWorkspace"></div>
-          <form id="documentFilters" class="hidden">
-            <label for="documentTitleFilter">Title</label><input id="documentTitleFilter">
-            <label for="documentProvider">Provider</label><select id="documentProvider"><option value="">All</option></select>
-            <label for="documentTicker">Ticker</label><input id="documentTicker">
-            <label for="documentStates">States</label><select id="documentStates" multiple></select>
-            <label for="documentFrom">From</label><input id="documentFrom" type="date">
-            <label for="documentTo">Through</label><input id="documentTo" type="date">
-            <label for="documentDueOnly">Due only</label><input id="documentDueOnly" type="checkbox">
-          </form>
-          <div id="documentRows" class="hidden"></div><button id="loadDocuments" class="hidden" type="button">Load documents</button>
-          <button id="documentDetail" class="hidden" type="button"></button><h3 id="documentDetailTitle" class="hidden"></h3>
-          <button id="closeDocument" class="hidden" type="button">Close document</button><p id="documentDetailStatus" class="hidden" role="status"></p>
-          <div id="documentOverview" class="hidden"></div><div id="documentAttempts" class="hidden"></div>
-          <div id="documentModels" class="hidden"></div><div id="documentEvents" class="hidden"></div><div id="documentSource" class="hidden"></div>
-          <button id="loadAttempts" class="hidden" type="button">Load attempts</button>
-          <button id="loadDocumentModels" class="hidden" type="button">Load model calls</button>
-          <button id="loadDocumentEvents" class="hidden" type="button">Load events</button>
+          <p id="documentStatus" class="screen-status" role="status">Loading captured documents…</p>
+          <div id="documentsWorkspace" class="documents-layout">
+            <section class="panel documents-list-panel" aria-label="Captured documents">
+              <form id="documentFilters" class="document-filters">
+                <label>Title<input id="documentTitleFilter" type="search" maxlength="120"></label>
+                <label>Provider<select id="documentProvider"><option value="">All providers</option><option value="polygon">Polygon</option><option value="finnhub">Finnhub</option></select></label>
+                <label>Ticker<input id="documentTicker" type="text" maxlength="15"></label>
+                <label>Processing state<select id="documentStates" multiple size="4">
+                  <option value="PENDING">Pending</option><option value="PROCESSING">Processing</option><option value="COMPLETED">Completed</option><option value="SKIPPED">Skipped</option>
+                  <option value="RETRYABLE_ERROR">Retryable error</option><option value="TERMINAL_ERROR">Terminal error</option><option value="UNRESOLVED">Unresolved</option><option value="NOT_TRACKED">Not tracked</option>
+                </select></label>
+                <label>Captured from (UTC)<input id="documentFrom" type="date"></label>
+                <label>Captured through (UTC)<input id="documentTo" type="date"></label>
+                <label class="document-due"><input id="documentDueOnly" type="checkbox"> Due only</label>
+                <button type="submit">Apply filters</button>
+              </form>
+              <div id="documentRows" class="document-rows" aria-live="polite" tabindex="-1"></div>
+              <button id="loadDocuments" class="ghost hidden" type="button">Load more</button>
+            </section>
+            <aside id="documentDetail" class="panel document-detail hidden" aria-labelledby="documentDetailTitle">
+              <div class="panel-heading document-detail-heading">
+                <div><h3 id="documentDetailTitle" tabindex="-1"></h3><p id="documentDetailStatus" class="screen-status" role="status"></p></div>
+                <button id="closeDocument" type="button" class="ghost">Close</button>
+              </div>
+              <div class="document-tabs" role="tablist" aria-label="Document details">
+                <button id="documentTabOverview" type="button" role="tab" data-document-tab="overview">Overview</button>
+                <button id="documentTabAttempts" type="button" role="tab" data-document-tab="attempts">Attempts</button>
+                <button id="documentTabModels" type="button" role="tab" data-document-tab="models">Models</button>
+                <button id="documentTabEvents" type="button" role="tab" data-document-tab="events">Events</button>
+                <button id="documentTabSource" type="button" role="tab" data-document-tab="source">Source</button>
+              </div>
+              <section id="documentOverview" class="document-tab-panel" role="tabpanel"></section>
+              <section id="documentAttempts" class="document-tab-panel hidden" role="tabpanel"></section>
+              <button id="loadAttempts" class="ghost hidden" type="button">Load older attempts</button>
+              <section id="documentModels" class="document-tab-panel hidden" role="tabpanel"></section>
+              <button id="loadDocumentModels" class="ghost hidden" type="button">Load more model calls</button>
+              <section id="documentEvents" class="document-tab-panel hidden" role="tabpanel"></section>
+              <button id="loadDocumentEvents" class="ghost hidden" type="button">Load more events</button>
+              <section id="documentSource" class="document-tab-panel hidden" role="tabpanel"></section>
+            </aside>
+          </div>
         </section>
 
         <section id="modelsView" class="view hidden" aria-labelledby="modelsTitle">

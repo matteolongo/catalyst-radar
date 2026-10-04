@@ -129,6 +129,35 @@ footer { padding: 0 24px 24px; }
 .panel-heading p { margin: 0 0 12px; }
 .overview-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .overview-columns .panel { margin-top: 16px; }
+.documents-layout { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); align-items: start; gap: 16px; }
+.documents-layout > .panel { min-width: 0; margin-top: 0; }
+.document-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 10px; margin-bottom: 16px; }
+.document-filters label { display: grid; gap: 4px; min-width: 0; color: var(--muted); font-size: 12px; }
+.document-filters input, .document-filters select { width: 100%; min-width: 0; min-height: 38px; padding: 8px; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 14px; }
+.document-filters select[multiple] { min-height: 94px; }
+.document-due { display: flex !important; align-items: center; gap: 8px !important; min-height: 38px; }
+.document-due input { width: auto; min-height: auto; }
+.document-rows { display: grid; gap: 8px; }
+.document-row { display: grid; gap: 5px; width: 100%; padding: 10px 12px; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; text-align: left; }
+.document-row:hover, .document-row[aria-current="true"] { border-color: var(--accent); }
+.document-row-title { overflow-wrap: anywhere; font-weight: 500; }
+.document-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; color: var(--muted); font-size: 12px; }
+.document-detail { overflow-wrap: anywhere; }
+.document-detail-heading { align-items: flex-start; }
+.document-detail-heading h3 { overflow-wrap: anywhere; }
+.document-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 12px 0 16px; border-bottom: 1px solid var(--border); }
+.document-tabs button { margin-bottom: -1px; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; }
+.document-tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.document-tab-panel { min-width: 0; }
+.document-tab-panel dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 10px; margin: 8px 0 16px; }
+.document-tab-panel dt { color: var(--muted); font-size: 12px; }
+.document-tab-panel dd { margin: 0; overflow-wrap: anywhere; }
+.document-tab-panel h4 { margin: 16px 0 8px; font-size: 14px; font-weight: 500; }
+.document-record { padding: 10px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.document-record:first-child { border-top: 0; }
+.document-record p { margin: 4px 0; }
+.document-source-body { max-height: 32rem; overflow: auto; padding: 12px; border: 1px solid var(--border); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.document-count { margin: 8px 0; color: var(--muted); font-size: 12px; }
 .activity-grid, .dependency-list { display: grid; gap: 8px; }
 .activity-item, .dependency-item, .signal-item { padding: 10px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
 .activity-item:first-child, .dependency-item:first-child, .signal-item:first-child { border-top: 0; padding-top: 0; }
@@ -215,7 +244,7 @@ input[type="checkbox"] { accent-color: var(--accent); }
 
 @media (max-width: 1000px) {
   .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #documentsWorkspace { display: block; }
+  .documents-layout { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 700px) {
   .app-shell { display: block; }
@@ -230,6 +259,8 @@ input[type="checkbox"] { accent-color: var(--accent); }
   .banner { margin: 12px 16px 0; }
   footer { padding: 0 16px 16px; }
   .overview-columns { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .document-filters { grid-template-columns: minmax(0, 1fr); }
+  .document-row-meta { align-items: flex-start; }
 }
 @media (max-width: 420px) {
   .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
