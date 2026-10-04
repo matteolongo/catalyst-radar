@@ -13,6 +13,7 @@ import java.util.UUID
 data class DocumentPersistencePlan(
     val sourceDocumentId: UUID,
     val events: List<PlannedEvent>,
+    val processingAttemptId: UUID? = null,
 )
 
 /** One normalized event, its identity hash, and where it clusters. */

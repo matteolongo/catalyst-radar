@@ -11,6 +11,8 @@ import com.catalystradar.application.ingestion.SourceDocumentRegistrationService
 import com.catalystradar.domain.company.Company
 import com.catalystradar.domain.event.SourceDocument
 import com.catalystradar.observability.CatalystMetrics
+import com.catalystradar.application.operations.ProcessingAttemptService
+import com.catalystradar.operations.OperationsFixtures
 import com.catalystradar.persistence.PostgresIntegrationTest
 import com.catalystradar.persistence.company.CompanyStore
 import com.catalystradar.persistence.document.DocumentProcessingStore
@@ -36,6 +38,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 /**
  * One document's events, clusters, and final status must commit together.
@@ -83,6 +86,13 @@ class PipelineAtomicityTest : PostgresIntegrationTest() {
     @Autowired
     private lateinit var jdbc: JdbcClient
 
+    @Autowired
+    private lateinit var attempts: ProcessingAttemptService
+
+    private val fixtures get() = OperationsFixtures(jdbc)
+    private val fixtureDocuments = mutableListOf<UUID>()
+    private val fixtureRuns = mutableListOf<UUID>()
+
     @MockitoSpyBean
     private lateinit var processingSpy: DocumentProcessingStore
 
@@ -103,9 +113,30 @@ class PipelineAtomicityTest : PostgresIntegrationTest() {
 
     @AfterEach
     fun removeTestData() {
+        val ownedDocuments = fixtureDocuments + jdbc.sql("SELECT source_document_id FROM source_document_companies WHERE company_id=:id")
+            .param("id", testCompanyId()).query(UUID::class.java).list()
+        val ingestionIds = ownedDocuments.flatMap { id ->
+            jdbc.sql("SELECT first_ingestion_run_id FROM source_documents WHERE id=:id AND first_ingestion_run_id IS NOT NULL")
+                .param("id", id).query(UUID::class.java).list()
+        }.distinct()
+        val operationIds = (fixtureRuns + ownedDocuments.flatMap { id ->
+            jdbc.sql("SELECT DISTINCT operation_run_id FROM document_processing_attempts WHERE source_document_id=:id")
+                .param("id", id).query(UUID::class.java).list()
+        } + ingestionIds.flatMap { id ->
+            jdbc.sql("SELECT operation_run_id FROM ingestion_runs WHERE id=:id AND operation_run_id IS NOT NULL")
+                .param("id", id).query(UUID::class.java).list()
+        }).distinct()
+        ownedDocuments.forEach { id ->
+            jdbc.sql("DELETE FROM model_runs WHERE source_document_id=:id").param("id", id).update()
+            jdbc.sql("DELETE FROM operation_run_issues WHERE source_document_id=:id").param("id", id).update()
+        }
+        jdbc.sql("DELETE FROM operation_run_issues WHERE company_id=:id").param("id", testCompanyId()).update()
+        operationIds.forEach { id -> jdbc.sql("DELETE FROM operation_run_issues WHERE operation_run_id=:id").param("id", id).update() }
+        ownedDocuments.forEach { id -> jdbc.sql("DELETE FROM document_processing_attempts WHERE source_document_id=:id").param("id", id).update() }
         jdbc.sql("DELETE FROM events WHERE company_id = :id").param("id", testCompanyId()).update()
         jdbc.sql("DELETE FROM event_clusters WHERE company_id = :id").param("id", testCompanyId()).update()
         jdbc.sql("DELETE FROM catalyst_snapshots WHERE company_id = :id").param("id", testCompanyId()).update()
+        jdbc.sql("DELETE FROM state_transitions WHERE company_id = :id").param("id", testCompanyId()).update()
         jdbc.sql(
             """
             DELETE FROM document_processing WHERE source_document_id IN (
@@ -121,6 +152,17 @@ class PipelineAtomicityTest : PostgresIntegrationTest() {
             )
             """,
         ).param("ticker", TICKER).update()
+        ownedDocuments.forEach { id ->
+            jdbc.sql("DELETE FROM document_processing WHERE source_document_id=:id").param("id", id).update()
+            jdbc.sql("DELETE FROM source_document_companies WHERE source_document_id=:id").param("id", id).update()
+            jdbc.sql("DELETE FROM source_documents WHERE id=:id").param("id", id).update()
+        }
+        ingestionIds.forEach { id -> jdbc.sql("DELETE FROM ingestion_runs WHERE id=:id").param("id", id).update() }
+        operationIds.forEach { id ->
+            jdbc.sql("DELETE FROM ingestion_runs WHERE operation_run_id=:id").param("id", id).update()
+            jdbc.sql("DELETE FROM operation_runs WHERE id=:id").param("id", id).update()
+        }
+        jdbc.sql("DELETE FROM company_aliases WHERE company_id=:id").param("id", testCompanyId()).update()
         jdbc.sql("DELETE FROM companies WHERE ticker = :ticker").param("ticker", TICKER).update()
     }
 
@@ -130,6 +172,22 @@ class PipelineAtomicityTest : PostgresIntegrationTest() {
             .query(UUID::class.java)
             .optional()
             .orElse(UUID(0, 0))
+
+    @Test
+    fun `successful attempt closure rolls back with document persistence`() {
+        val t0 = Instant.parse("2026-10-04T12:00:00Z")
+        val doc = fixtures.document(t0).also { fixtureDocuments += it }
+        fixtures.processing(doc, "PENDING", updatedAt = t0)
+        val run = fixtures.run(t0, status = "RUNNING").also { fixtureRuns += it }
+        val attempt = attempts.begin(doc, run, t0)
+        doThrow(IllegalStateException("processing store unavailable"))
+            .whenever(processingSpy).markCompleted(any(), any())
+        assertFailsWith<RuntimeException> {
+            writer.persist(DocumentPersistencePlan(doc, emptyList(), processingAttemptId = attempt.id), DocumentProcessingStatus.COMPLETED, t0)
+        }
+        assertEquals("RUNNING", fixtures.attemptStatus(attempt.id))
+        assertEquals("PROCESSING", fixtures.processingStatus(doc))
+    }
 
 @Test
     fun `writes no event or cluster rows when the document outcome cannot be finalized`() = runTest {

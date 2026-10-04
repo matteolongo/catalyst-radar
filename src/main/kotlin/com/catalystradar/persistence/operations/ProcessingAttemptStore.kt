@@ -11,6 +11,53 @@ import java.util.UUID
 class ProcessingAttemptStore(private val jdbc: NamedParameterJdbcTemplate) {
     private val cursor = OperationsCursor()
 
+    /** Serialize source attempt numbering even when two callers recover the same source. */
+    fun lockDocument(documentId: UUID) {
+        check(jdbc.queryForList("SELECT source_document_id FROM document_processing WHERE source_document_id=:id FOR UPDATE", mapOf("id" to documentId)).size == 1) {
+            "processing record not found"
+        }
+    }
+
+    fun requireDocument(id: UUID, documentId: UUID) {
+        check(jdbc.queryForObject("SELECT COUNT(*) FROM document_processing_attempts WHERE id=:id AND source_document_id=:document", mapOf("id" to id, "document" to documentId), Long::class.java) == 1L) {
+            "attempt does not belong to source document"
+        }
+    }
+
+    fun start(id: UUID, documentId: UUID, runId: UUID, number: Int, now: Instant) {
+        require(number > 0)
+        check(jdbc.update("""INSERT INTO document_processing_attempts
+            (id,source_document_id,operation_run_id,attempt_number,status,started_at,updated_at)
+            VALUES(:id,:document,:run,:number,'RUNNING',:now,:now)""",
+            mapOf("id" to id, "document" to documentId, "run" to runId, "number" to number, "now" to Timestamp.from(now))) == 1)
+    }
+
+    fun finish(id: UUID, status: AttemptStatus, inserted: Int, reused: Int, code: String?, nextAttemptAt: Instant?, now: Instant) {
+        require(status in setOf(AttemptStatus.COMPLETED, AttemptStatus.SKIPPED, AttemptStatus.RETRYABLE_ERROR, AttemptStatus.TERMINAL_ERROR))
+        require(inserted >= 0 && reused >= 0)
+        require((status == AttemptStatus.RETRYABLE_ERROR) == (nextAttemptAt != null))
+        check(jdbc.update("""UPDATE document_processing_attempts SET status=:status,events_inserted=:inserted,events_reused=:reused,
+            error_code=:code,error_message=:message,next_attempt_at=:next,finished_at=:now,updated_at=:now
+            WHERE id=:id AND status='RUNNING'""", mapOf("id" to id, "status" to status.name, "inserted" to inserted, "reused" to reused,
+            "code" to code, "message" to code?.let(OperationalErrors::message), "next" to nextAttemptAt?.let(Timestamp::from), "now" to Timestamp.from(now))) == 1) {
+            "attempt is not running"
+        }
+    }
+
+    fun interrupt(id: UUID, code: String, now: Instant) {
+        check(jdbc.update("""UPDATE document_processing_attempts SET status='INTERRUPTED',error_code=:code,error_message=:message,
+            finished_at=NULL,next_attempt_at=NULL,updated_at=:now WHERE id=:id AND status='RUNNING'""",
+            mapOf("id" to id, "code" to code, "message" to OperationalErrors.message(code), "now" to Timestamp.from(now))) == 1) {
+            "attempt is not running"
+        }
+    }
+
+    fun interruptRunningForDocument(documentId: UUID, code: String, now: Instant) {
+        jdbc.update("""UPDATE document_processing_attempts SET status='INTERRUPTED',error_code=:code,error_message=:message,
+            finished_at=NULL,next_attempt_at=NULL,updated_at=:now WHERE source_document_id=:id AND status='RUNNING'""",
+            mapOf("id" to documentId, "code" to code, "message" to OperationalErrors.message(code), "now" to Timestamp.from(now)))
+    }
+
     fun search(documentId: UUID, page: PageRequest, generatedAt: Instant): OperationsPage<ProcessingAttempt> {
         val filters = mapOf("documentId" to documentId.toString())
         val params = mutableMapOf<String, Any?>("documentId" to documentId, "limit" to page.limit + 1)

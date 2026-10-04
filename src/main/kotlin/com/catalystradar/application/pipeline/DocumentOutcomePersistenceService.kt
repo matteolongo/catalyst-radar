@@ -8,11 +8,15 @@ import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.document.DocumentProcessingStore
 import com.catalystradar.persistence.event.EventClusterStore
 import com.catalystradar.persistence.event.EventStore
+import com.catalystradar.persistence.operations.ProcessingAttemptStore
+import com.catalystradar.application.operations.AttemptStatus
 import com.pgvector.PGvector
 import org.springframework.stereotype.Service
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.Instant
+import java.time.Clock
 import java.util.UUID
 
 /** What one document contributed and how it ended. */
@@ -44,6 +48,8 @@ class DocumentOutcomePersistenceService(
     private val processing: DocumentProcessingStore,
     private val metrics: CatalystMetrics,
     transactionManager: PlatformTransactionManager,
+    private val attempts: ProcessingAttemptStore,
+    @Qualifier("operationsClock") private val clock: Clock,
 ) {
 
     private val transaction = TransactionTemplate(transactionManager)
@@ -88,6 +94,10 @@ class DocumentOutcomePersistenceService(
                 events.assignCluster(stored.event.id, clusterIdFor(planned))
             }
             affectedCompanies += stored.event.companyId
+        }
+        plan.processingAttemptId?.let { id ->
+            attempts.requireDocument(id, plan.sourceDocumentId)
+            attempts.finish(id, AttemptStatus.valueOf(finalStatus.name), eventsInserted, eventsReused, null, null, clock.instant())
         }
         when (finalStatus) {
             DocumentProcessingStatus.COMPLETED -> processing.markCompleted(plan.sourceDocumentId, now)

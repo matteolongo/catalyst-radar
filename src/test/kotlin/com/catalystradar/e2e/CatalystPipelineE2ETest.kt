@@ -163,15 +163,42 @@ class CatalystPipelineE2ETest : PostgresIntegrationTest() {
             .query(UUID::class.java).optional()
         companyId.ifPresent { id ->
             val docs = jdbc.sql(
-                "SELECT DISTINCT source_document_id FROM events WHERE company_id = :id AND source_document_id IS NOT NULL",
+                """SELECT source_document_id FROM source_document_companies WHERE company_id=:id
+                    UNION SELECT source_document_id FROM events WHERE company_id=:id AND source_document_id IS NOT NULL""",
             ).param("id", id).query(UUID::class.java).list()
+            val ingestionIds = docs.flatMap { doc ->
+                jdbc.sql("SELECT first_ingestion_run_id FROM source_documents WHERE id=:id AND first_ingestion_run_id IS NOT NULL")
+                    .param("id", doc).query(UUID::class.java).list()
+            }.distinct()
+            val operationIds = (docs.flatMap { doc ->
+                jdbc.sql("SELECT DISTINCT operation_run_id FROM document_processing_attempts WHERE source_document_id=:id")
+                    .param("id", doc).query(UUID::class.java).list()
+            } + ingestionIds.flatMap { run ->
+                jdbc.sql("SELECT operation_run_id FROM ingestion_runs WHERE id=:id AND operation_run_id IS NOT NULL")
+                    .param("id", run).query(UUID::class.java).list()
+            }).distinct()
+            docs.forEach { doc ->
+                jdbc.sql("DELETE FROM model_runs WHERE source_document_id=:id").param("id", doc).update()
+                jdbc.sql("DELETE FROM operation_run_issues WHERE source_document_id=:id").param("id", doc).update()
+            }
+            jdbc.sql("DELETE FROM operation_run_issues WHERE company_id=:id").param("id", id).update()
+            operationIds.forEach { run -> jdbc.sql("DELETE FROM operation_run_issues WHERE operation_run_id=:id").param("id", run).update() }
+            docs.forEach { doc -> jdbc.sql("DELETE FROM document_processing_attempts WHERE source_document_id=:id").param("id", doc).update() }
             jdbc.sql("DELETE FROM events WHERE company_id = :id").param("id", id).update()
             jdbc.sql("DELETE FROM event_clusters WHERE company_id = :id").param("id", id).update()
             jdbc.sql("DELETE FROM catalyst_snapshots WHERE company_id = :id").param("id", id).update()
             jdbc.sql("DELETE FROM state_transitions WHERE company_id = :id").param("id", id).update()
             docs.forEach { doc ->
+                jdbc.sql("DELETE FROM document_processing WHERE source_document_id=:id").param("id", doc).update()
+                jdbc.sql("DELETE FROM source_document_companies WHERE source_document_id=:id").param("id", doc).update()
                 jdbc.sql("DELETE FROM source_documents WHERE id = :id").param("id", doc).update()
             }
+            ingestionIds.forEach { run -> jdbc.sql("DELETE FROM ingestion_runs WHERE id=:id").param("id", run).update() }
+            operationIds.forEach { run ->
+                jdbc.sql("DELETE FROM ingestion_runs WHERE operation_run_id=:id").param("id", run).update()
+                jdbc.sql("DELETE FROM operation_runs WHERE id=:id").param("id", run).update()
+            }
+            jdbc.sql("DELETE FROM company_aliases WHERE company_id=:id").param("id", id).update()
             jdbc.sql("DELETE FROM companies WHERE id = :id").param("id", id).update()
         }
     }
