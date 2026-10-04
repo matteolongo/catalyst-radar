@@ -1,6 +1,6 @@
 # Pipeline and Valuation Trace — Design Specification
 
-**Status:** Approved direction; ready for user review.
+**Status:** Approved.
 **Date:** 2026-10-04
 **Project baseline:** CatalystRadar modular monolith, current `main` with the operations backoffice already present.
 
@@ -62,6 +62,8 @@ Persist the prior score/state and prior snapshot ID when the latest eligible sna
 
 Add `company_valuation_event_contributions`, one row per event contribution actually used in that calculation. Each row stores the event and cluster IDs, raw contribution, sign, base weight, confidence, materiality, surprise, source-quality, directness, and time-decay factors. Store these rows in the same transaction as the successful snapshot and valuation record. The score remains the application result; the LLM never calculates it. In the UI, label these as raw contributions: the convergence and normalization steps mean they are not final score points.
 
+Add `company_valuation_contribution_sources`, a foreign-key relation containing every explicit supporting source document ID for each contribution. Freeze these IDs at valuation capture, including documents omitted from capped source-text metadata in the contribution DTO. Historical document-to-valuation membership must remain queryable beyond that display cap.
+
 Scoring failures remain represented by the existing company-scoped operation issue and run counters. The UI shows the failure for that company and cycle, with no successful valuation row or fabricated output.
 
 ### 4.4 Provenance semantics
@@ -75,12 +77,15 @@ A company valuation records the exact inputs used for that run. A document appea
 Add bounded, cursor-paginated reads for:
 
 - `GET /internal/operations/documents/{id}/steps`, filterable by operation run and processing attempt;
+- `GET /internal/operations/documents/{id}/valuations`, filterable by `runId`, using the complete frozen source relationship and bounded pagination;
 - `GET /internal/operations/runs/{id}/valuations`, covering all valuation records for that run;
 - `GET /internal/operations/valuations/{id}` for one immutable valuation summary;
 - `GET /internal/operations/valuations/{id}/contributions` for that valuation's event inputs;
 - `GET /internal/operations/companies/{ticker}/valuations`, all-date paginated by default, with optional `from`/`to` using the existing activity-window rules.
 
 Use stable DTOs in `api/dto`, provider-neutral application read models, validated queries/cursors, deterministic timestamp-plus-ID ordering, and the existing admin-key security boundary. A missing history row is not a zero-valued result. Legacy records without `trace_version` return the available existing data and an explicit partial-history indication. Run-scoped and valuation-scoped feeds use the parent ID and are not constrained by the seven-day activity window.
+
+For the run-filtered document feed, keep the document's current global `state` distinct from nullable `runAttemptStatus`, `runAttemptNumber`, `runLastStage`, and `runLastStepStatus`, which describe only the attempt and latest recorded step linked to that run. These run-specific fields are null without `runId`; a later retry must not be presented as this cycle's outcome.
 
 Keep full score contribution lists paginated. Do not load an unbounded company event history to render a page. Do not expose raw extraction/model data as part of a trace response.
 
@@ -109,6 +114,10 @@ For runs without `trace_version`, show “Detailed trace not recorded for this r
 ### Responsive behavior
 
 On wide screens, use a compact run list/detail workspace and a consistent grid. On narrow screens, stack the same content into readable cards with labeled values and no clipped controls or required horizontal table scrolling. Keep filters, navigation, and detail actions usable by keyboard and touch.
+
+### History freshness
+
+Retain loaded history pages while updating current operational metadata. Pause automatic and main-refresh updates only for a collection when older pages are loaded or more than one page is being inspected. Show server read times for retained pages, and provide **Reload latest trace/history** to replace that collection with its latest page and resume normal refresh. Current cycle metadata continues refreshing while a history collection is paused. An explicit history reload preserves a previously verified exact valuation in the same parent and credential context, even when its row is older than the reloaded page.
 
 ## 7. Failure handling, transactions, and safety
 
