@@ -35,7 +35,7 @@ class ModelInspectionStore(private val jdbc: NamedParameterJdbcTemplate) {
         return OperationsPage(generatedAt, query.window, items, query.page.limit, next)
     }
 
-    fun detail(id: UUID): ModelCall? = jdbc.query(
+    fun findById(id: UUID): ModelCall? = jdbc.query(
         "SELECT $PROJECTION $RELATION WHERE m.id=:id", mapOf("id" to id),
     ) { rs, _ -> call(rs) }.singleOrNull()
 

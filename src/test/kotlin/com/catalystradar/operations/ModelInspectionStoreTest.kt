@@ -94,7 +94,7 @@ class ModelInspectionStoreTest : PostgresIntegrationTest() {
         assertEquals(1L, usage.costKnownCalls)
         assertEquals(0, BigDecimal.ZERO.compareTo(assertNotNull(usage.estimatedCostUsd)))
         assertEquals(0.0, usage.p50LatencyMs)
-        val call = assertNotNull(store.detail(id))
+        val call = assertNotNull(store.findById(id))
         assertEquals(0, call.inputTokens)
         assertEquals(0, call.outputTokens)
         assertEquals(0L, call.latencyMs)
@@ -138,15 +138,15 @@ class ModelInspectionStoreTest : PostgresIntegrationTest() {
         assertEquals(document, call.sourceDocumentId)
         assertEquals(attempt, call.attemptId)
         assertEquals(run, call.runId)
-        assertEquals(call, store.detail(linked))
+        assertEquals(call, store.findById(linked))
         assertEquals(1L, store.summary(query, window.to).totals.calls)
         assertEquals(3L, store.summary(ModelQuery(window, documentId = document), window.to).totals.calls)
         assertEquals(0L, store.summary(query.copy(runId = otherRun), window.to).totals.calls)
-        assertNull(store.detail(legacy)?.attemptId)
-        assertNull(store.detail(legacy)?.runId)
-        assertNull(store.detail(unlinked)?.sourceDocumentId)
-        assertNull(store.detail(unlinked)?.runId)
-        assertNull(store.detail(UUID.randomUUID()))
+        assertNull(store.findById(legacy)?.attemptId)
+        assertNull(store.findById(legacy)?.runId)
+        assertNull(store.findById(unlinked)?.sourceDocumentId)
+        assertNull(store.findById(unlinked)?.runId)
+        assertNull(store.findById(UUID.randomUUID()))
     }
 
     @Test
@@ -162,7 +162,7 @@ class ModelInspectionStoreTest : PostgresIntegrationTest() {
         assertEquals(listOf(old), second.items.map { it.id })
         assertNull(first.window)
         assertNull(second.nextCursor)
-        assertEquals(old, store.detail(old)?.id)
+        assertEquals(old, store.findById(old)?.id)
         assertFailsWith<IllegalArgumentException> { store.search(ModelQuery(null), window.to) }
         assertFailsWith<IllegalArgumentException> { store.summary(ModelQuery(null), window.to) }
         assertFailsWith<IllegalArgumentException> { store.summary(query, window.to) }
@@ -208,7 +208,7 @@ class ModelInspectionStoreTest : PostgresIntegrationTest() {
         val failed = fixtures.model(at, null, null, null, success = false)
         jdbc.sql("UPDATE model_runs SET error='secret raw payload',prompt_version='prompt-v1',extractor_version='extract-v1' WHERE id=:id")
             .param("id", failed).update()
-        val call = assertNotNull(store.detail(failed))
+        val call = assertNotNull(store.findById(failed))
         assertEquals("RATE_LIMITED", call.errorCode)
         assertEquals(OperationalErrors.message("RATE_LIMITED"), call.errorMessage)
         assertEquals("prompt-v1", call.promptVersion)
@@ -218,8 +218,8 @@ class ModelInspectionStoreTest : PostgresIntegrationTest() {
         assertEquals("UNKNOWN_FAILURE", legacy.errorCode)
         assertEquals(OperationalErrors.message("UNKNOWN_FAILURE"), legacy.errorMessage)
         val success = fixtures.model(at, null, null, null)
-        assertNull(store.detail(success)?.errorCode)
-        assertNull(store.detail(success)?.errorMessage)
+        assertNull(store.findById(success)?.errorCode)
+        assertNull(store.findById(success)?.errorMessage)
     }
 
     private fun setModel(id: UUID, model: String) {
