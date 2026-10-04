@@ -16,13 +16,21 @@ class OpsDashboardTest : PostgresIntegrationTest() {
     private lateinit var mockMvc: MockMvc
 
     @Test
-    fun `dashboard and its script are served by the API without a public key`() {
+    fun `dashboard and every static asset are served without a public key`() {
         mockMvc.get("/ops/index.html").andExpect {
             status { isOk() }
             content { string(org.hamcrest.Matchers.containsString("CatalystRadar")) }
+            content { string(org.hamcrest.Matchers.containsString("operations-model.js")) }
         }
-        mockMvc.get("/ops/app.js").andExpect {
+        mockMvc.get("/ops/styles.css").andExpect { status { isOk() } }
+        mockMvc.get("/ops/app.js").andExpect { status { isOk() } }
+        mockMvc.get("/ops/operations-model.js").andExpect {
             status { isOk() }
+            content { string(org.hamcrest.Matchers.containsString("CatalystOperationsModel")) }
+        }
+        mockMvc.get("/ops/operations.js").andExpect {
+            status { isOk() }
+            content { string(org.hamcrest.Matchers.containsString("CatalystOperations")) }
         }
     }
 }

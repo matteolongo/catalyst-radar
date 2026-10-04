@@ -1,230 +1,66 @@
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const test = require('node:test');
-const vm = require('node:vm');
+const { startDashboard: startDashboardWithRoute, waitForRequests, companyFixture, eventFixture, discoveryPage, html } = require('./test-support');
 
-const app = fs.readFileSync(path.join(__dirname, 'app.js'), 'utf8');
-const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+function startDashboard(options = {}) { return startDashboardWithRoute({ search: '?view=discover', ...options }); }
 
-function startDashboard({ search = '', stored = {}, origin = 'https://ops.example', discovery, events, company = {}, deferDiscovery = false, deferAdmin = false, deferTimeline = false } = {}) {
-  const requests = [];
-  const values = new Map(Object.entries(stored));
-  const elements = new Map();
-  let reloads = 0;
-  let completePipeline;
-  let ready;
-  const windowHandlers = {};
-  const discoveryResolvers = [];
-  const adminResolvers = [];
-  const timelineResolvers = [];
-  const document = {
-    activeElement: null,
-    getElementById(id) {
-      if (!elements.has(id)) {
-        const handlers = {};
-        elements.set(id, {
-          innerHTML: '', textContent: '', value: '', checked: false,
-          disabled: false, href: '', className: '',
-          classList: { add(name) { this.owner.hidden = name === 'hidden'; }, remove() { this.owner.hidden = false; } },
-          setAttribute(name, value) { this[name] = value; },
-          removeAttribute(name) { delete this[name]; },
-          focus() { document.activeElement = this; },
-          addEventListener(name, handler) { handlers[name] = handler; },
-          trigger(name, event = {}) { return handlers[name](event); },
-        });
-        elements.get(id).classList.owner = elements.get(id);
-      }
-      return elements.get(id);
-    },
-    addEventListener(name, handler) {
-      if (name === 'DOMContentLoaded') ready = handler;
-    },
-  };
-  const window = {
-    location: { origin, search, reload() { reloads++; } },
-    history: { pushState(_state, _title, url) { window.location.search = new URL(url, origin).search; } },
-    addEventListener(name, handler) { windowHandlers[name] = handler; },
-    sessionStorage: {
-      getItem(key) { return values.get(key) || null; },
-      setItem(key, value) { values.set(key, value); },
-      removeItem(key) { values.delete(key); },
-    },
-    setInterval() { return 1; },
-    clearInterval() {},
-  };
-  async function fetch(url, options) {
-    requests.push({ url, headers: options.headers });
-    const route = new URL(url).pathname;
-    if (route.endsWith('/timeline') && deferTimeline) {
-      return new Promise((resolve) => timelineResolvers.push((body) => resolve({ ok: true, status: 200, json: async () => body })));
-    }
-    if (route.startsWith('/v1/companies/')) {
-      const suffix = route.replace('/v1/companies/DELL', '') || 'metadata';
-      const answer = typeof company[suffix] === 'function' ? company[suffix](new URL(url)) : company[suffix];
-      return answer === 'error' ? { ok: false, status: 404, json: async () => ({ detail: 'Company not found' }) }
-        : { ok: true, status: 200, json: async () => answer || companyFixture[suffix] };
-    }
-    if (route === '/v1/discovery/catalyzed' && deferDiscovery) {
-      return new Promise((resolve) => discoveryResolvers.push((body) => resolve(body === 'error'
-        ? { ok: false, status: 503, json: async () => ({ detail: 'Discovery unavailable' }) }
-        : { ok: true, status: 200, json: async () => body })));
-    }
-    if (route.startsWith('/internal/') && deferAdmin && options.method !== 'POST') {
-      return new Promise((resolve) => adminResolvers.push(() => resolve({ ok: true, status: 200, json: async () => ({ runs: [] }) })));
-    }
-    if (route === '/internal/ingestion/runs' && options.method === 'POST') {
-      return new Promise((resolve) => {
-        completePipeline = () => resolve({ ok: true, status: 200, json: async () => ({
-          status: 'SUCCESS', documentsProcessed: 1, eventsExtracted: 1,
-          companiesRescored: 1, error: null, documentsSkipped: 0,
-          documentsRetryScheduled: 0, documentsTerminalFailures: 0,
-          alreadyRunning: false,
-        }) });
-      });
-    }
-    if (route.startsWith('/internal/') && options.headers['X-Admin-Key'] !== 'admin-secret') {
-      return { ok: false, status: 403, json: async () => ({ detail: 'Admin key required' }) };
-    }
-    if (route === '/v1/discovery/catalyzed' && discovery === 'error') {
-      return { ok: false, status: 503, json: async () => ({ detail: 'Discovery unavailable' }) };
-    }
-    if (route === '/v1/events') {
-      const answer = typeof events === 'function' ? events(new URL(url)) : events;
-      return answer === 'error' ? { ok: false, status: 503, json: async () => ({ detail: 'Events unavailable' }) }
-        : { ok: true, status: 200, json: async () => answer || eventFixture };
-    }
-    const body = route === '/actuator/health' ? { status: 'UP' }
-      : route === '/internal/ingestion/runs' ? { runs: [{
-        id: 'a7f2cd30-6717-4e3a-8870-4bdba9d7af95', provider: 'polygon', status: 'SUCCESS',
-        fetched: 1, added: 1, duplicates: 0, error: null, finishedAt: '2026-10-02T12:00:00Z',
-      }] }
-      : route === '/internal/model-runs' ? { runs: [{
-        id: 'b7f2cd30-6717-4e3a-8870-4bdba9d7af95', provider: 'openai', operation: 'extract',
-        model: 'model', promptVersion: 'prompt-v1', extractorVersion: 'extractor-v1',
-        sourceDocumentId: null, inputTokens: 10, outputTokens: 2, latencyMs: 100,
-        estimatedCost: 0.01, success: true, error: null, createdAt: '2026-10-02T12:01:00Z',
-      }] }
-      : discovery || { asOf: '2026-10-02T12:02:00Z', total: 1, limit: 20, offset: 0, results: [{
-        ticker: 'DELL', name: 'Dell', sector: 'Technology', score: 30, state: 'WATCH',
-        velocity7d: 1, events7d: 1, scoreVersion: 'score-v1', taxonomyVersion: 'taxonomy-v1',
-        asOf: '2026-10-02T12:00:00Z',
-      }] };
-    return { ok: true, status: 200, json: async () => body };
-  }
-  vm.runInNewContext(app, { window, document, fetch, URLSearchParams, URL });
-  ready();
-  return {
-    requests, elements, values, window, document,
-    resolveDiscovery(index, body) { discoveryResolvers[index](body); },
-    resolveTimeline(index, body) { timelineResolvers[index](body); },
-    resolveAdmin(index) { adminResolvers[index](); },
-    popstate(search) { window.location.search = search; windowHandlers.popstate(); },
-    get reloads() { return reloads; },
-    completePipeline() { completePipeline(); },
-  };
-}
-
-async function waitForRequests(requests, count) {
-  for (let i = 0; i < 20 && requests.length < count; i++) {
-    await new Promise(setImmediate);
-  }
-  assert.equal(requests.length, count);
-  await new Promise(setImmediate);
-}
-
-const companyFixture = {
-  metadata: { ticker: 'DELL', name: 'Dell Technologies', exchange: 'NYSE', sector: 'Technology', industry: 'Hardware', country: 'US', active: true },
-  '/catalyst': {
-    ticker: 'DELL', score: 68, state: 'CATALYZED', velocity1d: 2, velocity3d: 3, velocity7d: 5,
-    positiveScore: 72, negativeScore: 4, directScore: 60, inferredScore: 8,
-    totalEvents: 12, events7d: 3, scoreVersion: 'score-v1', taxonomyVersion: 'taxonomy-v1',
-    asOf: '2026-10-02T12:00:00Z', stateBand: { state: 'CATALYZED', minScore: 65, maxScore: 80, maxInclusive: false },
-    explanationStatus: 'RECONSTRUCTED_SCORE_MATCH',
-    scoreCalculation: { contributionSum: 11, familyCount: 2, convergenceMultiplier: 1.1, rawScore: 12.1, normalizationScale: 5, contributionCutoff: 0.1 },
-    topDrivers: [{ eventId: 'event-1', type: 'GUIDANCE_RAISE', family: 'GUIDANCE', direction: 'POSITIVE', contribution: 8,
-      eventTimestamp: '2026-09-30T09:00:00Z', discoveredAt: '2026-10-01T10:00:00Z', clusterId: 'cluster-1',
-      factors: { sign: 1, baseWeight: 10, confidence: 0.9, materialityFactor: 1, surpriseFactor: 1, sourceQualityFactor: 1, directnessFactor: 1, timeDecayFactor: 0.9, value: 8 },
-      evidence: [{ quoteOrFact: 'Raised guidance <script>alert(1)</script>', sourceOffsetHint: null }],
-      source: { sourceDocumentId: 'source-1', title: 'Quarterly update', provider: 'polygon', publishedAt: '2026-09-30T11:00:00Z', canonicalUrl: 'https://example.com/story' } }],
-  },
-  '/timeline': { ticker: 'DELL', snapshots: [
-    { score: 68, state: 'CATALYZED', asOf: '2026-10-02T12:00:00Z' },
-    { score: 44, state: 'WATCH', asOf: '2026-09-30T12:00:00Z' },
-  ], transitions: [{ from: 'WATCH', to: 'CATALYZED', score: 68, scoreVersion: 'score-v1', at: '2026-10-02T12:00:00Z' }] },
-  '/events': { events: [{ id: 'event-1', type: 'GUIDANCE_RAISE', family: 'GUIDANCE', direction: 'POSITIVE',
-    eventTimestamp: '2026-09-30T09:00:00Z', discoveredAt: '2026-10-01T10:00:00Z', clusterId: 'cluster-1',
-    evidence: [{ quoteOrFact: 'Raised guidance', sourceOffsetHint: null }],
-    source: { sourceDocumentId: 'source-1', title: 'Quarterly update', provider: 'polygon', publishedAt: '2026-09-30T11:00:00Z', canonicalUrl: 'https://example.com/story' } }], nextCursor: null },
-};
-
-const discoveryPage = (ticker, total = 1, offset = 0) => ({
-  asOf: '2026-10-02T12:02:00Z', total, limit: 20, offset,
-  results: [{ ticker, name: ticker + ' Corp', sector: 'Technology', score: 30,
-    state: 'WATCH', velocity7d: 1, events7d: 1, scoreVersion: 'score-v1',
-    taxonomyVersion: 'taxonomy-v1', asOf: '2026-10-02T12:00:00Z' }],
-});
-
-const eventFixture = { events: [{ ...companyFixture['/events'].events[0], ticker: 'DELL', companyName: 'Dell Technologies' }], nextCursor: null };
 
 test('the dashboard sends requests only to the origin serving it', async () => {
   const dashboard = startDashboard({
-    search: '?api=https://example.invalid',
+    search: '?view=discover&api=https://example.invalid',
     stored: { 'catalyst-admin-key': 'admin-secret' },
   });
-  await waitForRequests(dashboard.requests, 4);
+  await waitForRequests(dashboard.requests, 2);
   assert.ok(dashboard.requests.every(({ url }) => url.startsWith('https://ops.example/')));
 });
 
 test('each credential is sent only to the API routes that need it', async () => {
   const dashboard = startDashboard({
+    search: '?view=settings',
     stored: { 'catalyst-admin-key': 'admin-secret', 'catalyst-api-key': 'public-secret' },
   });
-  await waitForRequests(dashboard.requests, 4);
-  const byPath = Object.fromEntries(dashboard.requests.map((request) => [new URL(request.url).pathname, request.headers]));
-  assert.equal(byPath['/actuator/health']['X-Admin-Key'], undefined);
-  assert.equal(byPath['/actuator/health'].Authorization, undefined);
-  assert.equal(byPath['/internal/ingestion/runs']['X-Admin-Key'], 'admin-secret');
-  assert.equal(byPath['/internal/ingestion/runs'].Authorization, undefined);
-  assert.equal(byPath['/v1/discovery/catalyzed'].Authorization, 'Bearer public-secret');
-  assert.equal(byPath['/v1/discovery/catalyzed']['X-Admin-Key'], undefined);
+  await dashboard.flush();
+  const health = dashboard.requests.find((request) => new URL(request.url).pathname === '/actuator/health');
+  const config = dashboard.requests.find((request) => new URL(request.url).pathname === '/internal/operations/config');
+  assert.equal(health.headers['X-Admin-Key'], undefined);
+  assert.equal(health.headers.Authorization, undefined);
+  assert.equal(config.headers['X-Admin-Key'], 'admin-secret');
+  assert.equal(config.headers.Authorization, undefined);
+  dashboard.popstate('?view=discover');
+  await dashboard.flush();
+  const discovery = dashboard.requests.find((request) => new URL(request.url).pathname === '/v1/discovery/catalyzed');
+  assert.equal(discovery.headers.Authorization, 'Bearer public-secret');
+  assert.equal(discovery.headers['X-Admin-Key'], undefined);
 });
 
-test('clearing keys removes protected run data from the page', async () => {
-  const dashboard = startDashboard({ stored: { 'catalyst-admin-key': 'admin-secret' } });
-  await waitForRequests(dashboard.requests, 4);
-  const rows = dashboard.elements.get('ingestionRows');
-  assert.match(rows.innerHTML, /polygon/);
-
-  dashboard.elements.get('clearKey').trigger('click');
-  assert.doesNotMatch(rows.innerHTML, /polygon/);
-  assert.equal(dashboard.elements.get('runNow').disabled, true);
-  assert.equal(dashboard.values.has('catalyst-admin-key'), false);
-  assert.equal(dashboard.reloads, 1);
+test('Settings keeps the credential form visible and loads no config without admin access', async () => {
+  const dashboard = startDashboard({ search: '?view=settings' });
+  await dashboard.flush();
+  assert.equal(dashboard.requests.some((request) => new URL(request.url).pathname === '/internal/operations/config'), false);
+  assert.match(html, /id="adminKey"/);
+  assert.match(html, /id="apiKey"/);
+  assert.match(dashboard.text('accessStatus'), /Admin access required/);
 });
 
-test('refreshing while a pipeline run is pending keeps the run button disabled', async () => {
-  const dashboard = startDashboard({ stored: { 'catalyst-admin-key': 'admin-secret' } });
-  await waitForRequests(dashboard.requests, 4);
-  const button = dashboard.elements.get('runNow');
-  button.trigger('click');
-  assert.equal(button.disabled, true);
-
-  dashboard.elements.get('refresh').trigger('click');
-  assert.equal(button.disabled, true);
-  dashboard.completePipeline();
+test('the legacy Operations route aliases to Pipeline without starting work', async () => {
+  const dashboard = startDashboard({ search: '?view=operations', stored: { 'catalyst-admin-key': 'admin-secret' } });
+  await dashboard.flush();
+  assert.equal(dashboard.text('pageTitle'), 'Pipeline');
+  assert.equal(dashboard.requests.some((request) => request.method === 'POST'), false);
 });
 
-test('initial load shows Discover with an accessible destination navigation', async () => {
-  const dashboard = startDashboard();
-  await waitForRequests(dashboard.requests, 2);
+test('initial load defaults to Overview with an accessible destination navigation', async () => {
+  const dashboard = startDashboardWithRoute();
+  await dashboard.flush();
   assert.match(html, /<nav[^>]+aria-label="Main navigation"/);
+  assert.match(html, /id="navOverview"/);
+  assert.match(html, /id="navIntelligence"/);
   assert.match(html, /id="discoverView"/);
   assert.match(html, /id="eventsView"/);
-  assert.match(html, /id="operationsView"/);
-  assert.equal(dashboard.elements.get('discoverView').hidden, false);
-  assert.equal(dashboard.elements.get('operationsView').hidden, true);
-  assert.match(dashboard.elements.get('discoveryResults').innerHTML, /DELL/);
+  assert.match(html, /id="overviewView"/);
+  assert.equal(dashboard.elements.get('overviewView').hidden, false);
+  assert.equal(dashboard.elements.get('discoverView').hidden, true);
+  assert.match(dashboard.text('pageTitle'), /Overview/);
 });
 
 test('a discovery ticker opens a company route and browser back restores Discover', async () => {
@@ -233,7 +69,7 @@ test('a discovery ticker opens a company route and browser back restores Discove
   dashboard.elements.get('discoveryResults').trigger('click', { target: { closest: () => ({ dataset: { ticker: 'DELL' } }) } });
   assert.equal(dashboard.window.location.search, '?view=company&ticker=DELL');
   assert.equal(dashboard.elements.get('companyView').hidden, false);
-  dashboard.popstate('');
+  dashboard.popstate('?view=discover');
   assert.equal(dashboard.elements.get('discoverView').hidden, false);
 });
 
@@ -329,7 +165,7 @@ test('company navigation, return, and popstate move focus into the visible view'
   assert.equal(dashboard.document.activeElement, dashboard.elements.get('discoverTitle'));
   dashboard.popstate('?view=company&ticker=DELL');
   assert.equal(dashboard.document.activeElement, dashboard.elements.get('companyTitle'));
-  dashboard.popstate('');
+  dashboard.popstate('?view=discover');
   assert.equal(dashboard.document.activeElement, dashboard.elements.get('discoverTitle'));
 });
 
@@ -379,7 +215,7 @@ test('discovery failure clears the previous page range', async () => {
 
 test('company route renders metadata, current metrics, reconstructed evidence, and distinct dates', async () => {
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL' });
-  await waitForRequests(dashboard.requests, 6);
+  await waitForRequests(dashboard.requests, 5);
   assert.match(dashboard.elements.get('companyTitle').textContent, /Dell Technologies.*DELL/);
   assert.match(dashboard.elements.get('companyOverview').innerHTML, /NYSE.*Technology.*Hardware/s);
   const score = dashboard.elements.get('companyScore').innerHTML;
@@ -397,7 +233,7 @@ test('company route renders metadata, current metrics, reconstructed evidence, a
 
 test('unknown ticker reports a company error while independent panels remain visible', async () => {
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { metadata: 'error' } });
-  await waitForRequests(dashboard.requests, 6);
+  await waitForRequests(dashboard.requests, 5);
   assert.match(dashboard.elements.get('companyOverview').textContent, /Unable to load company/);
   assert.match(dashboard.elements.get('companyScore').innerHTML, /68\.0/);
   assert.match(dashboard.elements.get('companyEvents').innerHTML, /GUIDANCE_RAISE/);
@@ -405,7 +241,7 @@ test('unknown ticker reports a company error while independent panels remain vis
 
 test('one failed company endpoint leaves the other panels usable', async () => {
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/timeline': 'error' } });
-  await waitForRequests(dashboard.requests, 6);
+  await waitForRequests(dashboard.requests, 5);
   assert.match(dashboard.elements.get('companyHistory').textContent, /Unable to load score history/);
   assert.match(dashboard.elements.get('companyScore').innerHTML, /68\.0/);
   assert.match(dashboard.elements.get('companyEvents').innerHTML, /GUIDANCE_RAISE/);
@@ -414,7 +250,7 @@ test('one failed company endpoint leaves the other panels usable', async () => {
 test('history shows zero and one snapshot without inventing a line', async () => {
   for (const snapshots of [[], [{ score: 44, state: 'WATCH', asOf: '2026-09-30T12:00:00Z' }]]) {
     const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/timeline': { ticker: 'DELL', snapshots, transitions: [] } } });
-    await waitForRequests(dashboard.requests, 6);
+    await waitForRequests(dashboard.requests, 5);
     const chart = dashboard.elements.get('companyHistory').innerHTML;
     assert.match(chart, snapshots.length ? /Insufficient history.*44/s : /No score history/);
     assert.doesNotMatch(chart, /<polyline/);
@@ -426,7 +262,7 @@ test('history keeps persisted transitions visible when no snapshots are returned
     ticker: 'DELL', snapshots: [], transitions: [{ from: 'NORMAL', to: 'WATCH', score: 30,
       scoreVersion: 'score-v1', at: '2026-09-29T12:00:00Z' }],
   } } });
-  await waitForRequests(dashboard.requests, 6);
+  await waitForRequests(dashboard.requests, 5);
   const history = dashboard.elements.get('companyHistory').innerHTML;
   assert.match(history, /No score history/);
   assert.match(history, /State transitions at persisted times/);
@@ -441,7 +277,7 @@ test('history chart includes transition times outside snapshot extent', async ()
     ], transitions: [{ from: 'NORMAL', to: 'WATCH', score: 30,
       scoreVersion: 'score-v1', at: '2026-09-29T12:00:00Z' }],
   } } });
-  await waitForRequests(dashboard.requests, 6);
+  await waitForRequests(dashboard.requests, 5);
   const history = dashboard.elements.get('companyHistory').innerHTML;
   assert.match(history, /<path class="transition-mark" d="M30 20V130"/);
   assert.match(history, /<circle class="score-point" cx="210"/);
@@ -450,7 +286,7 @@ test('history chart includes transition times outside snapshot extent', async ()
 
 test('history sorts actual snapshots, labels transitions, and requests capped ranges', async () => {
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL' });
-  await waitForRequests(dashboard.requests, 6);
+  await waitForRequests(dashboard.requests, 5);
   const chart = dashboard.elements.get('companyHistory').innerHTML;
   assert.ok(chart.indexOf('2026-09-30') < chart.indexOf('2026-10-02'));
   assert.match(chart, /WATCH → CATALYZED/);
@@ -469,10 +305,10 @@ test('history sorts actual snapshots, labels transitions, and requests capped ra
 
 test('an earlier history range response cannot replace the newest selected range', async () => {
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL', deferTimeline: true });
-  await waitForRequests(dashboard.requests, 6);
+  await waitForRequests(dashboard.requests, 5);
   dashboard.elements.get('historyRange').value = 'max';
   dashboard.elements.get('historyRange').trigger('change');
-  await waitForRequests(dashboard.requests, 7);
+  await waitForRequests(dashboard.requests, 6);
   dashboard.resolveTimeline(1, { ticker: 'DELL', snapshots: [{ score: 90, state: 'HIGH', asOf: '2026-10-02T12:00:00Z' }], transitions: [] });
   await new Promise(setImmediate);
   dashboard.resolveTimeline(0, { ticker: 'DELL', snapshots: [{ score: 10, state: 'NORMAL', asOf: '2026-09-01T12:00:00Z' }], transitions: [] });
@@ -487,7 +323,7 @@ test('mismatched explanations suppress attribution and unsafe source URLs stay p
       '/catalyst': { ...companyFixture['/catalyst'], explanationStatus: status },
       '/events': { events: [{ ...companyFixture['/events'].events[0], source: { ...companyFixture['/events'].events[0].source, canonicalUrl: 'javascript:alert(1)' } }], nextCursor: null },
     } });
-    await waitForRequests(dashboard.requests, 6);
+    await waitForRequests(dashboard.requests, 5);
     const why = dashboard.elements.get('companyExplanation').innerHTML;
     assert.match(why, /explanation unavailable/i);
     assert.doesNotMatch(why, /Raised guidance|Scoring details|Positive summary/);
@@ -500,7 +336,7 @@ test('event cursor appends a later report into its loaded cluster', async () => 
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/events': (url) =>
     url.searchParams.has('cursor') ? { events: [second], nextCursor: null }
       : { ...companyFixture['/events'], nextCursor: 'event-1' } } });
-  await waitForRequests(dashboard.requests, 6);
+  await waitForRequests(dashboard.requests, 5);
   assert.equal(dashboard.elements.get('loadCompanyEvents').disabled, false);
   await dashboard.elements.get('loadCompanyEvents').trigger('click');
   const feed = dashboard.elements.get('companyEvents').innerHTML;
@@ -512,7 +348,7 @@ test('event cursor appends a later report into its loaded cluster', async () => 
 test('a failed next event page keeps loaded evidence and allows retry', async () => {
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/events': (url) =>
     url.searchParams.has('cursor') ? 'error' : { ...companyFixture['/events'], nextCursor: 'event-1' } } });
-  await waitForRequests(dashboard.requests, 6);
+  await waitForRequests(dashboard.requests, 5);
   await dashboard.elements.get('loadCompanyEvents').trigger('click');
   assert.match(dashboard.elements.get('companyEvents').innerHTML, /Raised guidance/);
   assert.match(dashboard.elements.get('companyEventsStatus').textContent, /Unable to load more events/);
@@ -522,13 +358,13 @@ test('a failed next event page keeps loaded evidence and allows retry', async ()
 test('scoring details retain the returned numeric factor precision', async () => {
   const driver = { ...companyFixture['/catalyst'].topDrivers[0], factors: { ...companyFixture['/catalyst'].topDrivers[0].factors, confidence: 0.9876 } };
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/catalyst': { ...companyFixture['/catalyst'], topDrivers: [driver] } } });
-  await waitForRequests(dashboard.requests, 6);
+  await waitForRequests(dashboard.requests, 5);
   assert.match(dashboard.elements.get('companyExplanation').innerHTML, /0\.9876/);
 });
 
 test('event search sends only bounded API filters and labels discovery time', async () => {
   const dashboard = startDashboard({ search: '?view=events' });
-  await waitForRequests(dashboard.requests, 3);
+  await waitForRequests(dashboard.requests, 2);
   dashboard.elements.get('eventTicker').value = 'DELL';
   dashboard.elements.get('eventFamily').value = 'GUIDANCE';
   dashboard.elements.get('eventType').value = 'GUIDANCE_RAISE';
@@ -553,7 +389,7 @@ test('event cursor appends reports and preserves source evidence when returning 
   const dashboard = startDashboard({ search: '?view=events', events: (url) =>
     url.searchParams.has('cursor') ? { events: [second], nextCursor: null }
       : { ...eventFixture, nextCursor: 'opaque-page-2' } });
-  await waitForRequests(dashboard.requests, 3);
+  await waitForRequests(dashboard.requests, 2);
   await dashboard.elements.get('loadEvents').trigger('click');
   assert.equal(new URL(dashboard.requests.at(-1).url).searchParams.get('cursor'), 'opaque-page-2');
   assert.match(dashboard.elements.get('eventResults').innerHTML, /Raised guidance.*Second report/s);
@@ -565,52 +401,86 @@ test('event cursor appends reports and preserves source evidence when returning 
   assert.equal(dashboard.requests.filter((request) => new URL(request.url).pathname === '/v1/events').length, 2);
 });
 
-test('events use public credentials and Operations remains admin gated with model provenance', async () => {
+test('public event reads keep credentials scoped and do not load hidden admin feeds', async () => {
   const dashboard = startDashboard({ search: '?view=events', stored: { 'catalyst-api-key': 'public-secret' } });
-  await waitForRequests(dashboard.requests, 3);
-  const eventRequest = dashboard.requests.find((request) => new URL(request.url).pathname === '/v1/events');
+  await waitForRequests(dashboard.requests, 2);
+  let eventRequest = dashboard.requests.find((request) => new URL(request.url).pathname === '/v1/events');
   assert.equal(eventRequest.headers.Authorization, 'Bearer public-secret');
   assert.equal(eventRequest.headers['X-Admin-Key'], undefined);
-  assert.equal(dashboard.requests.filter((request) => new URL(request.url).pathname.startsWith('/internal/')).length, 0);
-  assert.equal(dashboard.elements.get('runNow').disabled, true);
+  assert.equal(dashboard.requests.some((request) => new URL(request.url).pathname.startsWith('/internal/')), false);
   dashboard.document.getElementById('adminKey').value = 'admin-secret';
   dashboard.elements.get('saveKey').trigger('click');
-  await waitForRequests(dashboard.requests, 8);
-  assert.match(dashboard.elements.get('ingestionRows').innerHTML, /polygon/);
-  assert.match(dashboard.elements.get('modelRows').innerHTML, /prompt-v1.*extractor-v1.*Source document/s);
-  assert.equal(dashboard.elements.get('totalCost').textContent, '$0.010000');
-  assert.equal(dashboard.elements.get('runNow').disabled, false);
+  await waitForRequests(dashboard.requests, 4);
+  eventRequest = dashboard.requests.filter((request) => new URL(request.url).pathname === '/v1/events').at(-1);
+  assert.equal(eventRequest.headers.Authorization, 'Bearer public-secret');
+  assert.equal(eventRequest.headers['X-Admin-Key'], undefined);
+  assert.equal(dashboard.requests.some((request) => new URL(request.url).pathname.startsWith('/internal/')), false);
 });
 
 test('a failed event continuation leaves captured evidence available for retry', async () => {
   const dashboard = startDashboard({ search: '?view=events', events: (url) =>
     url.searchParams.has('cursor') ? 'error' : { ...eventFixture, nextCursor: 'opaque-page-2' } });
-  await waitForRequests(dashboard.requests, 3);
+  await waitForRequests(dashboard.requests, 2);
   await dashboard.elements.get('loadEvents').trigger('click');
   assert.match(dashboard.elements.get('eventResults').innerHTML, /Raised guidance/);
   assert.match(dashboard.elements.get('eventStatus').textContent, /Unable to load more/);
   assert.equal(dashboard.elements.get('loadEvents').disabled, false);
 });
 
-test('event API strings render as escaped text and model-run details remain available', async () => {
+test('event API strings render as escaped text without hidden admin reads', async () => {
   const event = { ...eventFixture.events[0], companyName: '<img src=x onerror=alert(1)>',
     evidence: [{ quoteOrFact: '<script>alert(1)</script>', sourceOffsetHint: null }] };
   const dashboard = startDashboard({ search: '?view=events', stored: { 'catalyst-admin-key': 'admin-secret' },
     events: { events: [event], nextCursor: null } });
-  await waitForRequests(dashboard.requests, 5);
+  await waitForRequests(dashboard.requests, 2);
   const rendered = dashboard.elements.get('eventResults').innerHTML;
   assert.doesNotMatch(rendered, /<img|<script>/);
   assert.match(rendered, /&lt;script&gt;alert/);
-  assert.match(dashboard.elements.get('modelRows').innerHTML, /<details>/);
+  assert.equal(dashboard.requests.some((request) => new URL(request.url).pathname.startsWith('/internal/')), false);
 });
 
 test('an event without source metadata still distinguishes its missing publication date', async () => {
   const dashboard = startDashboard({ search: '?view=events', events: {
     events: [{ ...eventFixture.events[0], source: null }], nextCursor: null,
   } });
-  await waitForRequests(dashboard.requests, 3);
+  await waitForRequests(dashboard.requests, 2);
   const rendered = dashboard.elements.get('eventResults').innerHTML;
   assert.match(rendered, /Event date:/);
   assert.match(rendered, /Source publication date:.*–/s);
   assert.match(rendered, /First captured:/);
+});
+
+
+
+
+
+test('shared API helper rejects off-origin paths and caller-controlled headers', async () => {
+  const dashboard = startDashboard({ search: '?view=settings', health: 'error', stored: {
+    'catalyst-admin-key': 'admin-secret', 'catalyst-api-key': 'public-secret',
+  } });
+  const api = dashboard.context.window.__testApi;
+  await assert.rejects(api('https://evil.example/v1/events'), /local absolute paths/);
+  await assert.rejects(api('//evil.example/internal/operations/config'), /local absolute paths/);
+  await assert.rejects(api('/v1/events', { headers: { Authorization: 'Bearer attacker' } }), /Unsupported API request option/);
+  await assert.rejects(api('/v1/events', { body: { query: 'x' } }), /Only POST requests may have a body/);
+  await assert.rejects(api('/actuator/health'), (error) => error.status === 503 &&
+    error.code === 'TEMPORARY_UNAVAILABLE' && error.requestId === 'request-health');
+  const health = dashboard.requests.filter((request) => new URL(request.url).pathname === '/actuator/health').at(-1);
+  assert.equal(health.headers.Authorization, undefined);
+  assert.equal(health.headers['X-Admin-Key'], undefined);
+  assert.equal(health.headers['Content-Type'], undefined);
+});
+
+test('shared API helper adds JSON content type only to explicit POST bodies', async () => {
+  const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' } });
+  const api = dashboard.context.window.__testApi;
+  const post = api('/internal/ingestion/runs', { method: 'POST', body: { start: true } });
+  await dashboard.flush();
+  const request = dashboard.requests.find((item) => item.method === 'POST');
+  assert.equal(request.headers['X-Admin-Key'], 'admin-secret');
+  assert.equal(request.headers.Authorization, undefined);
+  assert.equal(request.headers['Content-Type'], 'application/json');
+  assert.equal(request.body, JSON.stringify({ start: true }));
+  dashboard.completePipeline();
+  await post;
 });
