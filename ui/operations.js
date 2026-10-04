@@ -1581,6 +1581,7 @@
         el('ingestionDetailStatus').textContent = '';
       }
       pipelineRange = nextRange;
+      el('activityRange').value = nextRange;
       pipelineKind = nextKind;
       pipelineRunStatus = nextStatus;
       ingestionProvider = nextProvider;

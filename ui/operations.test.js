@@ -872,6 +872,7 @@ test('Pipeline navigation preserves in-memory filters when returning from anothe
   const runQuery = new URL(runRequest.url).searchParams;
   const ingestionQuery = new URL(ingestionRequest.url).searchParams;
   assert.equal(runQuery.get('range'), '7d');
+  assert.equal(dashboard.element('activityRange').value, '7d');
   assert.equal(runQuery.get('kind'), 'DAILY_SNAPSHOTS');
   assert.equal(runQuery.get('status'), 'PARTIAL');
   assert.equal(ingestionQuery.get('provider'), 'finnhub');

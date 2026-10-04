@@ -81,8 +81,12 @@ the existing event response/cursor format. Embedded associations carry totals/
 truncation flags; paginated child feeds supply the complete recorded trail.
 
 Exact `/ingestion-runs?ingestionRunId={uuid}&limit=25` returns zero/one row with no
-window, supporting old origins. Do not combine with range/from/to/provider/status/
-runId/cursor. Normal feeds use resolved windows.
+window, supporting old origins. It cannot be combined with filters or a cursor.
+`/ingestion-runs?runId={uuid}&limit=25` without `range`, `from` or `to` returns
+the ingestion runs associated with that pipeline cycle across all dates. This
+cycle-scoped feed is paginated and may also filter by `provider` or `status`;
+resend the same run ID and filters with each returned cursor. Both all-date
+modes return a null `window`. Normal feeds use resolved windows.
 
 Examples (keys come from the environment):
 
