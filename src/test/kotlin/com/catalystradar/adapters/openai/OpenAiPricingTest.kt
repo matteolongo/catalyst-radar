@@ -3,6 +3,7 @@ package com.catalystradar.adapters.openai
 import org.junit.jupiter.api.Test
 import java.math.BigDecimal
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class OpenAiPricingTest {
 
@@ -12,7 +13,12 @@ class OpenAiPricingTest {
     }
 
     @Test
-    fun `unknown models estimate zero instead of fiction`() {
-        assertEquals(BigDecimal.ZERO, OpenAiPricing.estimateUsd("gpt-99", 100, 50))
+    fun `unknown models leave cost unknown`() {
+        assertNull(OpenAiPricing.estimateUsd("gpt-99", 100, 50))
+    }
+
+    @Test
+    fun `known zero usage has zero estimated cost`() {
+        assertEquals(BigDecimal("0.000000"), OpenAiPricing.estimateUsd("gpt-4o-mini", 0, 0))
     }
 }

@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.time.Instant
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -56,6 +57,8 @@ class ModelRunStoreTest : PostgresIntegrationTest() {
         assertEquals(1200L, stored[0].latencyMs)
         assertEquals(BigDecimal("0.000045"), stored[0].estimatedCost?.stripTrailingZeros())
         assertNull(stored[0].error)
+        assertNull(stored[0].errorCode)
+        assertNull(stored[0].processingAttemptId)
     }
 
     @Test
@@ -77,6 +80,7 @@ class ModelRunStoreTest : PostgresIntegrationTest() {
                 sourceDocumentId = document.id,
                 success = false,
                 error = "401 Unauthorized",
+                errorCode = "AUTHENTICATION_FAILED",
             ),
         )
 
@@ -85,6 +89,23 @@ class ModelRunStoreTest : PostgresIntegrationTest() {
         assertEquals(1, stored.size)
         assertEquals(false, stored[0].success)
         assertEquals("401 Unauthorized", stored[0].error)
+        assertEquals("AUTHENTICATION_FAILED", stored[0].errorCode)
+        assertNull(stored[0].inputTokens)
+        assertNull(stored[0].outputTokens)
+        assertNull(stored[0].estimatedCost)
+        assertNull(stored[0].processingAttemptId)
+    }
+
+    @Test
+    fun `model run mappings preserve optional correlation and failure code`() {
+        val attemptId = UUID.randomUUID()
+        val input = ModelRunInput(
+            provider = "openai", operation = "extract", model = "gpt-4o-mini",
+            success = false, processingAttemptId = attemptId, errorCode = "INVALID_RESPONSE",
+        )
+        val record = input.toRow(UUID.randomUUID()).toRecord()
+        assertEquals(attemptId, record.processingAttemptId)
+        assertEquals("INVALID_RESPONSE", record.errorCode)
     }
 
     @Test

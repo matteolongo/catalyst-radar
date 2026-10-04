@@ -25,7 +25,9 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.core.io.DefaultResourceLoader
 import org.springframework.web.client.RestClient
 import java.time.Instant
+import java.math.BigDecimal
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
@@ -57,6 +59,49 @@ class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
         ),
         companies = listOf(Company(ticker = "DELL", name = "Dell")),
     )
+
+    @Test
+    fun `missing extraction usage remains unknown rather than free`() = runTest {
+        val req = request()
+        val responseWithoutUsage = CHAT_RESPONSE.replace(
+            "\"usage\": {\"prompt_tokens\": 100, \"completion_tokens\": 50, \"total_tokens\": 150}",
+            "\"usage\": null",
+        )
+        wireMock.stubFor(post(urlPathEqualTo("/v1/chat/completions"))
+            .willReturn(okJson(responseWithoutUsage)))
+        provider().extract(req)
+        val recorded = modelRuns.findByDocument(req.document.id).single()
+        assertNull(recorded.inputTokens)
+        assertNull(recorded.outputTokens)
+        assertNull(recorded.estimatedCost)
+    }
+
+    @Test
+    fun `known zero extraction usage records zero cost`() = runTest {
+        val req = request()
+        wireMock.stubFor(post(urlPathEqualTo("/v1/chat/completions")).willReturn(okJson(
+            CHAT_RESPONSE.replace("\"prompt_tokens\": 100", "\"prompt_tokens\": 0")
+                .replace("\"completion_tokens\": 50", "\"completion_tokens\": 0"),
+        )))
+        provider().extract(req)
+        val recorded = modelRuns.findByDocument(req.document.id).single()
+        assertEquals(0, recorded.inputTokens)
+        assertEquals(0, recorded.outputTokens)
+        assertEquals(BigDecimal("0.000000"), recorded.estimatedCost)
+    }
+
+    @Test
+    fun `unknown extraction pricing preserves known tokens`() = runTest {
+        val req = request()
+        wireMock.stubFor(post(urlPathEqualTo("/v1/chat/completions"))
+            .willReturn(okJson(CHAT_RESPONSE.replace("gpt-4o-mini", "gpt-99"))))
+        provider().extract(req)
+        val recorded = modelRuns.findByDocument(req.document.id).single()
+        assertEquals("gpt-99", recorded.model)
+        assertEquals(100, recorded.inputTokens)
+        assertEquals(50, recorded.outputTokens)
+        assertNull(recorded.estimatedCost)
+    }
 
     @Test
     fun `extracts structured candidates and records the run`() = runTest {
@@ -117,6 +162,10 @@ class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
         val runs = modelRuns.findByDocument(req.document.id)
         assertEquals(1, runs.size)
         assertEquals(false, runs[0].success)
+        assertEquals("AUTHENTICATION_FAILED", runs[0].errorCode)
+        assertEquals("Provider authentication failed; check server credentials.", runs[0].error)
+        assertNull(runs[0].estimatedCost)
+        assertNull(runs[0].processingAttemptId)
     }
 
     @Test
@@ -125,9 +174,18 @@ class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
             post(urlPathEqualTo("/v1/chat/completions")).willReturn(okJson(MALFORMED_RESPONSE)),
         )
 
+        val req = request()
         assertThrows<ProviderException.InvalidResponse> {
-            provider().extract(request())
+            provider().extract(req)
         }
+        val recorded = modelRuns.findByDocument(req.document.id).single()
+        assertEquals(false, recorded.success)
+        assertEquals("gpt-4o-mini", recorded.model)
+        assertEquals(10, recorded.inputTokens)
+        assertEquals(5, recorded.outputTokens)
+        assertEquals(BigDecimal("0.000005"), recorded.estimatedCost)
+        assertEquals("INVALID_RESPONSE", recorded.errorCode)
+        assertEquals("Provider output did not pass extraction/response validation.", recorded.error)
     }
 
     companion object {

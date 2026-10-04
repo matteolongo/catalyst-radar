@@ -1,6 +1,7 @@
 package com.catalystradar.adapters.openai
 
 import com.catalystradar.adapters.http.mapHttpClientError
+import com.catalystradar.application.operations.OperationalErrors
 import com.catalystradar.common.Versions
 import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.extraction.ModelRunInput
@@ -62,29 +63,30 @@ class OpenAiEventExtractionProvider(
     override suspend fun extract(request: ExtractionRequest): ExtractionResult =
         withContext(Dispatchers.IO) {
             val started = System.nanoTime()
+            var response: OpenAiChatResponse? = null
             try {
-                val response = post(request)
+                response = post(request)
                 val result = parseContent(response)
                 record(request, response.model, response.usage, elapsedMs(started), success = true, error = null)
                 result
             } catch (e: HttpClientErrorException) {
                 val mapped = mapHttpClientError("openai", e)
-                recordFailure(request, started, mapped.message)
+                recordFailure(request, response, started, mapped)
                 throw mapped
             } catch (e: HttpServerErrorException) {
                 val failure = ProviderException.TemporaryUnavailable("openai: ${e.statusCode}")
-                recordFailure(request, started, failure.message)
+                recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: ProviderException) {
-                recordFailure(request, started, e.message)
+                recordFailure(request, response, started, e)
                 throw e
             } catch (e: JacksonException) {
                 val failure = ProviderException.InvalidResponse("openai: unusable JSON (${e.message})")
-                recordFailure(request, started, failure.message)
+                recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: RestClientException) {
                 val failure = ProviderException.InvalidResponse("openai: ${e.message}")
-                recordFailure(request, started, failure.message)
+                recordFailure(request, response, started, failure)
                 throw failure
             }
         }
@@ -140,6 +142,7 @@ class OpenAiEventExtractionProvider(
         latencyMs: Long,
         success: Boolean,
         error: String?,
+        errorCode: String? = null,
     ) {
         val resolvedModel = model ?: properties.extractionModel
         metrics.llmCall(
@@ -162,13 +165,12 @@ class OpenAiEventExtractionProvider(
                     inputTokens = usage?.promptTokens,
                     outputTokens = usage?.completionTokens,
                     latencyMs = latencyMs,
-                    estimatedCost = OpenAiPricing.estimateUsd(
-                        resolvedModel,
-                        usage?.promptTokens ?: 0,
-                        usage?.completionTokens ?: 0,
-                    ),
+                    estimatedCost = if (usage?.promptTokens != null && usage.completionTokens != null) {
+                        OpenAiPricing.estimateUsd(resolvedModel, usage.promptTokens, usage.completionTokens)
+                    } else null,
                     success = success,
                     error = error,
+                    errorCode = errorCode,
                 ),
             )
         }.onFailure {
@@ -176,8 +178,15 @@ class OpenAiEventExtractionProvider(
         }
     }
 
-    private fun recordFailure(request: ExtractionRequest, started: Long, error: String?) {
-        record(request, null, null, elapsedMs(started), success = false, error = error)
+    private fun recordFailure(
+        request: ExtractionRequest,
+        response: OpenAiChatResponse?,
+        started: Long,
+        failure: Throwable,
+    ) {
+        val code = OperationalErrors.code(failure)
+        record(request, response?.model, response?.usage, elapsedMs(started),
+            success = false, error = OperationalErrors.message(code), errorCode = code)
     }
 
     private fun elapsedMs(started: Long): Long = (System.nanoTime() - started) / 1_000_000
