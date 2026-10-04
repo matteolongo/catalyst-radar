@@ -62,7 +62,10 @@ class OperationsSchemaTest : PostgresIntegrationTest() {
                 ('10000000-0000-0000-0000-000000000003','openai','extract','gpt-99',:doc,100,50,0,true),
                 ('10000000-0000-0000-0000-000000000004','openai','extract','gpt-99',:doc,100,50,1.25,true),
                 ('10000000-0000-0000-0000-000000000005','openai','embed','text-embedding-3-small',:doc,0,NULL,0,true),
-                ('10000000-0000-0000-0000-000000000006','openai','extract','gpt-4o-mini',:doc,100,NULL,0,false)
+                ('10000000-0000-0000-0000-000000000006','openai','extract','gpt-4o-mini',:doc,100,NULL,0,false),
+                ('10000000-0000-0000-0000-000000000007','openai','extract','gpt-4o-mini',:doc,NULL,NULL,1.25,false),
+                ('10000000-0000-0000-0000-000000000008','openai','extract','gpt-4o-mini',:doc,100,NULL,2.50,false),
+                ('10000000-0000-0000-0000-000000000009','openai','extract','gpt-99',:doc,NULL,NULL,3.75,false)
             """).param("doc", doc).update()
             upgradeJdbc.sql("INSERT INTO ingestion_runs(provider,status) VALUES('polygon','SUCCESS')").update()
             Flyway.configure().dataSource(upgradeDatabase.jdbcUrl, upgradeDatabase.username, upgradeDatabase.password)
@@ -72,7 +75,7 @@ class OperationsSchemaTest : PostgresIntegrationTest() {
             assertEquals("PENDING", upgradeFixtures.processingStatus(doc))
             val costs = upgradeJdbc.sql("SELECT id, estimated_cost FROM model_runs ORDER BY id")
                 .query { rs, _ -> rs.getObject("id", UUID::class.java) to rs.getBigDecimal("estimated_cost") }.list().toMap()
-            assertEquals(6, costs.size)
+            assertEquals(9, costs.size)
             fun cost(number: Int) = costs[UUID.fromString("10000000-0000-0000-0000-${number.toString().padStart(12, '0')}")]
             assertNull(cost(1))
             assertEquals(0, assertNotNull(cost(2)).signum())
@@ -80,6 +83,9 @@ class OperationsSchemaTest : PostgresIntegrationTest() {
             assertEquals(0, assertNotNull(cost(4)).compareTo(java.math.BigDecimal("1.25")))
             assertEquals(0, assertNotNull(cost(5)).signum())
             assertNull(cost(6))
+            assertEquals(0, assertNotNull(cost(7)).compareTo(java.math.BigDecimal("1.25")))
+            assertEquals(0, assertNotNull(cost(8)).compareTo(java.math.BigDecimal("2.50")))
+            assertEquals(0, assertNotNull(cost(9)).compareTo(java.math.BigDecimal("3.75")))
             assertEquals(0L, upgradeJdbc.sql("SELECT count(*) FROM source_documents WHERE first_ingestion_run_id IS NOT NULL")
                 .query(Long::class.java).single())
             assertEquals(0L, upgradeJdbc.sql("SELECT count(*) FROM model_runs WHERE processing_attempt_id IS NOT NULL")

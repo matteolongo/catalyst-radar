@@ -92,6 +92,6 @@ CREATE INDEX ix_ingestion_runs_operation ON ingestion_runs (operation_run_id)
 
 -- Prior adapters estimated zero when usage was absent. Absence is not free usage.
 UPDATE model_runs SET estimated_cost = NULL
-WHERE input_tokens IS NULL OR (operation = 'extract' AND output_tokens IS NULL)
-   OR (provider = 'openai' AND model NOT IN ('gpt-4o-mini', 'text-embedding-3-small')
-       AND estimated_cost = 0);
+WHERE estimated_cost = 0
+  AND (input_tokens IS NULL OR (operation = 'extract' AND output_tokens IS NULL)
+       OR (provider = 'openai' AND model NOT IN ('gpt-4o-mini', 'text-embedding-3-small')));
