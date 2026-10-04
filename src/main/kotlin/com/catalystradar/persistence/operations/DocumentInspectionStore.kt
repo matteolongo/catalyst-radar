@@ -1,7 +1,6 @@
 package com.catalystradar.persistence.operations
 
 import com.catalystradar.application.operations.*
-import com.catalystradar.application.pipeline.PipelineProperties
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
 import java.sql.ResultSet
@@ -12,7 +11,6 @@ import java.util.UUID
 @Repository
 class DocumentInspectionStore(
     private val jdbc: NamedParameterJdbcTemplate,
-    private val pipeline: PipelineProperties,
 ) {
     private val cursor = OperationsCursor()
 
@@ -76,7 +74,7 @@ class DocumentInspectionStore(
         return OperationsPage(generatedAt, null, items, query.page.limit, next)
     }
 
-    fun detail(id: UUID, generatedAt: Instant): DocumentDetail? {
+    fun detail(id: UUID, generatedAt: Instant, maxAttempts: Int): DocumentDetail? {
         val detail = jdbc.query(
             """SELECT $PROJECTION, d.canonical_url, d.provider_document_id, p.completed_at,
                 (SELECT COUNT(*) FROM document_processing_attempts a WHERE a.source_document_id=d.id) AS captured_attempts,
@@ -92,7 +90,7 @@ class DocumentInspectionStore(
                 canonicalUrl = rs.getString("canonical_url"),
                 providerDocumentId = rs.getString("provider_document_id"),
                 completedAt = rs.instant("completed_at"),
-                maxAttempts = pipeline.maxAttempts,
+                maxAttempts = maxAttempts,
                 capturedAttemptCount = captured,
                 unrecordedAttemptCount = ((item.attemptCount ?: 0).toLong() - captured).coerceAtLeast(0),
                 historyAvailable = captured > 0,

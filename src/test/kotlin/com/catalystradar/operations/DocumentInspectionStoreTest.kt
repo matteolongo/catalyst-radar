@@ -49,14 +49,14 @@ class DocumentInspectionStoreTest : PostgresIntegrationTest() {
         jdbc.sql("UPDATE source_documents SET first_ingestion_run_id=:ingestion WHERE id=:id")
             .param("ingestion", ingestion).param("id", document).update()
         assertEquals(listOf(document), store.search(DocumentQuery(ingestionRunId = ingestion), at, emptySet()).items.map { it.id })
-        assertEquals(ingestion, store.detail(document, at)?.document?.firstIngestionRunId)
-        assertNull(store.detail(other, at)?.document?.firstIngestionRunId)
+        assertEquals(ingestion, store.detail(document, at, maxAttempts = 3)?.document?.firstIngestionRunId)
+        assertNull(store.detail(other, at, maxAttempts = 3)?.document?.firstIngestionRunId)
         listOf(at.minusSeconds(1) to at.plusSeconds(100), at to at, at to at.plusSeconds(1)).forEach { (asOf, created) ->
             jdbc.sql("""INSERT INTO catalyst_snapshots(id,company_id,score,score_version,state,velocity_1d,velocity_3d,velocity_7d,taxonomy_version,as_of,created_at)
                 VALUES(:id,:company,0,'score-v1','NORMAL',0,0,0,'v1',:asOf::timestamptz,:created::timestamptz)""")
                 .param("id", UUID.randomUUID()).param("company", company).param("asOf", asOf.toString()).param("created", created.toString()).update()
         }
-        val linked = requireNotNull(store.detail(document, at)).companies.single()
+        val linked = requireNotNull(store.detail(document, at, maxAttempts = 3)).companies.single()
         assertEquals(at, linked.latestSnapshotAsOf)
         assertEquals(at.plusSeconds(1), linked.latestSnapshotCreatedAt)
     }
@@ -93,9 +93,9 @@ class DocumentInspectionStoreTest : PostgresIntegrationTest() {
         fixtures.processing(skipped, "SKIPPED", attempts = 1, updatedAt = at)
         val page = store.search(DocumentQuery(states = setOf(DocumentState.UNRESOLVED, DocumentState.NOT_TRACKED), from = at, to = at.plusSeconds(1)), at, emptySet())
         assertEquals(mapOf(unresolved to DocumentState.UNRESOLVED, notTracked to DocumentState.NOT_TRACKED), page.items.associate { it.id to it.state })
-        assertEquals(DocumentState.SKIPPED, store.detail(skipped, at)?.document?.state)
-        assertFalse(requireNotNull(store.detail(skipped, at)).historyAvailable)
-        assertEquals(1, store.detail(skipped, at)?.unrecordedAttemptCount)
+        assertEquals(DocumentState.SKIPPED, store.detail(skipped, at, maxAttempts = 3)?.document?.state)
+        assertFalse(requireNotNull(store.detail(skipped, at, maxAttempts = 3)).historyAvailable)
+        assertEquals(1, store.detail(skipped, at, maxAttempts = 3)?.unrecordedAttemptCount)
     }
 
     @Test
@@ -118,7 +118,7 @@ class DocumentInspectionStoreTest : PostgresIntegrationTest() {
         assertTrue(body.truncated)
         assertFalse(requireNotNull(store.body(fixtures.document(at, body = "short"))).truncated)
         assertNull(store.body(UUID.randomUUID()))
-        assertNull(store.detail(UUID.randomUUID(), at))
+        assertNull(store.detail(UUID.randomUUID(), at, maxAttempts = 3))
     }
 
     @Test
@@ -141,7 +141,8 @@ class DocumentInspectionStoreTest : PostgresIntegrationTest() {
                 .param("id", UUID.randomUUID()).param("company", company).param("document", document)
                 .param("cluster", if (it == 2) null else cluster).param("at", at.toString()).update()
         }
-        val detail = requireNotNull(store.detail(document, at))
+        val detail = requireNotNull(store.detail(document, at, maxAttempts = 7))
+        assertEquals(7, detail.maxAttempts)
         assertEquals(3, detail.eventReports)
         assertEquals(1, detail.canonicalClusters)
         assertEquals(3, detail.modelCallsRecorded)
@@ -163,7 +164,7 @@ class DocumentInspectionStoreTest : PostgresIntegrationTest() {
         assertTrue(item.tickersTruncated)
         assertEquals("A000", item.tickers.first())
         assertEquals("A099", item.tickers.last())
-        val detail = requireNotNull(store.detail(document, at))
+        val detail = requireNotNull(store.detail(document, at, maxAttempts = 3))
         assertEquals(101, detail.companiesTotal)
         assertEquals(100, detail.companies.size)
         assertTrue(detail.companiesTruncated)
