@@ -22,6 +22,7 @@ interface EventRepository : ListCrudRepository<EventRow, UUID> {
           AND (CAST(:family AS VARCHAR) IS NULL OR family = :family)
           AND (CAST(:type AS VARCHAR) IS NULL OR event_type = :type)
           AND (CAST(:direction AS VARCHAR) IS NULL OR direction = :direction)
+          AND (CAST(:sourceDocumentId AS UUID) IS NULL OR source_document_id = CAST(:sourceDocumentId AS UUID))
           AND (CAST(:from AS TIMESTAMPTZ) IS NULL OR discovered_at >= :from)
           AND (CAST(:to AS TIMESTAMPTZ) IS NULL OR discovered_at <= :to)
           AND (CAST(:cursorTs AS TIMESTAMPTZ) IS NULL
@@ -35,6 +36,7 @@ interface EventRepository : ListCrudRepository<EventRow, UUID> {
         family: String?,
         type: String?,
         direction: String?,
+        sourceDocumentId: UUID?,
         from: Instant?,
         to: Instant?,
         cursorTs: Instant?,

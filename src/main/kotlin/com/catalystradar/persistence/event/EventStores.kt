@@ -75,6 +75,7 @@ class EventStore(
             family = query.family?.name,
             type = query.type?.name,
             direction = query.direction?.name,
+            sourceDocumentId = query.sourceDocumentId,
             from = query.from,
             to = query.to,
             cursorTs = decoded?.first,

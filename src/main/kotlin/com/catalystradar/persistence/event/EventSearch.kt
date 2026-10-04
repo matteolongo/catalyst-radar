@@ -4,6 +4,7 @@ import com.catalystradar.domain.event.Direction
 import com.catalystradar.domain.event.EventFamily
 import com.catalystradar.domain.event.EventType
 import java.time.Instant
+import java.util.UUID
 
 data class EventSearch(
     val ticker: String? = null,
@@ -14,6 +15,7 @@ data class EventSearch(
     val to: Instant? = null,
     val limit: Int = 20,
     val cursor: String? = null,
+    val sourceDocumentId: UUID? = null,
 )
 
 data class EventSearchPage(
