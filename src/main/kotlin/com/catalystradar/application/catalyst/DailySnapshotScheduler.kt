@@ -1,10 +1,12 @@
 package com.catalystradar.application.catalyst
 
+import com.catalystradar.application.operations.OperationTrigger
 import com.catalystradar.observability.CatalystMetrics
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -29,7 +31,7 @@ class DailySnapshotScheduler(
             return
         }
         try {
-            val result = snapshots.recalculateActive()
+            val result = snapshots.recalculateActive(trigger = OperationTrigger.SCHEDULED)
             metrics.dailySnapshotCycle(result.status.name.lowercase())
             log.info(
                 "daily snapshot cycle finished status={} considered={} recalculated={} failures={}",
@@ -38,6 +40,8 @@ class DailySnapshotScheduler(
                 result.companiesRecalculated,
                 result.failures,
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: RuntimeException) {
             metrics.dailySnapshotCycle("failed")
             log.error("daily snapshot cycle failed", e)
