@@ -93,4 +93,4 @@ class ActivityWindowResolver {
 
 private val NEWS_PROVIDERS = setOf("polygon", "finnhub")
 private val MODEL_OPERATIONS = setOf("extract", "embed")
-private val CURSOR_KINDS = setOf("documents", "runs", "ingestion", "models", "attempts", "issues")
+private val CURSOR_KINDS = setOf("documents", "runs", "ingestion", "models", "attempts", "issues", "steps", "valuations", "contributions")

@@ -14,6 +14,7 @@ data class DocumentPersistencePlan(
     val sourceDocumentId: UUID,
     val events: List<PlannedEvent>,
     val processingAttemptId: UUID? = null,
+    val persistenceStepId: UUID? = null,
 )
 
 /** One normalized event, its identity hash, and where it clusters. */

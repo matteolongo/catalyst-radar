@@ -18,8 +18,9 @@ class SourceDocumentStore(
         embedding: PGvector? = null,
         rawPayload: JsonB = JsonB("{}"),
         firstIngestionRunId: UUID? = null,
+        traceVersion: String? = null,
     ): SourceDocument =
-        template.insert(document.toRow(embedding, rawPayload, firstIngestionRunId)).toDomain()
+        template.insert(document.toRow(embedding, rawPayload, firstIngestionRunId, traceVersion)).toDomain()
 
     fun findById(id: UUID): SourceDocument? =
         repository.findById(id).map { it.toDomain() }.orElse(null)

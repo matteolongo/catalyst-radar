@@ -28,6 +28,7 @@ data class SourceDocumentRow(
     val embedding: PGvector?,
     @Column("raw_payload") val rawPayload: JsonB,
     @Column("first_ingestion_run_id") val firstIngestionRunId: UUID? = null,
+    @Column("trace_version") val traceVersion: String? = null,
 )
 
 fun SourceDocumentRow.toDomain() = SourceDocument(
@@ -46,6 +47,7 @@ fun SourceDocument.toRow(
     embedding: PGvector? = null,
     rawPayload: JsonB = JsonB("{}"),
     firstIngestionRunId: UUID? = null,
+    traceVersion: String? = null,
 ) = SourceDocumentRow(
     id = id,
     provider = provider,
@@ -59,4 +61,5 @@ fun SourceDocument.toRow(
     embedding = embedding,
     rawPayload = rawPayload,
     firstIngestionRunId = firstIngestionRunId,
+    traceVersion = traceVersion,
 )

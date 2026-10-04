@@ -21,8 +21,12 @@ class OperationRunStore(private val jdbc: NamedParameterJdbcTemplate, transactio
         val params = mapOf("id" to id, "kind" to kind.name, "trigger" to trigger.name,
             "phase" to if (kind == OperationKind.PIPELINE) "INGESTION" else "SCORING",
             "asOf" to Timestamp.from(asOf), "now" to Timestamp.from(now),
-            "message" to OperationalErrors.message("UNFINISHED_PREVIOUS_RUN"))
+            "message" to OperationalErrors.message("UNFINISHED_PREVIOUS_RUN"), "traceVersion" to PIPELINE_TRACE_VERSION)
         transaction.executeWithoutResult {
+            jdbc.update("""UPDATE document_processing_steps SET status='INTERRUPTED',finished_at=NULL,
+                updated_at=:now,error_code='UNFINISHED_PREVIOUS_RUN',error_message=:message
+                WHERE status='RUNNING' AND operation_run_id IN
+                    (SELECT id FROM operation_runs WHERE kind=:kind AND status='RUNNING')""", params)
             jdbc.update("""UPDATE document_processing_attempts SET status='INTERRUPTED',finished_at=NULL,
                 updated_at=:now,error_code='UNFINISHED_PREVIOUS_RUN',error_message=:message
                 WHERE status='RUNNING' AND operation_run_id IN
@@ -30,8 +34,8 @@ class OperationRunStore(private val jdbc: NamedParameterJdbcTemplate, transactio
             jdbc.update("""UPDATE operation_runs SET status='INTERRUPTED',finished_at=NULL,capture_complete=FALSE,
                 updated_at=:now,error_code='UNFINISHED_PREVIOUS_RUN',error_message=:message
                 WHERE kind=:kind AND status='RUNNING'""", params)
-            jdbc.update("""INSERT INTO operation_runs(id,kind,trigger_type,status,phase,as_of,started_at,updated_at)
-                VALUES(:id,:kind,:trigger,'RUNNING',:phase,:asOf,:now,:now)""", params)
+            jdbc.update("""INSERT INTO operation_runs(id,kind,trigger_type,status,phase,as_of,started_at,updated_at,trace_version)
+                VALUES(:id,:kind,:trigger,'RUNNING',:phase,:asOf,:now,:now,:traceVersion)""", params)
         }
     }
 
@@ -59,10 +63,16 @@ class OperationRunStore(private val jdbc: NamedParameterJdbcTemplate, transactio
         require(!captureComplete || counts != null) { "complete capture requires final counts" }
         val params = (counts?.parameters() ?: emptyMap()) + mapOf("id" to id, "status" to status.name,
             "code" to code, "message" to code?.let(OperationalErrors::message), "complete" to captureComplete, "now" to Timestamp.from(now))
-        val counters = if (counts == null) "" else "$countAssignments,"
-        check(jdbc.update("""UPDATE operation_runs SET ${counters}status=:status,phase='FINISHED',finished_at=:now,
-            updated_at=:now,error_code=:code,error_message=:message,capture_complete=:complete
-            WHERE id=:id AND status='RUNNING'""", params) == 1) { "operation is not running" }
+        transaction.executeWithoutResult {
+            jdbc.update("""UPDATE document_processing_steps SET status='INTERRUPTED',finished_at=NULL,updated_at=:now,
+                error_code=COALESCE(:code,'UNFINISHED_PREVIOUS_RUN'),error_message=:interruptedMessage
+                WHERE operation_run_id=:id AND status='RUNNING'""",
+                params + mapOf("interruptedMessage" to OperationalErrors.message(code ?: "UNFINISHED_PREVIOUS_RUN")))
+            val counters = if (counts == null) "" else "$countAssignments,"
+            check(jdbc.update("""UPDATE operation_runs SET ${counters}status=:status,phase='FINISHED',finished_at=:now,
+                updated_at=:now,error_code=:code,error_message=:message,capture_complete=:complete
+                WHERE id=:id AND status='RUNNING'""", params) == 1) { "operation is not running" }
+        }
     }
 
     fun issue(id: UUID, phase: OperationPhase, code: String, documentId: UUID?, companyId: UUID?, now: Instant, provider: String?) {
@@ -200,7 +210,7 @@ class OperationRunStore(private val jdbc: NamedParameterJdbcTemplate, transactio
                 rs.getInt("documents_considered"), rs.getInt("documents_completed"), rs.getInt("documents_skipped"),
                 rs.getInt("documents_retry_scheduled"), rs.getInt("documents_terminal_failures"), rs.getInt("events_inserted"),
                 rs.getInt("events_reused"), rs.getInt("companies_considered"), rs.getInt("companies_rescored"), rs.getInt("companies_failed"),
-                code, code?.let(OperationalErrors::message),
+                code, code?.let(OperationalErrors::message), rs.getString("trace_version"),
             )
         }
     }

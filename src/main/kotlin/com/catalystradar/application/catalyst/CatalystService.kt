@@ -8,6 +8,7 @@ import com.catalystradar.domain.catalyst.CatalystState
 import com.catalystradar.domain.catalyst.ScoreVelocity
 import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.catalyst.CatalystSnapshotStore
+import com.catalystradar.persistence.operations.CompanyValuationStore
 import org.slf4j.LoggerFactory
 import com.catalystradar.persistence.event.EventStore
 import org.springframework.stereotype.Service
@@ -50,13 +51,15 @@ class CatalystService(
     private val snapshots: CatalystSnapshotStore,
     private val selector: CanonicalEventSelector,
     private val metrics: CatalystMetrics,
+    private val valuations: CompanyValuationStore,
 ) {
 
     private val log = LoggerFactory.getLogger(CatalystService::class.java)
     private val calculator = ScoreCalculator()
 
     @Transactional
-    fun recalculate(companyId: UUID, asOf: Instant = Instant.now()): CatalystSnapshot {
+    fun recalculate(companyId: UUID, asOf: Instant = Instant.now(), operationRunId: UUID? = null): CatalystSnapshot {
+        snapshots.lockCompany(companyId)
         val canonical = selector.select(events.findByCompanyId(companyId))
         val calculated = calculator.calculate(canonical, asOf)
         val state = stateForScore(calculated.score.value)
@@ -66,7 +69,8 @@ class CatalystService(
             velocity3d = scoreChangeSince(history, asOf.minusSeconds(3L * 86_400), calculated.score.value),
             velocity7d = scoreChangeSince(history, asOf.minusSeconds(7L * 86_400), calculated.score.value),
         )
-        val previousState = history.firstOrNull()?.state
+        val previous = snapshots.latestAtOrBefore(companyId, asOf)
+        val previousState = previous?.state
         val snapshot = snapshots.save(
             CatalystSnapshot(
                 companyId = companyId,
@@ -77,13 +81,15 @@ class CatalystService(
                 taxonomyVersion = Versions.TAXONOMY_V1,
             ),
         )
+        var transitionId: UUID? = null
         if (previousState != null && previousState != state) {
-            snapshots.recordTransition(companyId, previousState, state, calculated.score, asOf)
+            transitionId = snapshots.recordTransition(companyId, previousState, state, calculated.score, asOf)
             metrics.stateTransition(previousState.name, state.name)
             log.info("company {} transitioned {} -> {} at score {}", companyId, previousState, state, calculated.score.value)
         } else {
             log.info("company {} recalculated score={} state={}", companyId, calculated.score.value, state)
         }
+        operationRunId?.let { valuations.save(it, snapshot, previous, calculated, transitionId, canonical.associate { event -> event.id to event.clusterId }) }
         return snapshot
     }
 }

@@ -33,6 +33,7 @@ class ApiExceptionHandler {
         val (code, title, detail) = when (e.resource) {
             OperationsResource.DOCUMENT -> Triple("DOCUMENT_NOT_FOUND", "Document not found", "Source document was not found")
             OperationsResource.OPERATION_RUN -> Triple("OPERATION_RUN_NOT_FOUND", "Operation run not found", "Operation run was not found")
+            OperationsResource.VALUATION -> Triple("VALUATION_NOT_FOUND", "Valuation not found", "Company valuation was not found")
             OperationsResource.MODEL_RUN -> Triple("MODEL_RUN_NOT_FOUND", "Model run not found", "Model run was not found")
         }
         return problem(HttpStatus.NOT_FOUND, code, title, detail, request)

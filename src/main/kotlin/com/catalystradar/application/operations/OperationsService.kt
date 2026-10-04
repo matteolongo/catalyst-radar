@@ -6,6 +6,9 @@ import com.catalystradar.adapters.polygon.PolygonProperties
 import com.catalystradar.application.catalyst.SnapshotProperties
 import com.catalystradar.application.ingestion.IngestionProperties
 import com.catalystradar.application.pipeline.PipelineProperties
+import com.catalystradar.application.company.CompanyNotFoundException
+import com.catalystradar.domain.company.normalizeTicker
+import com.catalystradar.persistence.company.CompanyStore
 import com.catalystradar.common.Versions
 import com.catalystradar.persistence.event.EventSearch
 import com.catalystradar.persistence.event.EventSearchPage
@@ -38,6 +41,9 @@ class OperationsService(
     private val environment: Environment,
     @Qualifier("operationsClock") private val clock: Clock,
     private val recorder: OperationRunRecorder,
+    private val stepStore: DocumentStepStore,
+    private val valuationStore: CompanyValuationStore,
+    private val companies: CompanyStore,
 ) {
     private val policy = OperationsStatusPolicy(properties)
 
@@ -129,6 +135,40 @@ class OperationsService(
         query.documentId?.let { requireDocument(it, generatedAt) }
         query.runId?.let { requireRun(it, generatedAt) }
         return modelStore.summary(query, generatedAt)
+    }
+
+    fun documentSteps(id: UUID, runId: UUID?, attemptId: UUID?, page: PageRequest): OperationsPage<DocumentStep> {
+        val at = clock.instant()
+        requireDocument(id, at)
+        runId?.let { requireRun(it, at) }
+        return stepStore.search(id, runId, attemptId, page, at)
+    }
+
+    fun runValuations(id: UUID, page: PageRequest): OperationsPage<CompanyValuation> {
+        val at = clock.instant()
+        requireRun(id, at)
+        return valuationStore.search(id, null, null, page, at)
+    }
+
+    fun documentValuations(id: UUID, runId: UUID?, page: PageRequest): OperationsPage<CompanyValuation> {
+        val at = clock.instant()
+        requireDocument(id, at)
+        runId?.let { requireRun(it, at) }
+        return valuationStore.search(runId, null, null, page, at, documentId = id)
+    }
+
+    fun valuation(id: UUID): CompanyValuation = valuationStore.detail(id)
+        ?: throw OperationsResourceNotFoundException(OperationsResource.VALUATION, id)
+
+    fun valuationContributions(id: UUID, page: PageRequest): OperationsPage<ValuationContribution> {
+        valuation(id)
+        return valuationStore.contributions(id, page, clock.instant())
+    }
+
+    fun companyValuations(ticker: String, window: ActivityWindow?, page: PageRequest): OperationsPage<CompanyValuation> {
+        val normalized = normalizeTicker(ticker)
+        val company = companies.findByTicker(normalized) ?: throw CompanyNotFoundException(normalized)
+        return valuationStore.search(null, company.id, window, page, clock.instant())
     }
 
     private fun requireDocument(id: UUID, generatedAt: Instant = clock.instant()) {

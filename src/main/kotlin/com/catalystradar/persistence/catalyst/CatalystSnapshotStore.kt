@@ -21,6 +21,18 @@ class CatalystSnapshotStore(
     fun save(snapshot: CatalystSnapshot): CatalystSnapshot =
         template.insert(snapshot.toRow()).toDomain()
 
+    fun lockCompany(companyId: UUID) {
+        check(jdbc.queryForList("SELECT id FROM companies WHERE id=? FOR UPDATE", companyId).size == 1) { "company not found" }
+    }
+
+    fun latestAtOrBefore(companyId: UUID, asOf: Instant): CatalystSnapshot? = jdbc.query(
+        "SELECT * FROM catalyst_snapshots WHERE company_id=? AND as_of<=? ORDER BY as_of DESC,created_at DESC,id DESC LIMIT 1",
+        { rs, _ -> CatalystSnapshotRow(rs.getObject("id", UUID::class.java), rs.getObject("company_id", UUID::class.java),
+            rs.getDouble("score"), rs.getString("score_version"), rs.getString("state"), rs.getDouble("velocity_1d"),
+            rs.getDouble("velocity_3d"), rs.getDouble("velocity_7d"), rs.getString("taxonomy_version"), rs.getTimestamp("as_of").toInstant()).toDomain() },
+        companyId, Timestamp.from(asOf),
+    ).singleOrNull()
+
     fun latestSnapshot(companyId: UUID): CatalystSnapshot? =
         snapshots.findFirstByCompanyIdOrderByAsOfDesc(companyId)?.toDomain()
 
@@ -41,8 +53,8 @@ class CatalystSnapshotStore(
         to: CatalystState,
         score: CatalystScore,
         at: Instant,
-    ) {
-        template.insert(
+    ): UUID {
+        return template.insert(
             StateTransitionRow(
                 id = UUID.randomUUID(),
                 companyId = companyId,
@@ -52,7 +64,7 @@ class CatalystSnapshotStore(
                 scoreVersion = score.version,
                 transitionedAt = at,
             ),
-        )
+        ).id
     }
 
     fun findTransitions(companyId: UUID): List<StateTransitionRecord> =

@@ -108,7 +108,7 @@ class IngestionService(
                 fetched += page.articles.size
                 for (article in page.articles) {
                     try {
-                        when (val registration = registrations.registerIfNew(provider.name, article, now, runId)) {
+                        when (val registration = registrations.registerIfNew(provider.name, article, now, runId, operationRunId)) {
                             is DocumentRegistration.Queued -> {
                                 added++
                                 fresh += NewDocument(registration.documentId, article.tickers)

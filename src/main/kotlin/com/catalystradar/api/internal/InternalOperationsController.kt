@@ -183,6 +183,60 @@ class InternalOperationsController(
         operations.modelSummary(modelQuery(range, from, to, provider, operation, model, success, documentId, attemptId, runId)).toResponse(),
     )
 
+    @GetMapping("/documents/{id}/steps")
+    fun documentSteps(
+        @PathVariable id: UUID,
+        @RequestParam(required = false) runId: UUID?,
+        @RequestParam(required = false) attemptId: UUID?,
+        @RequestParam(defaultValue = "25") limit: Int,
+        @RequestParam(required = false) cursor: String?,
+    ): ResponseEntity<OperationsPageResponse<DocumentStepResponse>> = noStore(
+        operations.documentSteps(id, runId, attemptId, PageRequest(limit, cursor)).toResponse { it.toResponse() },
+    )
+
+    @GetMapping("/documents/{id}/valuations")
+    fun documentValuations(
+        @PathVariable id: UUID,
+        @RequestParam(required = false) runId: UUID?,
+        @RequestParam(defaultValue = "25") limit: Int,
+        @RequestParam(required = false) cursor: String?,
+    ): ResponseEntity<OperationsPageResponse<CompanyValuationResponse>> = noStore(
+        operations.documentValuations(id, runId, PageRequest(limit, cursor)).toResponse { it.toResponse() },
+    )
+
+    @GetMapping("/runs/{id}/valuations")
+    fun runValuations(
+        @PathVariable id: UUID,
+        @RequestParam(defaultValue = "25") limit: Int,
+        @RequestParam(required = false) cursor: String?,
+    ): ResponseEntity<OperationsPageResponse<CompanyValuationResponse>> = noStore(
+        operations.runValuations(id, PageRequest(limit, cursor)).toResponse { it.toResponse() },
+    )
+
+    @GetMapping("/valuations/{id}")
+    fun valuation(@PathVariable id: UUID): ResponseEntity<CompanyValuationResponse> = noStore(operations.valuation(id).toResponse())
+
+    @GetMapping("/valuations/{id}/contributions")
+    fun valuationContributions(
+        @PathVariable id: UUID,
+        @RequestParam(defaultValue = "25") limit: Int,
+        @RequestParam(required = false) cursor: String?,
+    ): ResponseEntity<OperationsPageResponse<ValuationContributionResponse>> = noStore(
+        operations.valuationContributions(id, PageRequest(limit, cursor)).toResponse { it.toResponse() },
+    )
+
+    @GetMapping("/companies/{ticker}/valuations")
+    fun companyValuations(
+        @PathVariable ticker: String,
+        @RequestParam(required = false) from: Instant?,
+        @RequestParam(required = false) to: Instant?,
+        @RequestParam(defaultValue = "25") limit: Int,
+        @RequestParam(required = false) cursor: String?,
+    ): ResponseEntity<OperationsPageResponse<CompanyValuationResponse>> {
+        val window = if (from == null && to == null) null else windowResolver.resolve(null, from, to, clock.instant())
+        return noStore(operations.companyValuations(ticker, window, PageRequest(limit, cursor)).toResponse { it.toResponse() })
+    }
+
     private fun modelQuery(
         range: String?,
         from: Instant?,

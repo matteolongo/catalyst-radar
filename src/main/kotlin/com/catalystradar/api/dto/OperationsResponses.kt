@@ -240,6 +240,11 @@ data class DocumentListItemResponse(
     val eventReports: Long,
     val canonicalClusters: Long,
     val firstIngestionRunId: UUID?,
+    val traceVersion: String?,
+    val runAttemptStatus: String?,
+    val runAttemptNumber: Int?,
+    val runLastStage: String?,
+    val runLastStepStatus: String?,
 )
 data class LinkedCompanyResponse(
     val id: UUID,
@@ -284,6 +289,11 @@ fun DocumentListItem.toResponse() = DocumentListItemResponse(
     eventReports = eventReports,
     canonicalClusters = canonicalClusters,
     firstIngestionRunId = firstIngestionRunId,
+    traceVersion = traceVersion,
+    runAttemptStatus = runAttemptStatus,
+    runAttemptNumber = runAttemptNumber,
+    runLastStage = runLastStage,
+    runLastStepStatus = runLastStepStatus,
 )
 fun DocumentDetail.toResponse() = DocumentDetailResponse(
     generatedAt = generatedAt,
@@ -386,6 +396,7 @@ data class OperationRunResponse(
     val updatedAt: Instant,
     val durationMs: Long?,
     val captureComplete: Boolean,
+    val traceVersion: String?,
     val documentsConsidered: Int,
     val documentsCompleted: Int,
     val documentsSkipped: Int,
@@ -452,6 +463,7 @@ fun OperationRun.toResponse() = OperationRunResponse(
     updatedAt = updatedAt,
     durationMs = durationMs,
     captureComplete = captureComplete,
+    traceVersion = traceVersion,
     documentsConsidered = documentsConsidered,
     documentsCompleted = documentsCompleted,
     documentsSkipped = documentsSkipped,

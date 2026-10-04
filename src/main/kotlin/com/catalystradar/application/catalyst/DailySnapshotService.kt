@@ -42,7 +42,7 @@ class DailySnapshotService(
             recorder.progress(id, counts)
             for (company in activeCompanies) {
                 try {
-                    catalyst.recalculate(company.id, asOf)
+                    catalyst.recalculate(company.id, asOf, id)
                     counts = counts.copy(companiesRescored = counts.companiesRescored + 1)
                 } catch (e: CancellationException) {
                     throw e

@@ -48,7 +48,12 @@ class EventNormalizationService(
         result: ExtractionResult,
         allowedCompanies: Collection<Company>,
     ): List<NormalizedEvent> {
-        val validated = validator.validate(result)
+        return prepareValidatedDocument(document, validateDocument(result), allowedCompanies)
+    }
+
+    fun validateDocument(result: ExtractionResult): ExtractionResult = validator.validate(result)
+
+    fun prepareValidatedDocument(document: SourceDocument, validated: ExtractionResult, allowedCompanies: Collection<Company>): List<NormalizedEvent> {
         if (!validated.documentRelevant) return emptyList()
         val companiesByTicker = companiesByTicker(allowedCompanies)
         return validated.events.mapNotNull { candidate ->

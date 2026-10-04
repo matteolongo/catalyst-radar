@@ -49,7 +49,7 @@ class DailySnapshotObservabilityTest : PostgresIntegrationTest() {
         val failing = fixtures.company("AAA")
         val succeeding = fixtures.company("ZZZ")
         val catalyst = mock<CatalystService>()
-        whenever(catalyst.recalculate(eq(failing), any())).thenThrow(IllegalStateException("secret test failure"))
+        whenever(catalyst.recalculate(eq(failing), any(), any())).thenThrow(IllegalStateException("secret test failure"))
         clearInvocations(polygon, finnhub, extraction, embedding)
         val recorder = recorder()
         val service = DailySnapshotService(companies, catalyst, recorder)
@@ -57,7 +57,7 @@ class DailySnapshotObservabilityTest : PostgresIntegrationTest() {
         val result = service.recalculateActive(t0, OperationTrigger.SCHEDULED)
 
         assertEquals(DailySnapshotStatus.PARTIAL, result.status)
-        verify(catalyst).recalculate(succeeding, t0)
+        verify(catalyst).recalculate(eq(succeeding), eq(t0), any())
         val run = runs.search(RunQuery(window, OperationKind.DAILY_SNAPSHOTS), t0.plusSeconds(60)).items.single()
         assertEquals(OperationStatus.PARTIAL, run.status)
         assertEquals(1, run.companiesRescored)
@@ -91,7 +91,7 @@ class DailySnapshotObservabilityTest : PostgresIntegrationTest() {
         val result = DailySnapshotService(companies, catalyst, recorder).recalculateActive(historicalAsOf)
 
         assertEquals(DailySnapshotStatus.SUCCESS, result.status)
-        verify(catalyst).recalculate(company, historicalAsOf)
+        verify(catalyst).recalculate(eq(company), eq(historicalAsOf), any())
         val success = runs.search(RunQuery(window, OperationKind.DAILY_SNAPSHOTS), t0.plusSeconds(60)).items.single()
         assertEquals(historicalAsOf, success.asOf)
         assertEquals(t0, success.startedAt)
@@ -99,7 +99,7 @@ class DailySnapshotObservabilityTest : PostgresIntegrationTest() {
         assertEquals(OperationTrigger.MANUAL, success.trigger)
         assertEquals(listOf(OperationPhaseTiming("SCORING", t0, t0, 0L)), assertNotNull(runs.detail(success.id, t0)).phases)
         assertEquals(OperationStatus.RUNNING, runs.detail(unfinishedPipeline, t0)?.run?.status)
-        whenever(catalyst.recalculate(eq(company), any())).thenThrow(IllegalStateException("failure"))
+        whenever(catalyst.recalculate(eq(company), any(), any())).thenThrow(IllegalStateException("failure"))
         DailySnapshotService(companies, catalyst, recorder(t0.plusSeconds(10))).recalculateActive(t0)
         val lastSuccess = summary.read(window, t0.plusSeconds(60), emptySet()).lastSnapshotSuccessAt
         assertEquals(t0, lastSuccess)
@@ -118,7 +118,7 @@ class DailySnapshotObservabilityTest : PostgresIntegrationTest() {
         fixtures.company("AAA")
         val cancelled = fixtures.company("ZZZ")
         val catalyst = mock<CatalystService>()
-        whenever(catalyst.recalculate(eq(cancelled), any())).thenThrow(CancellationException("secret cancellation"))
+        whenever(catalyst.recalculate(eq(cancelled), any(), any())).thenThrow(CancellationException("secret cancellation"))
         val recorder = recorder()
         val service = DailySnapshotService(companies, catalyst, recorder)
 

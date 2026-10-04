@@ -1,5 +1,6 @@
 package com.catalystradar.operations
 
+import com.catalystradar.persistence.operations.DocumentStepStore
 import com.catalystradar.application.catalyst.CatalystService
 import com.catalystradar.application.event.EventNormalizationService
 import com.catalystradar.application.ingestion.SourceDocumentRegistrationService
@@ -41,6 +42,7 @@ class PipelineObservabilityTest : PostgresIntegrationTest() {
     @Autowired private lateinit var documentCompanies: SourceDocumentCompanyStore
     @Autowired private lateinit var processing: DocumentProcessingStore
     @Autowired private lateinit var modelRuns: ModelRunStore
+    @Autowired private lateinit var steps: DocumentStepStore
     @Autowired private lateinit var recorder: OperationRunRecorder
     @Autowired private lateinit var attempts: ProcessingAttemptService
     @Autowired private lateinit var documentStore: DocumentInspectionStore
@@ -60,7 +62,7 @@ class PipelineObservabilityTest : PostgresIntegrationTest() {
             companyStore = companyStore, registrations = registrations, ingestionRuns = ingestionRuns,
             normalization = normalization, clusters = clusters, events = events, persistence = persistence,
             catalyst = catalyst, documents = documents, documentCompanies = documentCompanies,
-            processing = processing, modelRuns = modelRuns, recorder = recorder, attempts = attempts,
+            processing = processing, modelRuns = modelRuns, recorder = recorder, attempts = attempts, steps = steps,
         )
     }
 
