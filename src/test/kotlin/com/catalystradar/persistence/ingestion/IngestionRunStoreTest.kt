@@ -1,10 +1,14 @@
 package com.catalystradar.persistence.ingestion
 
 import com.catalystradar.application.ingestion.IngestionStatus
+import com.catalystradar.operations.OperationsFixtures
 import com.catalystradar.persistence.PostgresIntegrationTest
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -15,6 +19,9 @@ class IngestionRunStoreTest : PostgresIntegrationTest() {
 
     @Autowired
     private lateinit var runs: IngestionRunStore
+
+    @Autowired
+    private lateinit var jdbc: JdbcClient
 
     @Test
     fun `starts runs as running`() {
@@ -48,6 +55,22 @@ class IngestionRunStoreTest : PostgresIntegrationTest() {
         assertEquals(7, run.added)
         assertEquals(3, run.duplicates)
         assertNotNull(run.finishedAt)
+    }
+
+    @Test
+    fun `legacy run projections retain persisted operation and error codes`() {
+        val at = Instant.parse("2099-10-04T10:00:00Z")
+        val operationRunId = OperationsFixtures(jdbc).run(at)
+        val ingestionRunId = UUID.randomUUID()
+        jdbc.sql("""INSERT INTO ingestion_runs(id,provider,status,operation_run_id,error_code,started_at,finished_at)
+            VALUES(:id,'polygon','FAILED',:runId,'RATE_LIMITED',:started::timestamptz,:finished::timestamptz)""")
+            .param("id", ingestionRunId).param("runId", operationRunId)
+            .param("started", at.toString()).param("finished", at.plusSeconds(5).toString()).update()
+
+        val run = requireNotNull(runs.findById(ingestionRunId))
+
+        assertEquals(operationRunId, run.runId)
+        assertEquals("RATE_LIMITED", run.errorCode)
     }
 
     @Test

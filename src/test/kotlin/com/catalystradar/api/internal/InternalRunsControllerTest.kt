@@ -72,6 +72,36 @@ class InternalRunsControllerTest {
     }
 
     @Test
+    fun `legacy ingestion response includes optional operation and error metadata`() {
+        val operationRunId = UUID.randomUUID()
+        `when`(ingestionRuns.listRecent(20)).thenReturn(
+            listOf(
+                IngestionRunRow(
+                    id = UUID.randomUUID(),
+                    provider = "polygon",
+                    status = IngestionStatus.PARTIAL.name,
+                    cursor = null,
+                    fetched = 10,
+                    added = 7,
+                    duplicates = 3,
+                    error = "legacy provider error",
+                    startedAt = t0.minusSeconds(5),
+                    finishedAt = t0,
+                    runId = operationRunId,
+                    errorCode = "RATE_LIMITED",
+                ).toRecord(),
+            ),
+        )
+
+        mockMvc.get("/internal/ingestion/runs") { header("X-Admin-Key", "test-admin") }.andExpect {
+            status { isOk() }
+            jsonPath("$.runs[0].runId") { value(operationRunId.toString()) }
+            jsonPath("$.runs[0].errorCode") { value("RATE_LIMITED") }
+            jsonPath("$.runs[0].durationMs") { value(5000) }
+        }
+    }
+
+    @Test
     fun `lists recent model runs with cost metadata`() {
         `when`(modelRuns.listRecent(50)).thenReturn(
             listOf(

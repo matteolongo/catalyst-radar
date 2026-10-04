@@ -10,6 +10,6 @@ private val TICKER_PATTERN = Regex("^[A-Z0-9][A-Z0-9.\\-]{0,15}$")
 fun normalizeTicker(raw: String): String {
     val normalized = raw.trim().uppercase()
     require(normalized.isNotBlank()) { "ticker must not be blank" }
-    require(TICKER_PATTERN.matches(normalized)) { "invalid ticker: $raw" }
+    require(TICKER_PATTERN.matches(normalized)) { "invalid ticker" }
     return normalized
 }

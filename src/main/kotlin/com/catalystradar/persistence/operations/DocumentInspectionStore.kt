@@ -142,25 +142,32 @@ class DocumentInspectionStore(
             .groupBy({ it.first }, { it.second })
     }
 
-    private fun listItem(rs: ResultSet) = DocumentListItem(
-        id = rs.uuid("id"),
-        provider = rs.getString("provider"),
-        title = rs.getString("title"),
-        publishedAt = rs.instant("published_at"),
-        discoveredAt = requireNotNull(rs.instant("discovered_at")),
-        createdAt = requireNotNull(rs.instant("created_at")),
-        state = DocumentState.valueOf(rs.getString("state")),
-        attemptCount = rs.getObject("attempt_count", Int::class.javaObjectType),
-        nextAttemptAt = rs.instant("next_attempt_at"),
-        updatedAt = rs.instant("updated_at"),
-        lastErrorCode = rs.getString("last_error_code"),
-        lastErrorMessage = rs.getString("last_error_message"),
-        tickers = emptyList(),
-        tickersTruncated = false,
-        eventReports = rs.getLong("event_reports"),
-        canonicalClusters = rs.getLong("canonical_clusters"),
-        firstIngestionRunId = rs.getObject("first_ingestion_run_id", UUID::class.java),
-    )
+    private fun listItem(rs: ResultSet): DocumentListItem {
+        val state = DocumentState.valueOf(rs.getString("state"))
+        val storedErrorCode = rs.getString("last_error_code")
+        val hasRecordedError = storedErrorCode != null || rs.getString("last_error_message") != null ||
+            state in setOf(DocumentState.RETRYABLE_ERROR, DocumentState.TERMINAL_ERROR)
+        val errorCode = storedErrorCode ?: if (hasRecordedError) "UNKNOWN_FAILURE" else null
+        return DocumentListItem(
+            id = rs.uuid("id"),
+            provider = rs.getString("provider"),
+            title = rs.getString("title"),
+            publishedAt = rs.instant("published_at"),
+            discoveredAt = requireNotNull(rs.instant("discovered_at")),
+            createdAt = requireNotNull(rs.instant("created_at")),
+            state = state,
+            attemptCount = rs.getObject("attempt_count", Int::class.javaObjectType),
+            nextAttemptAt = rs.instant("next_attempt_at"),
+            updatedAt = rs.instant("updated_at"),
+            lastErrorCode = errorCode,
+            lastErrorMessage = errorCode?.let(OperationalErrors::message),
+            tickers = emptyList(),
+            tickersTruncated = false,
+            eventReports = rs.getLong("event_reports"),
+            canonicalClusters = rs.getLong("canonical_clusters"),
+            firstIngestionRunId = rs.getObject("first_ingestion_run_id", UUID::class.java),
+        )
+    }
 
     private fun ResultSet.instant(column: String): Instant? = getTimestamp(column)?.toInstant()
     private fun ResultSet.uuid(column: String): UUID = getObject(column, UUID::class.java)

@@ -173,6 +173,17 @@ class InternalOperationsControllerTest {
     }
 
     @Test
+    fun `invalid ticker input is not echoed in admin problem details`() {
+        val privateInput = "article_body_private_123"
+        val body = mockMvc.get("/internal/operations/documents?ticker=$privateInput") {
+            header("X-Admin-Key", "test-admin")
+        }.andReturn().response.contentAsString
+
+        kotlin.test.assertTrue(body.contains("INVALID_REQUEST"))
+        kotlin.test.assertFalse(body.contains(privateInput))
+    }
+
+    @Test
     fun `exact ingestion id lookup is independent from the activity window`() {
         val id = UUID.randomUUID()
         val startedAt = Instant.parse("2026-08-01T00:00:00Z")

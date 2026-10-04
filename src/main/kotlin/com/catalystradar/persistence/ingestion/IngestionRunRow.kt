@@ -20,6 +20,8 @@ data class IngestionRunRow(
     @Column("error_summary") val error: String?,
     @Column("started_at") val startedAt: Instant,
     @Column("finished_at") val finishedAt: Instant?,
+    @Column("operation_run_id") val runId: UUID? = null,
+    @Column("error_code") val errorCode: String? = null,
 )
 
 data class IngestionRunRecord(
@@ -48,4 +50,6 @@ fun IngestionRunRow.toRecord() = IngestionRunRecord(
     finishedAt = finishedAt,
     startedAt = startedAt,
     durationMs = finishedAt?.let { Duration.between(startedAt, it).toMillis() },
+    runId = runId,
+    errorCode = errorCode,
 )

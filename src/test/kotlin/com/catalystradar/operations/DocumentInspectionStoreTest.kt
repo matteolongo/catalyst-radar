@@ -99,6 +99,29 @@ class DocumentInspectionStoreTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `document failures expose only classified safe messages and normalize legacy codes`() {
+        val legacy = fixtures.document(at)
+        fixtures.processing(legacy, "TERMINAL_ERROR", attempts = 1, updatedAt = at)
+        jdbc.sql("UPDATE document_processing SET last_error_message='private provider response' WHERE source_document_id=:id")
+            .param("id", legacy).update()
+
+        val legacyItem = requireNotNull(store.detail(legacy, at, maxAttempts = 3)).document
+        assertEquals("UNKNOWN_FAILURE", legacyItem.lastErrorCode)
+        assertEquals(OperationalErrors.message("UNKNOWN_FAILURE"), legacyItem.lastErrorMessage)
+        assertFalse(legacyItem.lastErrorMessage.orEmpty().contains("private provider response"))
+
+        val classified = fixtures.document(at)
+        fixtures.processing(classified, "RETRYABLE_ERROR", attempts = 1, next = at, updatedAt = at)
+        jdbc.sql("UPDATE document_processing SET last_error_code='RATE_LIMITED',last_error_message='private provider response' WHERE source_document_id=:id")
+            .param("id", classified).update()
+        val classifiedItem = store.search(DocumentQuery(from = at, to = at.plusSeconds(1)), at, emptySet())
+            .items.single { it.id == classified }
+        assertEquals("RATE_LIMITED", classifiedItem.lastErrorCode)
+        assertEquals(OperationalErrors.message("RATE_LIMITED"), classifiedItem.lastErrorMessage)
+        assertFalse(classifiedItem.lastErrorMessage.orEmpty().contains("private provider response"))
+    }
+
+    @Test
     fun `filters use literal title normalized ticker provider and half open capture times`() {
         val match = fixtures.document(at, title = "Revenue +10%", provider = "finnhub")
         fixtures.link(match, fixtures.company("AAA"))
