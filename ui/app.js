@@ -1,14 +1,14 @@
-/* CatalystRadar dashboard — vanilla JS, no dependencies.
- * Reads the versioned API plus the admin run-history endpoints.
- * Keys live in sessionStorage and are sent only to the routes that need them.
- */
+/* CatalystRadar dashboard — vanilla JavaScript, served with the application. */
 (function () {
   'use strict';
 
   var API_BASE = window.location.origin;
   var ADMIN_KEY_NAME = 'catalyst-admin-key';
   var API_KEY_NAME = 'catalyst-api-key';
-  var pipelineRunning = false;
+  var credentialRevision = 0;
+  var publicRequests = new Set();
+  var operations;
+  var currentView = 'overview';
   var discoveryOffset = 0;
   var discoveryTotal = 0;
   var discoveryLimit = 20;
@@ -39,7 +39,7 @@
   function fmtTime(iso) {
     if (!iso) return '–';
     var date = new Date(iso);
-    return isNaN(date) ? String(iso) : date.toLocaleString();
+    return isNaN(date) ? String(iso) : date.toLocaleString('en-US', { timeZone: 'UTC' });
   }
 
   function fmtInt(value) {
@@ -62,101 +62,86 @@
   }
 
   async function api(path, options) {
-    var headers = { 'Accept': 'application/json' };
+    if (typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//') || path.indexOf('\\') >= 0) {
+      throw new TypeError('API paths must be local absolute paths');
+    }
+    var url = new URL(path, API_BASE);
+    if (url.origin !== API_BASE || url.hash) throw new TypeError('API paths must stay on this origin');
+    options = options || {};
+    var allowed = ['method', 'body', 'signal'];
+    Object.keys(options).forEach(function (key) {
+      if (!allowed.includes(key)) throw new TypeError('Unsupported API request option: ' + key);
+    });
+    var method = String(options.method || 'GET').toUpperCase();
+    if (!['GET', 'POST'].includes(method)) throw new TypeError('Unsupported API method');
+    if (options.body !== undefined && method !== 'POST') throw new TypeError('Only POST requests may have a body');
+    var headers = { Accept: 'application/json' };
     var adminKey = window.sessionStorage.getItem(ADMIN_KEY_NAME);
     var apiKey = window.sessionStorage.getItem(API_KEY_NAME);
-    if (path.startsWith('/internal/') && adminKey) headers['X-Admin-Key'] = adminKey;
-    if (path.startsWith('/v1/') && apiKey) headers.Authorization = 'Bearer ' + apiKey;
-    var response = await fetch(API_BASE + path, Object.assign({ headers: headers }, options));
-    var body = await response.json().catch(function () { return {}; });
-    if (!response.ok) {
-      throw new Error(body.detail || body.title || ('HTTP ' + response.status));
+    if (url.pathname.startsWith('/internal/') && adminKey) headers['X-Admin-Key'] = adminKey;
+    if (url.pathname.startsWith('/v1/') && apiKey) headers.Authorization = 'Bearer ' + apiKey;
+    var fetchOptions = { method: method, headers: headers };
+    if (options.signal) fetchOptions.signal = options.signal;
+    if (options.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      fetchOptions.body = JSON.stringify(options.body);
     }
-    return body;
+    var controller;
+    if (method === 'GET' && url.pathname.startsWith('/v1/') && !options.signal) {
+      controller = new AbortController();
+      publicRequests.add(controller);
+      fetchOptions.signal = controller.signal;
+    }
+    try {
+      var response = await fetch(url.href, fetchOptions);
+      var body = await response.json().catch(function () { return {}; });
+      if (!response.ok) {
+        var error = new Error(body.detail || body.title || ('HTTP ' + response.status));
+        error.status = body.status || response.status;
+        error.code = body.code;
+        error.requestId = body.requestId;
+        throw error;
+      }
+      return body;
+    } finally {
+      if (controller) publicRequests.delete(controller);
+    }
+  }
+
+  function abortPublicReads() {
+    publicRequests.forEach(function (controller) { controller.abort(); });
+    publicRequests.clear();
+  }
+
+  function invalidatePublicCredentials() {
+    abortPublicReads();
+    discoveryRequest++;
+    companyRequest++;
+    historyRequest++;
+    eventRequest++;
+    discoveryLoading = false;
+    companyEventsLoading = false;
+    eventLoading = false;
+    eventLoaded = false;
+    currentCompany = '';
+    companyEvents = [];
+    companyNextCursor = null;
+    eventItems = [];
+    eventNextCursor = null;
+    ['discoveryResults', 'discoveryAsOf', 'pageSummary', 'companyOverview', 'companyScore', 'companyHistory',
+      'companyExplanation', 'companyEvents', 'companyEventsStatus', 'eventResults'].forEach(function (id) {
+      $(id).innerHTML = '';
+      $(id).textContent = '';
+    });
+    $('companyTitle').textContent = 'Company analysis';
+    ['discoveryStatus', 'eventStatus'].forEach(function (id) { $(id).textContent = 'Credentials changed. Refresh to load data.'; });
+    ['previousPage', 'nextPage', 'loadCompanyEvents', 'loadEvents'].forEach(function (id) { $(id).disabled = true; });
+    clearError();
   }
 
   function statusPill(status) {
     var cls = status === 'SUCCESS' ? 'ok' : (status === 'PARTIAL' ? 'warn' : (status === 'FAILED' ? 'bad' : 'info'));
     return '<span class="pill ' + cls + '">' + esc(status) + '</span>';
-  }
-
-  async function refreshHealth() {
-    var el = $('health');
-    try {
-      var health = await api('/actuator/health');
-      var up = health.status === 'UP';
-      el.textContent = up ? 'API up' : 'API ' + health.status;
-      el.className = 'pill ' + (up ? 'ok' : 'bad');
-    } catch (err) {
-      el.textContent = 'API unreachable';
-      el.className = 'pill bad';
-    }
-  }
-
-  async function refreshIngestionRuns() {
-    var rows;
-    try {
-      rows = (await api('/internal/ingestion/runs?limit=20')).runs;
-    } catch (err) {
-      $('ingestionRows').innerHTML = '<tr><td colspan="7" class="muted">Unable to load runs.</td></tr>';
-      showError('Ingestion runs: ' + err.message);
-      return;
-    }
-    if (!rows.length) {
-      $('ingestionRows').innerHTML = '<tr><td colspan="7" class="muted">No runs yet.</td></tr>';
-      return;
-    }
-    $('ingestionRows').innerHTML = rows.map(function (run) {
-      return '<tr><td>' + esc(fmtTime(run.finishedAt)) + '</td><td>' + esc(run.provider) + '</td>' +
-        '<td>' + statusPill(run.status) + '</td>' +
-        '<td class="num">' + fmtInt(run.fetched) + '</td>' +
-        '<td class="num">' + fmtInt(run.added) + '</td>' +
-        '<td class="num">' + fmtInt(run.duplicates) + '</td>' +
-        '<td>' + esc(run.error || '') + '</td></tr>';
-    }).join('');
-  }
-
-  async function refreshModelRuns() {
-    var rows;
-    try {
-      rows = (await api('/internal/model-runs?limit=50')).runs;
-    } catch (err) {
-      $('modelRows').innerHTML = '<tr><td colspan="9" class="muted">Unable to load model runs.</td></tr>';
-      $('totalIn').textContent = '–';
-      $('totalOut').textContent = '–';
-      $('totalCost').textContent = '–';
-      showError('Model runs: ' + err.message);
-      return;
-    }
-    if (!rows.length) {
-      $('modelRows').innerHTML = '<tr><td colspan="9" class="muted">No model runs yet.</td></tr>';
-      $('totalIn').textContent = '–';
-      $('totalOut').textContent = '–';
-      $('totalCost').textContent = '–';
-      return;
-    }
-    var totalIn = 0, totalOut = 0, totalCost = 0;
-    $('modelRows').innerHTML = rows.map(function (run) {
-      totalIn += run.inputTokens || 0;
-      totalOut += run.outputTokens || 0;
-      totalCost += Number(run.estimatedCost || 0);
-      var ok = run.success
-        ? '<span class="st-ok">yes</span>'
-        : '<span class="st-bad">no</span>';
-      return '<tr><td>' + esc(fmtTime(run.createdAt)) + '</td><td>' + esc(run.operation) + '</td>' +
-        '<td>' + esc(run.model) + '</td>' +
-        '<td class="num">' + fmtInt(run.inputTokens) + '</td>' +
-        '<td class="num">' + fmtInt(run.outputTokens) + '</td>' +
-        '<td class="num">' + fmtInt(run.latencyMs) + ' ms</td>' +
-        '<td class="num">' + fmtCost(run.estimatedCost) + '</td>' +
-        '<td>' + ok + '</td><td>' + esc(run.error || '') +
-        '<details><summary>Details</summary><dl><dt>Prompt version</dt><dd>' + esc(run.promptVersion || '–') +
-        '</dd><dt>Extractor version</dt><dd>' + esc(run.extractorVersion || '–') +
-        '</dd><dt>Source document ID</dt><dd>' + esc(run.sourceDocumentId || '–') + '</dd></dl></details></td></tr>';
-    }).join('');
-    $('totalIn').textContent = fmtInt(totalIn);
-    $('totalOut').textContent = fmtInt(totalOut);
-    $('totalCost').textContent = fmtCost(totalCost);
   }
 
   function readDiscoveryFilters() {
@@ -181,7 +166,25 @@
   }
 
   function timeLabel(value) {
-    return '<time datetime="' + esc(value || '') + '">' + esc(fmtTime(value)) + '</time>';
+    return '<time datetime="' + esc(value || '') + '">' + esc(fmtTime(value)) + (value ? ' UTC' : '') + '</time>';
+  }
+
+  function sourceInspection(report) {
+    var id = report.sourceDocumentId || (report.source && report.source.sourceDocumentId);
+    if (!id) return '';
+    var route = '?view=documents&documentId=' + encodeURIComponent(id) + '&documentTab=source';
+    return '<a href="' + esc(currentCredentials().hasAdmin ? route : '?view=settings') +
+      '" data-source-document-id="' + esc(id) + '">Inspect source in backoffice</a>';
+  }
+
+  function inspectSource(event) {
+    var link = event.target.closest('[data-source-document-id]');
+    if (!link || !link.dataset.sourceDocumentId) return false;
+    event.preventDefault();
+    var route = '?view=documents&documentId=' + encodeURIComponent(link.dataset.sourceDocumentId) + '&documentTab=source';
+    if (currentCredentials().hasAdmin) navigate(route, { returnSearch: window.location.search });
+    else navigate('?view=settings', { returnSearch: route });
+    return true;
   }
 
   function sourceLabel(source) {
@@ -234,7 +237,7 @@
       '<div><dt>7-day velocity</dt><dd>' + esc(fmtScore(data.velocity7d)) + '</dd></div>' +
       '<div><dt>Total events</dt><dd>' + esc(fmtInt(data.totalEvents)) + '</dd></div>' +
       '<div><dt>Events 7d</dt><dd>' + esc(fmtInt(data.events7d)) + '</dd></div>' +
-      '<div><dt>As of</dt><dd>' + timeLabel(data.asOf) + '</dd></div>' +
+      '<div><dt>Saved as of</dt><dd>' + timeLabel(data.asOf) + '</dd></div>' +
       '<div><dt>Score version</dt><dd>' + esc(data.scoreVersion) + '</dd></div>' +
       '<div><dt>Taxonomy version</dt><dd>' + esc(data.taxonomyVersion) + '</dd></div></dl>';
     if (data.explanationStatus !== 'RECONSTRUCTED_SCORE_MATCH') {
@@ -252,7 +255,7 @@
       return '<article class="driver"><h4>' + esc(driver.direction) + ' · ' + esc(driver.family || 'Unclassified') + ' / ' + esc(driver.type) + '</h4>' +
         '<p>Raw event contribution: ' + esc(fmtScore(driver.contribution)) + '</p>' +
         '<p>Event date: ' + timeLabel(driver.eventTimestamp) + ' · First captured: ' + timeLabel(driver.discoveredAt) + '</p>' +
-        evidenceList(driver.evidence) + '<p>' + sourceLabel(driver.source) + '</p>' +
+        evidenceList(driver.evidence) + '<p>' + sourceLabel(driver.source) + '</p><p>' + sourceInspection(driver) + '</p>' +
         '<details><summary>Scoring details</summary><p>Score version: ' + esc(data.scoreVersion) + '</p>' + factorDetails(driver) + '</details></article>';
     }).join('');
     var calcFields = ['contributionSum', 'familyCount', 'convergenceMultiplier', 'rawScore', 'normalizationScale', 'contributionCutoff'];
@@ -279,8 +282,8 @@
   }
 
   function renderHistory(data) {
-    var snapshots = (data.snapshots || []).slice().sort(function (a, b) { return new Date(a.asOf) - new Date(b.asOf); });
-    var transitions = (data.transitions || []).slice().sort(function (a, b) { return new Date(a.at) - new Date(b.at); });
+    var snapshots = (data.snapshots || []).slice(0, 200).sort(function (a, b) { return new Date(a.asOf) - new Date(b.asOf); });
+    var transitions = (data.transitions || []).slice(0, 200).sort(function (a, b) { return new Date(a.at) - new Date(b.at); });
     var transitionList = transitions.length ? '<p>State transitions at persisted times:</p><ul>' + transitions.map(function (t) {
       return '<li>' + timeLabel(t.at) + ' · ' + esc(t.from) + ' → ' + esc(t.to) + ' · score ' + esc(fmtScore(t.score)) + '</li>';
     }).join('') + '</ul>' : '';
@@ -297,10 +300,10 @@
     var chart = (snapshots.length === 1 ? '<p>Insufficient history for a trend chart. One stored snapshot is available.</p>' : '') +
       '<p class="muted small">Only stored snapshot points are shown; gaps have no implied values.</p><svg viewBox="0 0 600 150" role="img" aria-label="Stored catalyst score snapshot points and state transitions; data table follows">' +
       '<line x1="30" y1="130" x2="570" y2="130" class="axis"/><line x1="30" y1="20" x2="30" y2="130" class="axis"/>' +
-      snapshots.map(function (s) { return '<circle class="score-point" cx="' + x(s.asOf) + '" cy="' + y(s.score) + '" r="4"><title>' + esc(s.asOf) + ' · ' + esc(fmtScore(s.score)) + ' · ' + esc(s.state) + '</title></circle>'; }).join('') +
-      transitions.map(function (t) { return '<path class="transition-mark" d="M' + x(t.at) + ' 20V130"><title>' + esc(t.at) + ' · ' + esc(t.from) + ' → ' + esc(t.to) + '</title></path>'; }).join('') + '</svg>';
+      snapshots.map(function (s) { return '<circle class="score-point" cx="' + x(s.asOf) + '" cy="' + y(s.score) + '" r="4"><title>' + esc(fmtTime(s.asOf)) + ' UTC · ' + esc(fmtScore(s.score)) + ' · ' + esc(s.state) + '</title></circle>'; }).join('') +
+      transitions.map(function (t) { return '<path class="transition-mark" d="M' + x(t.at) + ' 20V130"><title>' + esc(fmtTime(t.at)) + ' UTC · ' + esc(t.from) + ' → ' + esc(t.to) + '</title></path>'; }).join('') + '</svg>';
     $('companyHistory').innerHTML = chart + '<div class="history-table"><table><caption>Stored score snapshots</caption><thead><tr><th>Date</th><th>Score</th><th>State</th><th>As of</th></tr></thead><tbody>' +
-      snapshots.map(function (s) { return '<tr><td>' + esc((s.asOf || '').slice(0, 10)) + '</td><td>' + esc(fmtScore(s.score)) + '</td><td>' + esc(s.state) + '</td><td>' + timeLabel(s.asOf) + '</td></tr>'; }).join('') +
+      snapshots.map(function (s) { return '<tr><td>' + esc(s.asOf && !isNaN(new Date(s.asOf)) ? new Date(s.asOf).toISOString().slice(0, 10) : '–') + '</td><td>' + esc(fmtScore(s.score)) + '</td><td>' + esc(s.state) + '</td><td>' + timeLabel(s.asOf) + '</td></tr>'; }).join('') +
       '</tbody></table></div>' + transitionList;
   }
 
@@ -315,7 +318,7 @@
       return '<article class="event-cluster"><h4>' + (group.length > 1 ? 'Reports about one catalyst' : 'Event report') + '</h4>' + group.map(function (event) {
         return '<div class="event-report"><strong>' + esc(event.direction) + ' · ' + esc(event.family) + ' / ' + esc(event.type) + '</strong>' +
           '<p>Event date: ' + timeLabel(event.eventTimestamp) + ' · First captured: ' + timeLabel(event.discoveredAt) + '</p>' +
-          evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p></div>';
+          evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p><p>' + sourceInspection(event) + '</p></div>';
       }).join('') + '</article>';
     }).join('') : '<p>No company events found.</p>';
     $('loadCompanyEvents').classList[companyNextCursor ? 'remove' : 'add']('hidden');
@@ -343,7 +346,7 @@
         '<strong>' + esc(event.direction) + ' · ' + esc(event.family) + ' / ' + esc(event.type) + '</strong>' +
         '<p>Event date: ' + timeLabel(event.eventTimestamp) + ' · First captured: ' + timeLabel(event.discoveredAt) + '</p>' +
         '<p class="muted small">Cluster: ' + esc(event.clusterId || 'unclustered') + '</p>' +
-        evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p></article>';
+        evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p><p>' + sourceInspection(event) + '</p></article>';
     }).join('') : '<p>No events match these filters.</p>';
     $('loadEvents').classList[eventNextCursor ? 'remove' : 'add']('hidden');
     $('loadEvents').disabled = !eventNextCursor || eventLoading;
@@ -361,25 +364,26 @@
     var query = new URLSearchParams(appliedEventFilters);
     if (!reset) query.set('cursor', eventNextCursor);
     var request = ++eventRequest;
+    var revision = credentialRevision;
     eventLoading = true;
     eventLoaded = true;
     $('eventStatus').textContent = 'Loading events…';
     $('loadEvents').disabled = true;
     try {
       var page = await api('/v1/events?' + query.toString());
-      if (request !== eventRequest) return;
+      if (revision !== credentialRevision || request !== eventRequest || currentView !== 'events') return;
       eventItems = eventItems.concat(page.events || []);
       eventNextCursor = page.nextCursor || null;
       $('eventStatus').textContent = eventItems.length + ' loaded reports' + (eventNextCursor ? '; more available.' : '.');
       renderEvents();
     } catch (err) {
-      if (request !== eventRequest) return;
+      if (revision !== credentialRevision || request !== eventRequest || currentView !== 'events') return;
       $('eventStatus').textContent = reset ? 'Unable to load events. Try searching again.' : 'Unable to load more events. Try again.';
       if (reset) $('eventResults').textContent = '';
       else renderEvents();
       showError('Events: ' + err.message);
     } finally {
-      if (request === eventRequest) {
+      if (revision === credentialRevision && request === eventRequest && currentView === 'events') {
         eventLoading = false;
         $('loadEvents').disabled = !eventNextCursor;
       }
@@ -388,6 +392,7 @@
 
   async function loadCompanyEvents(ticker, request, reset) {
     if (companyEventsLoading || (!reset && !companyNextCursor)) return;
+    var revision = credentialRevision;
     companyEventsLoading = true;
     $('companyEventsStatus').textContent = '';
     if (reset) { companyEvents = []; companyNextCursor = null; $('companyEvents').textContent = 'Loading events…'; }
@@ -397,13 +402,13 @@
     if (!reset) query.set('cursor', companyNextCursor);
     try {
       var page = await api(companyPath(ticker, '/events', query));
-      if (request !== companyRequest) return;
+      if (revision !== credentialRevision || request !== companyRequest || currentView !== 'company') return;
       companyEvents = companyEvents.concat(page.events || []);
       companyNextCursor = page.nextCursor;
       companyEventsLoading = false;
       renderCompanyEvents();
     } catch (_) {
-      if (request === companyRequest) {
+      if (revision === credentialRevision && request === companyRequest && currentView === 'company') {
         companyEventsLoading = false;
         if (reset) companyPanelError('companyEvents', 'company events');
         else {
@@ -411,20 +416,22 @@
           renderCompanyEvents();
         }
       }
-    } finally { if (request === companyRequest) companyEventsLoading = false; }
+    } finally { if (revision === credentialRevision && request === companyRequest && currentView === 'company') companyEventsLoading = false; }
   }
 
   async function loadCompanyHistory(ticker, request) {
     var sequence = ++historyRequest;
+    var revision = credentialRevision;
     $('companyHistory').textContent = 'Loading score history…';
     try {
       var data = await api(companyPath(ticker, '/timeline', historyQuery()));
-      if (request === companyRequest && sequence === historyRequest) renderHistory(data);
-    } catch (_) { if (request === companyRequest && sequence === historyRequest) companyPanelError('companyHistory', 'score history'); }
+      if (revision === credentialRevision && request === companyRequest && sequence === historyRequest && currentView === 'company') renderHistory(data);
+    } catch (_) { if (revision === credentialRevision && request === companyRequest && sequence === historyRequest && currentView === 'company') companyPanelError('companyHistory', 'score history'); }
   }
 
   function refreshCompany(ticker) {
     var request = ++companyRequest;
+    var revision = credentialRevision;
     historyRequest++;
     currentCompany = ticker;
     companyEvents = [];
@@ -438,12 +445,12 @@
     $('companyEventsStatus').textContent = '';
     $('loadCompanyEvents').classList.add('hidden');
     api(companyPath(ticker, '')).then(function (company) {
-      if (request === companyRequest) renderCompanyOverview(company);
-    }).catch(function () { if (request === companyRequest) companyPanelError('companyOverview', 'company'); });
+      if (revision === credentialRevision && request === companyRequest && currentView === 'company') renderCompanyOverview(company);
+    }).catch(function () { if (revision === credentialRevision && request === companyRequest && currentView === 'company') companyPanelError('companyOverview', 'company'); });
     api(companyPath(ticker, '/catalyst')).then(function (data) {
-      if (request === companyRequest) renderCatalyst(data);
+      if (revision === credentialRevision && request === companyRequest && currentView === 'company') renderCatalyst(data);
     }).catch(function () {
-      if (request === companyRequest) { companyPanelError('companyScore', 'current score'); companyPanelError('companyExplanation', 'explanation'); }
+      if (revision === credentialRevision && request === companyRequest && currentView === 'company') { companyPanelError('companyScore', 'current score'); companyPanelError('companyExplanation', 'explanation'); }
     });
     loadCompanyHistory(ticker, request);
     loadCompanyEvents(ticker, request, true);
@@ -458,6 +465,7 @@
   async function refreshDiscovery() {
     var page;
     var request = ++discoveryRequest;
+    var revision = credentialRevision;
     var path = discoveryPath();
     var requestOffset = discoveryOffset;
     var requestLimit = discoveryLimit;
@@ -468,7 +476,7 @@
     try {
       page = await api(path);
     } catch (err) {
-      if (request !== discoveryRequest) return;
+      if (revision !== credentialRevision || request !== discoveryRequest || currentView !== 'discover') return;
       discoveryLoading = false;
       $('discoveryResults').innerHTML = '';
       $('discoveryStatus').textContent = 'Unable to load discovery results.';
@@ -479,10 +487,10 @@
       showError('Discovery: ' + err.message);
       return;
     }
-    if (request !== discoveryRequest) return;
+    if (revision !== credentialRevision || request !== discoveryRequest || currentView !== 'discover') return;
     discoveryLoading = false;
     discoveryTotal = page.total;
-    $('discoveryAsOf').textContent = 'Discovery query as of ' + fmtTime(page.asOf);
+    $('discoveryAsOf').textContent = 'Discovery query as of ' + fmtTime(page.asOf) + (page.asOf ? ' UTC' : '');
     $('pageSummary').textContent = page.total ?
       'Results ' + (requestOffset + 1) + '–' + (requestOffset + page.results.length) + ' of ' + page.total : '0 results';
     $('previousPage').disabled = requestOffset === 0;
@@ -501,127 +509,158 @@
         '<div><dt>7-day velocity</dt><dd>' + esc(Number(entry.velocity7d).toFixed(1)) + '</dd></div>' +
         '<div><dt>Events 7d</dt><dd>' + fmtInt(entry.events7d) + '</dd></div>' +
         '<div><dt>Score version</dt><dd>' + esc(entry.scoreVersion) + '</dd></div>' +
-        '<div><dt>Company as of</dt><dd>' + esc(fmtTime(entry.asOf)) + '</dd></div></dl></article>';
+        '<div><dt>Company as of</dt><dd>' + timeLabel(entry.asOf) + '</dd></div></dl></article>';
     }).join('');
   }
 
-  function showView(moveFocus) {
+  function routeView(route) {
+    var requested = route.get('view') || 'overview';
+    if (requested === 'operations') return 'pipeline';
+    return requested;
+  }
+
+  function validTicker(value) { return /^[A-Za-z0-9][A-Za-z0-9.-]{0,14}$/.test(value || ''); }
+
+  function currentCredentials() {
+    return { hasAdmin: !!window.sessionStorage.getItem(ADMIN_KEY_NAME), revision: credentialRevision };
+  }
+
+  function safeReturnSearch(value) {
+    if (typeof value !== 'string' || !value.startsWith('?') || value.startsWith('??') || value.indexOf('#') >= 0 || value.indexOf('\\') >= 0) return null;
+    var view = new URLSearchParams(value.slice(1)).get('view') || 'overview';
+    if (view === 'operations') view = 'pipeline';
+    return ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events'].includes(view) ? value : null;
+  }
+
+  function localSearch(value) {
+    if (typeof value !== 'string' || !value.startsWith('?') || value.startsWith('??') || value.indexOf('#') >= 0 || value.indexOf('\\') >= 0) {
+      throw new TypeError('Navigation accepts only a local query string');
+    }
+    return value;
+  }
+
+  function navigate(localSearchValue, state) {
+    var search = localSearch(localSearchValue);
+    var historyState = {};
+    if (state && safeReturnSearch(state.returnSearch)) historyState.returnSearch = state.returnSearch;
+    window.history.pushState(historyState, '', search);
+    showView(true);
+  }
+
+  function refreshPublicView() {
+    if (currentView === 'discover') return refreshDiscovery();
+    if (currentView === 'events') return loadEvents(true);
+    if (currentView === 'company') return refreshCompany(new URLSearchParams(window.location.search).get('ticker'));
+  }
+
+  function showView(moveFocus, fromHistory) {
     var route = new URLSearchParams(window.location.search);
-    var view = route.get('view') || 'discover';
-    if (!['discover', 'company', 'events', 'operations'].includes(view) || (view === 'company' && !route.get('ticker'))) view = 'discover';
-    ['discover', 'company', 'events', 'operations'].forEach(function (name) {
-      var element = $(name + 'View');
-      if (name === view) element.classList.remove('hidden');
-      else element.classList.add('hidden');
+    var view = routeView(route);
+    var invalidTicker = false;
+    if (view === 'company' && !validTicker(route.get('ticker'))) {
+      view = 'discover';
+      invalidTicker = true;
+    }
+    if (!['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events'].includes(view)) view = 'overview';
+    if (currentView !== view) {
+      abortPublicReads();
+      if (currentView === 'events' && eventLoading) {
+        eventRequest++;
+        eventLoading = false;
+        eventLoaded = false;
+      }
+      if (currentView === 'discover') { discoveryRequest++; discoveryLoading = false; }
+    }
+    currentView = view;
+
+    ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events'].forEach(function (name) {
+      $(name + 'View').classList.toggle('hidden', name !== view);
     });
-    ['Discover', 'Events', 'Operations'].forEach(function (name) {
-      var link = $('nav' + name);
-      if (name.toLowerCase() === view) link.setAttribute('aria-current', 'page');
-      else link.removeAttribute('aria-current');
+
+    var titles = { overview: 'Overview', pipeline: 'Pipeline', documents: 'Documents', models: 'Models & costs',
+      settings: 'Settings', discover: 'Discover', company: 'Company', events: 'Events' };
+    $('pageTitle').textContent = titles[view];
+    $('activityRangeLabel').classList.toggle('hidden', !['overview', 'pipeline', 'models'].includes(view));
+    $('activityRange').value = route.get('range') === '7d' ? '7d' : '24h';
+
+    var intelligence = ['discover', 'company', 'events'].includes(view);
+    var topNavigation = { overview: 'navOverview', pipeline: 'navPipeline', documents: 'navDocuments',
+      models: 'navModels', settings: 'navSettings', discover: 'navIntelligence', company: 'navIntelligence', events: 'navIntelligence' };
+    ['navOverview', 'navPipeline', 'navDocuments', 'navModels', 'navIntelligence', 'navSettings', 'navDiscover', 'navEvents'].forEach(function (id) {
+      $(id).removeAttribute('aria-current');
     });
+    $(topNavigation[view]).setAttribute('aria-current', 'page');
+    if (view === 'discover' || view === 'company') $('navDiscover').setAttribute('aria-current', 'page');
+    if (view === 'events') $('navEvents').setAttribute('aria-current', 'page');
+    document.querySelectorAll('.intelligence-tabs').forEach(function (tabs) { tabs.classList.toggle('hidden', !intelligence); });
+
     if (view === 'company') {
-      if (route.get('ticker') !== currentCompany) refreshCompany(route.get('ticker'));
+      if (route.get('ticker') !== currentCompany) refreshCompany(route.get('ticker').toUpperCase());
     } else {
       companyRequest++;
       historyRequest++;
       currentCompany = '';
     }
+    if (view === 'discover') {
+      var discoverRead = refreshDiscovery();
+      var validationRequest = discoveryRequest;
+      var validationRevision = credentialRevision;
+      if (invalidTicker) Promise.resolve(discoverRead).then(function () {
+        if (validationRevision === credentialRevision && validationRequest === discoveryRequest && currentView === 'discover') {
+          $('discoveryStatus').textContent = 'Enter a valid ticker to open a company.';
+        }
+      });
+    }
     if (view === 'events' && !eventLoaded) loadEvents(true);
+    if (operations) operations.show({ view: view, params: route, fromHistory: !!fromHistory });
+
     if (moveFocus) {
       if (view === 'company') $('companyTitle').focus();
       else if (view === 'discover') $('discoverTitle').focus();
-      else $('nav' + view.charAt(0).toUpperCase() + view.slice(1)).focus();
+      else $('pageTitle').focus();
     }
-  }
-
-  function navigate(search) {
-    window.history.pushState({}, '', search);
-    showView(true);
-  }
-
-  function requireAdminKey() {
-    var hasKey = !!window.sessionStorage.getItem(ADMIN_KEY_NAME);
-    $('runNow').disabled = !hasKey || pipelineRunning;
-    if (!hasKey) {
-      $('ingestionRows').innerHTML = '<tr><td colspan="7" class="muted">Save an admin key to view runs.</td></tr>';
-      $('modelRows').innerHTML = '<tr><td colspan="9" class="muted">Save an admin key to view model runs.</td></tr>';
-      $('totalIn').textContent = '–';
-      $('totalOut').textContent = '–';
-      $('totalCost').textContent = '–';
-    }
-    return hasKey;
-  }
-
-  async function refreshAll() {
-    clearError();
-    var hasAdminKey = requireAdminKey();
-    var discovery = refreshDiscovery();
-    await refreshHealth();
-    if (hasAdminKey) {
-      await refreshIngestionRuns();
-      await refreshModelRuns();
-    }
-    await discovery;
-  }
-
-  async function runPipelineNow() {
-    if (pipelineRunning || !window.sessionStorage.getItem(ADMIN_KEY_NAME)) return;
-    pipelineRunning = true;
-    var button = $('runNow');
-    button.disabled = true;
-    $('pipelineStatus').textContent = 'Pipeline running — this takes minutes with live LLM calls…';
-    clearError();
-    try {
-      var result = await api('/internal/ingestion/runs', { method: 'POST' });
-      $('pipelineStatus').textContent =
-        'Last run: ' + result.status +
-        ' — ' + result.documentsProcessed + ' docs, ' +
-        result.eventsExtracted + ' events, ' +
-        result.companiesRescored + ' rescored' +
-        (result.error ? ' (note: ' + result.error + ')' : '');
-      await refreshAll();
-    } catch (err) {
-      showError('Pipeline run failed: ' + err.message);
-      $('pipelineStatus').textContent = 'Last run failed.';
-    } finally {
-      pipelineRunning = false;
-      button.disabled = !window.sessionStorage.getItem(ADMIN_KEY_NAME);
-    }
-  }
-
-  var pollTimer = null;
-
-  function setPolling(on) {
-    if (pollTimer) { window.clearInterval(pollTimer); pollTimer = null; }
-    if (on) { pollTimer = window.setInterval(refreshAll, 30000); }
   }
 
   document.addEventListener('DOMContentLoaded', function () {
     appliedDiscoveryFilters = readDiscoveryFilters();
     discoveryLimit = Number(appliedDiscoveryFilters.get('limit'));
-    $('apiDocs').href = API_BASE + '/swagger-ui.html';
     var saved = window.sessionStorage.getItem(ADMIN_KEY_NAME);
     if (saved) $('adminKey').value = saved;
     var savedApiKey = window.sessionStorage.getItem(API_KEY_NAME);
     if (savedApiKey) $('apiKey').value = savedApiKey;
     $('saveKey').addEventListener('click', function () {
-      window.sessionStorage.setItem(ADMIN_KEY_NAME, $('adminKey').value.trim());
-      window.sessionStorage.setItem(API_KEY_NAME, $('apiKey').value.trim());
-      refreshAll();
-      if (new URLSearchParams(window.location.search).get('view') === 'events') loadEvents(true);
+      credentialRevision++;
+      invalidatePublicCredentials();
+      var adminKey = $('adminKey').value.trim();
+      var apiKey = $('apiKey').value.trim();
+      if (adminKey) window.sessionStorage.setItem(ADMIN_KEY_NAME, adminKey);
+      else window.sessionStorage.removeItem(ADMIN_KEY_NAME);
+      if (apiKey) window.sessionStorage.setItem(API_KEY_NAME, apiKey);
+      else window.sessionStorage.removeItem(API_KEY_NAME);
+      if (operations) operations.credentialsChanged();
+      if (['discover', 'company', 'events'].includes(currentView)) refreshPublicView();
+      var returnSearch = safeReturnSearch(window.history.state && window.history.state.returnSearch);
+      if (adminKey && returnSearch && currentView === 'settings') navigate(returnSearch);
     });
     $('clearKey').addEventListener('click', function () {
+      credentialRevision++;
+      invalidatePublicCredentials();
       window.sessionStorage.removeItem(ADMIN_KEY_NAME);
       window.sessionStorage.removeItem(API_KEY_NAME);
       $('adminKey').value = '';
       $('apiKey').value = '';
-      requireAdminKey();
-      window.location.reload();
+      if (operations) operations.credentialsChanged();
+      if (['discover', 'company', 'events'].includes(currentView)) refreshPublicView();
     });
-    $('refresh').addEventListener('click', refreshAll);
-    $('runNow').addEventListener('click', runPipelineNow);
-    $('autoRefresh').addEventListener('change', function (event) {
-      setPolling(event.target.checked);
+    $('refresh').addEventListener('click', function () {
+      if (operations) operations.refresh();
+      if (['discover', 'company', 'events'].includes(currentView)) refreshPublicView();
+    });
+    $('activityRange').addEventListener('change', function (event) {
+      var route = new URLSearchParams(window.location.search);
+      route.set('view', currentView);
+      route.set('range', event.target.value === '7d' ? '7d' : '24h');
+      navigate('?' + route.toString());
     });
     $('discoveryFilters').addEventListener('submit', function (event) {
       event.preventDefault();
@@ -645,15 +684,19 @@
       var link = event.target.closest('[data-ticker]');
       if (!link) return;
       if (event.preventDefault) event.preventDefault();
-      navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker));
+      navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker), { returnSearch: window.location.search || '?view=discover' });
     });
-    $('backToResults').addEventListener('click', function () { navigate('?view=discover'); });
+    $('backToResults').addEventListener('click', function () {
+      navigate(safeReturnSearch(window.history.state && window.history.state.returnSearch) || '?view=discover');
+    });
     $('historyRange').addEventListener('change', function () {
       if (currentCompany) return loadCompanyHistory(currentCompany, companyRequest);
     });
     $('loadCompanyEvents').addEventListener('click', function () {
       if (currentCompany) return loadCompanyEvents(currentCompany, companyRequest, false);
     });
+    $('companyExplanation').addEventListener('click', inspectSource);
+    $('companyEvents').addEventListener('click', inspectSource);
     $('eventFilters').addEventListener('submit', function (event) {
       event.preventDefault();
       clearError();
@@ -661,20 +704,26 @@
     });
     $('loadEvents').addEventListener('click', function () { return loadEvents(false); });
     $('eventResults').addEventListener('click', function (event) {
+      if (inspectSource(event)) return;
       var link = event.target.closest('[data-ticker]');
       if (!link) return;
       if (event.preventDefault) event.preventDefault();
-      navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker));
+      navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker), { returnSearch: window.location.search || '?view=events' });
     });
-    ['Discover', 'Events', 'Operations'].forEach(function (name) {
-      $('nav' + name).addEventListener('click', function (event) {
+    [
+      ['navOverview', '?view=overview'], ['navPipeline', '?view=pipeline'], ['navDocuments', '?view=documents'],
+      ['navModels', '?view=models'], ['navIntelligence', '?view=discover'], ['navDiscover', '?view=discover'],
+      ['navEvents', '?view=events'], ['navSettings', '?view=settings'],
+    ].forEach(function (item) {
+      $(item[0]).addEventListener('click', function (event) {
         event.preventDefault();
-        navigate('?view=' + name.toLowerCase());
+        navigate(item[1]);
       });
     });
-    window.addEventListener('popstate', function () { showView(true); });
+    window.addEventListener('popstate', function () { showView(true, true); });
+    operations = window.CatalystOperations.create({ api: api, navigate: navigate, credentials: currentCredentials,
+      format: { escape: esc, time: fmtTime, integer: fmtInt, cost: fmtCost } });
+    operations.init();
     showView();
-    setPolling($('autoRefresh').checked);
-    refreshAll();
   });
 })();

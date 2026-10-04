@@ -9,6 +9,8 @@ import com.catalystradar.domain.event.EventType
 import com.catalystradar.domain.event.SourceQuality
 import com.catalystradar.persistence.PostgresIntegrationTest
 import com.catalystradar.persistence.company.CompanyStore
+import com.catalystradar.operations.OperationsFixtures
+import org.springframework.jdbc.core.simple.JdbcClient
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.transaction.annotation.Transactional
@@ -27,6 +29,33 @@ class EventSearchQueryTest : PostgresIntegrationTest() {
 
     @Autowired
     private lateinit var companies: CompanyStore
+
+    @Autowired private lateinit var jdbc: JdbcClient
+
+    @Test
+    fun `source scope filters evidence and preserves keyset pagination`() {
+        val fixtures = OperationsFixtures(jdbc)
+        val document = fixtures.document(t1)
+        val other = fixtures.document(t1)
+        val company = companies.save(Company(ticker = "DELL", name = "Dell"))
+        events.save(raise(company.id, EventType.GUIDANCE_RAISE, t1), document)
+        events.save(raise(company.id, EventType.EARNINGS_BEAT, t2), document)
+        events.save(raise(company.id, EventType.REVENUE_BEAT, t3), other)
+        val first = events.searchEvents(EventSearch(sourceDocumentId = document, limit = 1))
+        assertEquals(t2, first.events.single().event.discoveredAt)
+        assertEquals(document, first.events.single().source?.sourceDocumentId)
+        val second = events.searchEvents(EventSearch(sourceDocumentId = document, limit = 1, cursor = first.nextCursor))
+        assertEquals(t1, second.events.single().event.discoveredAt)
+        assertNull(second.nextCursor)
+        assertTrue(events.searchEvents(EventSearch(sourceDocumentId = UUID.randomUUID())).events.isEmpty())
+        assertEquals(3, events.searchEvents(EventSearch()).events.size)
+    }
+
+    @Test
+    fun `invalid evidence page limit is rejected before query`() {
+        kotlin.test.assertFailsWith<IllegalArgumentException> { events.searchEvents(EventSearch(limit = 0)) }
+        kotlin.test.assertFailsWith<IllegalArgumentException> { events.searchEvents(EventSearch(limit = 101)) }
+    }
 
     private val t1 = Instant.parse("2026-09-14T10:00:00Z")
     private val t2 = Instant.parse("2026-09-15T10:00:00Z")

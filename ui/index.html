@@ -7,134 +7,290 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
-    <div>
-      <h1>CatalystRadar</h1>
-      <p class="subtitle">Catalyst intelligence</p>
-    </div>
-    <div class="header-right">
-      <span id="health" class="pill unknown" title="API health">checking…</span>
-      <label class="key-field">Admin key
-        <input id="adminKey" type="password" autocomplete="off" placeholder="Enter admin key">
-      </label>
-      <label class="key-field">API key
-        <input id="apiKey" type="password" autocomplete="off" placeholder="optional for /v1">
-      </label>
-      <button id="saveKey" type="button">Save keys</button>
-      <button id="clearKey" type="button" class="ghost">Clear keys</button>
-    </div>
-  </header>
-
-  <nav class="app-nav" aria-label="Main navigation">
-    <a id="navDiscover" href="?view=discover">Discover</a>
-    <a id="navEvents" href="?view=events">Events</a>
-    <a id="navOperations" href="?view=operations">Operations</a>
-  </nav>
-
-  <div id="banner" class="banner hidden" role="alert"></div>
-
-  <main>
-    <section id="discoverView" class="card view">
-      <div class="card-head"><div><h2 id="discoverTitle" tabindex="-1">Discover</h2><p class="muted">Find companies by their current catalyst profile.</p></div></div>
-      <form id="discoveryFilters" class="filter-grid">
-        <label>States
-          <select id="discoveryStates" multiple size="5" aria-describedby="stateHelp">
-            <option value="NORMAL">Normal</option><option value="WATCH">Watch</option><option value="BUILDING">Building</option><option value="CATALYZED">Catalyzed</option><option value="HIGH">High</option>
-          </select>
-          <span id="stateHelp" class="muted small">Select one or more states.</span>
-        </label>
-        <label>Minimum score <input id="minScore" type="number" step="any" inputmode="decimal"></label>
-        <label>Minimum 7-day velocity <input id="minVelocity7d" type="number" step="any" inputmode="decimal"></label>
-        <label>Sector (exact match) <input id="sector" type="text"></label>
-        <label>Sort by <select id="discoverySort"><option value="SCORE">Score</option><option value="VELOCITY">7-day velocity</option></select></label>
-        <label>Results per page <select id="pageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label>
-        <button type="submit">Apply filters</button>
-      </form>
-      <p id="discoveryStatus" class="muted" role="status">Loading…</p>
-      <p id="discoveryAsOf" class="muted small"></p>
-      <div id="discoveryResults" class="discovery-results"></div>
-      <div class="pager"><button id="previousPage" type="button" class="ghost" disabled>Previous</button><span id="pageSummary" aria-live="polite"></span><button id="nextPage" type="button" class="ghost" disabled>Next</button></div>
-    </section>
-    <section id="companyView" class="card view hidden" aria-labelledby="companyTitle">
-      <button id="backToResults" type="button" class="ghost">← Return to results</button>
-      <h2 id="companyTitle" tabindex="-1">Company analysis</h2>
-      <div id="companyOverview" role="status">Loading company…</div>
-      <section class="company-panel" aria-label="Current catalyst"><h3>Current catalyst</h3><div id="companyScore" role="status">Loading current score…</div></section>
-      <section class="company-panel" aria-labelledby="historyTitle">
-        <div class="card-head"><h3 id="historyTitle">Score history</h3>
-          <label>History range <select id="historyRange"><option value="30">30 days</option><option value="90">90 days</option><option value="max">Maximum returned</option></select></label>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="wordmark" href="?view=overview">CatalystRadar</a>
+      <nav class="app-nav" aria-label="Main navigation">
+        <a id="navOverview" href="?view=overview">Overview</a>
+        <a id="navPipeline" href="?view=pipeline">Pipeline</a>
+        <a id="navDocuments" href="?view=documents">Documents</a>
+        <a id="navModels" href="?view=models">Models &amp; costs</a>
+        <a id="navIntelligence" href="?view=discover">Intelligence</a>
+        <div class="intelligence-tabs hidden" aria-label="Intelligence views">
+          <a id="navDiscover" href="?view=discover">Discover</a>
+          <a id="navEvents" href="?view=events">Events</a>
         </div>
-        <p id="historyRangeNote" class="muted small">Showing up to 200 stored snapshots and transitions from the last 30 days.</p>
-        <div id="companyHistory" role="status">Loading score history…</div>
-      </section>
-      <section class="company-panel" aria-labelledby="explanationTitle"><h3 id="explanationTitle">Why this state?</h3><div id="companyExplanation" role="status">Loading explanation…</div></section>
-      <section class="company-panel" aria-labelledby="companyEventsTitle"><h3 id="companyEventsTitle">Contextual company events</h3><p class="muted small">Loaded reports are grouped by event cluster. These events do not establish causes of past scores; scoring remains server determined.</p><div id="companyEvents" role="status">Loading events…</div><p id="companyEventsStatus" class="panel-error" role="status"></p><button id="loadCompanyEvents" type="button" class="ghost hidden">Load more</button></section>
-    </section>
-    <section id="eventsView" class="card view hidden" aria-labelledby="eventsTitle">
-      <h2 id="eventsTitle" tabindex="-1">Events</h2>
-      <p class="muted">Search captured event reports across companies. Reports sharing a cluster may describe the same catalyst.</p>
-      <form id="eventFilters" class="filter-grid">
-        <label>Ticker <input id="eventTicker" type="text" autocomplete="off"></label>
-        <label>Family <select id="eventFamily"><option value="">All families</option><option>EARNINGS</option><option>GUIDANCE</option><option>COMMERCIAL</option><option>PRODUCT_TECH</option><option>CORPORATE_ACTION</option><option>CAPITAL_ALLOCATION</option><option>ANALYST</option><option>REGULATORY</option><option>LEGAL</option><option>MANAGEMENT_OWNERSHIP</option><option>INDUSTRY_EXTERNAL</option></select></label>
-        <label>Type <input id="eventType" type="text" autocomplete="off" placeholder="e.g. GUIDANCE_RAISE"></label>
-        <label>Direction <select id="eventDirection"><option value="">All directions</option><option>POSITIVE</option><option>NEGATIVE</option><option>NEUTRAL</option><option>MIXED</option></select></label>
-        <label>First captured from (UTC) <input id="eventFrom" type="date"></label>
-        <label>First captured through (UTC) <input id="eventTo" type="date"></label>
-        <label>Results per page <select id="eventPageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label>
-        <button type="submit">Search events</button>
-      </form>
-      <p id="eventStatus" class="muted" role="status">Open Events to search.</p>
-      <div id="eventResults" class="event-results"></div>
-      <button id="loadEvents" type="button" class="ghost hidden">Load more</button>
-    </section>
-    <div id="operationsView" class="view hidden">
-    <section class="card">
-      <div class="card-head">
-        <h2>Pipeline</h2>
-        <div class="controls">
-          <button id="runNow" type="button">Run pipeline now</button>
+        <a id="navSettings" href="?view=settings">Settings</a>
+      </nav>
+    </aside>
+
+    <div class="main-column">
+      <header class="topbar">
+        <div class="title-block">
+          <h1 id="pageTitle" tabindex="-1">Overview</h1>
+          <p id="lastRefresh" class="muted small">No successful refresh yet</p>
+        </div>
+        <div class="header-controls">
+          <label id="activityRangeLabel" class="range-control">Activity
+            <select id="activityRange" aria-label="Activity period">
+              <option value="24h">24 hours</option><option value="7d">7 days</option>
+            </select>
+          </label>
+          <span class="utc-label">Times shown in UTC</span>
+          <span id="health" class="pill unknown" title="API health" role="status">Checking API…</span>
           <button id="refresh" type="button" class="ghost">Refresh</button>
-          <label class="poll"><input id="autoRefresh" type="checkbox" checked> auto-refresh 30s</label>
+          <label class="poll"><input id="autoRefresh" type="checkbox" checked> Auto-refresh every 30 seconds</label>
         </div>
-      </div>
-      <p id="pipelineStatus" class="muted">Idle.</p>
-      <h3>Ingestion runs</h3>
-      <div class="table-scroll" tabindex="0" aria-label="Ingestion runs table">
-      <table>
-        <thead>
-          <tr><th>Finished</th><th>Provider</th><th>Status</th><th>Fetched</th><th>New</th><th>Dups</th><th>Error</th></tr>
-        </thead>
-        <tbody id="ingestionRows">
-          <tr><td colspan="7" class="muted">Loading…</td></tr>
-        </tbody>
-      </table>
-      </div>
-    </section>
+      </header>
 
-    <section class="card">
-      <h2>Model runs <span class="muted small">tokens, latency, cost</span></h2>
-      <div class="table-scroll" tabindex="0" aria-label="Model runs table">
-      <table>
-        <thead>
-          <tr><th>Created</th><th>Op</th><th>Model</th><th>In</th><th>Out</th><th>Latency</th><th>Cost USD</th><th>OK</th><th>Error</th></tr>
-        </thead>
-        <tbody id="modelRows">
-          <tr><td colspan="9" class="muted">Loading…</td></tr>
-        </tbody>
-        <tfoot>
-          <tr><td colspan="3">Page totals</td><td id="totalIn" class="num">–</td><td id="totalOut" class="num">–</td><td></td><td id="totalCost" class="num">–</td><td colspan="2"></td></tr>
-        </tfoot>
-      </table>
-      </div>
-    </section>
+      <div id="banner" class="banner hidden" role="alert"></div>
 
+      <main>
+        <section id="overviewView" class="view" aria-labelledby="pageTitle">
+          <p id="overviewStatus" class="screen-status" role="status">Loading operational summary…</p>
+          <div id="overviewMetrics" class="metrics-grid" aria-label="Current operational metrics">
+            <article class="metric"><h2>Last successful ingestion</h2><p class="metric-value">—</p></article>
+            <article class="metric"><h2>Waiting documents</h2><p class="metric-value">—</p></article>
+            <article class="metric"><h2>Terminal documents</h2><p class="metric-value">—</p></article>
+            <article class="metric"><h2>Estimated recorded model cost</h2><p class="metric-value">—</p></article>
+          </div>
+          <section class="panel" aria-labelledby="overviewActivityTitle">
+            <h2 id="overviewActivityTitle">Activity</h2>
+            <div id="overviewActivity" role="status">Waiting for an authorized operational read.</div>
+          </section>
+          <div class="overview-columns">
+            <section class="panel" aria-labelledby="overviewSignalsTitle">
+              <h2 id="overviewSignalsTitle">Needs attention</h2>
+              <div id="overviewSignals" role="status">Waiting for an authorized operational read.</div>
+            </section>
+            <section class="panel" aria-labelledby="overviewDependenciesTitle">
+              <h2 id="overviewDependenciesTitle">Dependencies</h2>
+              <div id="overviewDependencies" role="status">Waiting for an authorized operational read.</div>
+            </section>
+          </div>
+        </section>
+
+        <section id="pipelineView" class="view hidden" aria-labelledby="pipelineTitle">
+          <h2 id="pipelineTitle">Pipeline</h2>
+          <p id="pipelineStatus" class="screen-status" role="status">Waiting for an authorized operational read.</p>
+          <div class="pipeline-tabs" role="tablist" aria-label="Operational history">
+            <button id="pipelineTabCycles" type="button" role="tab" data-pipeline-kind="PIPELINE" aria-selected="true">Pipeline cycles</button>
+            <button id="pipelineTabSnapshots" type="button" role="tab" data-pipeline-kind="DAILY_SNAPSHOTS" aria-selected="false">Daily snapshots</button>
+          </div>
+          <label class="sr-only" for="pipelineKind">Pipeline kind</label>
+          <select id="pipelineKind" class="hidden" aria-hidden="true" tabindex="-1"><option>PIPELINE</option><option>DAILY_SNAPSHOTS</option></select>
+          <div class="pipeline-actions">
+            <label for="pipelineRunStatusFilter">Run status</label>
+            <select id="pipelineRunStatusFilter">
+              <option value="">All statuses</option><option>RUNNING</option><option>SUCCESS</option><option>PARTIAL</option>
+              <option>FAILED</option><option>CANCELLED</option><option>INTERRUPTED</option>
+            </select>
+            <button id="runNow" type="button">Run pipeline now</button>
+            <p id="runNowCaption" class="muted small">Fetches news and can use paid model calls.</p>
+          </div>
+          <div class="pipeline-layout">
+            <section class="panel pipeline-history-panel" aria-label="Pipeline history">
+              <div id="runRows" class="pipeline-records" aria-live="polite"></div>
+              <button id="loadRuns" class="ghost hidden" type="button">Load more runs</button>
+            </section>
+            <aside id="runDetail" class="panel pipeline-detail hidden" aria-labelledby="runDetailTitle">
+              <div class="panel-heading"><div><h3 id="runDetailTitle" tabindex="-1">Selected pipeline run</h3>
+                <p id="runDetailStatus" class="screen-status" role="status"></p></div>
+                <button id="closeRun" type="button" class="ghost">Close</button>
+              </div>
+              <div id="runDetailContent"></div>
+              <section aria-label="Ingestion runs for selected cycle">
+                <h4>Ingestion runs for this cycle</h4><div id="runIngestionRows" aria-live="polite"></div>
+                <button id="loadRunIngestion" class="ghost hidden" type="button">Load more cycle ingestion runs</button>
+              </section>
+              <section class="pipeline-issues" aria-label="Pipeline issues">
+                <h4>Issues</h4><div id="runIssues" aria-live="polite"></div>
+                <button id="loadRunIssues" class="ghost hidden" type="button">Load more issues</button>
+              </section>
+            </aside>
+          </div>
+          <section class="panel ingestion-panel" aria-labelledby="ingestionTitle">
+            <h3 id="ingestionTitle">Provider ingestion runs</h3>
+            <form id="ingestionFilters" class="pipeline-ingestion-filters">
+              <label for="ingestionProvider">Provider</label><select id="ingestionProvider"><option value="">All providers</option><option value="polygon">Polygon</option><option value="finnhub">Finnhub</option></select>
+              <label for="ingestionStatusFilter">Status</label><select id="ingestionStatusFilter">
+                <option value="">All statuses</option><option>RUNNING</option><option>SUCCESS</option><option>PARTIAL</option><option>FAILED</option>
+              </select>
+              <button type="submit" class="ghost">Apply filters</button>
+            </form>
+            <div id="ingestionRows" class="pipeline-records" aria-live="polite"></div>
+            <button id="loadIngestion" class="ghost hidden" type="button">Load more ingestion runs</button>
+          </section>
+          <aside id="ingestionDetail" class="panel ingestion-detail hidden" aria-labelledby="ingestionDetailTitle">
+            <div class="panel-heading"><div><h3 id="ingestionDetailTitle" tabindex="-1">Selected ingestion run</h3>
+              <p id="ingestionDetailStatus" class="screen-status" role="status"></p></div>
+              <button id="closeIngestion" type="button" class="ghost">Close</button>
+            </div>
+            <div id="ingestionDetailContent"></div>
+          </aside>
+        </section>
+
+        <section id="documentsView" class="view hidden" aria-labelledby="documentsTitle">
+          <h2 id="documentsTitle">Documents</h2>
+          <p id="documentStatus" class="screen-status" role="status">Loading captured documents…</p>
+          <div id="documentsWorkspace" class="documents-layout">
+            <section class="panel documents-list-panel" aria-label="Captured documents">
+              <form id="documentFilters" class="document-filters">
+                <label>Title<input id="documentTitleFilter" type="search" maxlength="120"></label>
+                <label>Provider<select id="documentProvider"><option value="">All providers</option><option value="polygon">Polygon</option><option value="finnhub">Finnhub</option></select></label>
+                <label>Ticker<input id="documentTicker" type="text" maxlength="15"></label>
+                <label>Processing state<select id="documentStates" multiple size="4">
+                  <option value="PENDING">Pending</option><option value="PROCESSING">Processing</option><option value="COMPLETED">Completed</option><option value="SKIPPED">Skipped</option>
+                  <option value="RETRYABLE_ERROR">Retryable error</option><option value="TERMINAL_ERROR">Terminal error</option><option value="UNRESOLVED">Unresolved</option><option value="NOT_TRACKED">Not tracked</option>
+                </select></label>
+                <label>Captured from (UTC)<input id="documentFrom" type="date"></label>
+                <label>Captured through (UTC)<input id="documentTo" type="date"></label>
+                <label class="document-due"><input id="documentDueOnly" type="checkbox"> Due only</label>
+                <button type="submit">Apply filters</button>
+              </form>
+              <div id="documentRows" class="document-rows" aria-live="polite" tabindex="-1"></div>
+              <button id="loadDocuments" class="ghost hidden" type="button">Load more</button>
+            </section>
+            <aside id="documentDetail" class="panel document-detail hidden" aria-labelledby="documentDetailTitle">
+              <div class="panel-heading document-detail-heading">
+                <div><h3 id="documentDetailTitle" tabindex="-1"></h3><p id="documentDetailStatus" class="screen-status" role="status"></p></div>
+                <button id="closeDocument" type="button" class="ghost">Close</button>
+              </div>
+              <div class="document-tabs" role="tablist" aria-label="Document details">
+                <button id="documentTabOverview" type="button" role="tab" data-document-tab="overview">Overview</button>
+                <button id="documentTabAttempts" type="button" role="tab" data-document-tab="attempts">Attempts</button>
+                <button id="documentTabModels" type="button" role="tab" data-document-tab="models">Models</button>
+                <button id="documentTabEvents" type="button" role="tab" data-document-tab="events">Events</button>
+                <button id="documentTabSource" type="button" role="tab" data-document-tab="source">Source</button>
+              </div>
+              <section id="documentOverview" class="document-tab-panel" role="tabpanel"></section>
+              <section id="documentAttempts" class="document-tab-panel hidden" role="tabpanel"></section>
+              <button id="loadAttempts" class="ghost hidden" type="button">Load older attempts</button>
+              <section id="documentModels" class="document-tab-panel hidden" role="tabpanel"></section>
+              <button id="loadDocumentModels" class="ghost hidden" type="button">Load more model calls</button>
+              <section id="documentEvents" class="document-tab-panel hidden" role="tabpanel"></section>
+              <button id="loadDocumentEvents" class="ghost hidden" type="button">Load more events</button>
+              <section id="documentSource" class="document-tab-panel hidden" role="tabpanel"></section>
+            </aside>
+          </div>
+        </section>
+
+        <section id="modelsView" class="view hidden" aria-labelledby="modelsTitle">
+          <h2 id="modelsTitle">Models &amp; costs</h2>
+          <p id="modelStatus" class="screen-status" role="status">Recorded model usage has not been loaded.</p>
+          <form id="modelFilters" class="panel model-filters">
+            <label for="modelProvider">Provider</label><select id="modelProvider"><option value="">All providers</option><option value="openai">OpenAI</option></select>
+            <label for="modelOperation">Operation</label><select id="modelOperation"><option value="">All operations</option><option value="extract">Extract</option><option value="embed">Embed</option></select>
+            <label for="modelName">Model</label><input id="modelName" type="search" maxlength="128" autocomplete="off">
+            <label for="modelSuccess">Outcome</label><select id="modelSuccess"><option value="">All outcomes</option><option value="true">Successful</option><option value="false">Failed</option></select>
+            <button type="submit">Apply filters</button>
+          </form>
+          <section class="panel model-summary" aria-label="Recorded model usage totals">
+            <div class="model-metrics">
+              <article><h3>Recorded calls</h3><p id="modelCallsTotal" class="metric-value">Unknown</p></article>
+              <article><h3>Failed calls</h3><p id="modelFailedTotal" class="metric-value">Unknown</p></article>
+              <article><h3>Estimated cost</h3><p id="modelCostTotal" class="metric-value">Unknown</p></article>
+            </div>
+            <p id="modelTokenSummary" class="muted" role="status">Token coverage is not available.</p>
+            <p id="modelLatencySummary" class="muted" role="status">Latency coverage is not available.</p>
+          </section>
+          <section class="panel" aria-labelledby="modelBreakdownTitle">
+            <h3 id="modelBreakdownTitle">Operation and model breakdown</h3>
+            <div id="modelBreakdown" role="status"><p class="muted">No model summary loaded.</p></div>
+          </section>
+          <section class="panel" aria-labelledby="modelRowsTitle">
+            <h3 id="modelRowsTitle">Recorded model calls</h3>
+            <div id="modelRows" aria-live="polite"><p class="muted">No model calls loaded.</p></div>
+            <button id="loadModels" class="ghost" type="button" hidden>Load more</button>
+          </section>
+          <aside id="modelDetail" class="panel model-detail hidden" aria-labelledby="modelDetailTitle">
+            <div class="panel-heading"><div><h3 id="modelDetailTitle" tabindex="-1">Selected model call</h3>
+              <p id="modelDetailStatus" class="screen-status" role="status"></p></div>
+              <button id="closeModel" type="button" class="ghost">Back to model calls</button>
+            </div>
+            <div id="modelDetailContent"></div>
+          </aside>
+        </section>
+
+        <section id="settingsView" class="view hidden" aria-labelledby="settingsTitle">
+          <h2 id="settingsTitle">Settings</h2>
+          <section class="panel" aria-labelledby="settingsAccessTitle">
+            <h3 id="settingsAccessTitle">Access for this tab</h3>
+            <form id="settingsCredentials" class="settings-form">
+              <label for="adminKey">Admin key<input id="adminKey" type="password" autocomplete="off" placeholder="Enter admin key"></label>
+              <label for="apiKey">Public API key<input id="apiKey" type="password" autocomplete="off" placeholder="Optional for /v1"></label>
+              <div class="button-row"><button id="saveKey" type="button">Use keys for this tab</button><button id="clearKey" type="button" class="ghost">Clear keys</button></div>
+            </form>
+            <p id="accessStatus" class="muted" role="status">Keys stay in this tab's session storage.</p>
+          </section>
+          <section class="panel" aria-labelledby="settingsConfigTitle">
+            <div class="panel-heading"><div><h3 id="settingsConfigTitle">Read-only configuration</h3><p class="muted small">Values reflect the server configuration. Settings cannot be changed here.</p></div>
+              <a id="apiDocs" href="/swagger-ui.html">API documentation</a>
+            </div>
+            <p id="settingsStatus" class="screen-status" role="status">Configuration has not been loaded.</p>
+            <div id="settingsConfig">Unknown / unavailable</div>
+          </section>
+        </section>
+
+        <section id="discoverView" class="card view hidden" aria-labelledby="discoverTitle">
+          <div class="card-head"><div><h2 id="discoverTitle" tabindex="-1">Discover</h2><p class="muted">Find companies by their current catalyst profile.</p></div></div>
+          <form id="discoveryFilters" class="filter-grid">
+            <label>States
+              <select id="discoveryStates" multiple size="5" aria-describedby="stateHelp">
+                <option value="NORMAL">Normal</option><option value="WATCH">Watch</option><option value="BUILDING">Building</option><option value="CATALYZED">Catalyzed</option><option value="HIGH">High</option>
+              </select><span id="stateHelp" class="muted small">Select one or more states.</span>
+            </label>
+            <label>Minimum score <input id="minScore" type="number" step="any" inputmode="decimal"></label>
+            <label>Minimum 7-day velocity <input id="minVelocity7d" type="number" step="any" inputmode="decimal"></label>
+            <label>Sector (exact match) <input id="sector" type="text"></label>
+            <label>Sort by <select id="discoverySort"><option value="SCORE">Score</option><option value="VELOCITY">7-day velocity</option></select></label>
+            <label>Results per page <select id="pageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label>
+            <button type="submit">Apply filters</button>
+          </form>
+          <p id="discoveryStatus" class="muted" role="status">Loading…</p>
+          <p id="discoveryAsOf" class="muted small"></p>
+          <div id="discoveryResults" class="discovery-results"></div>
+          <div class="pager"><button id="previousPage" type="button" class="ghost" disabled>Previous</button><span id="pageSummary" aria-live="polite"></span><button id="nextPage" type="button" class="ghost" disabled>Next</button></div>
+        </section>
+        <section id="companyView" class="card view hidden" aria-labelledby="companyTitle">
+          <button id="backToResults" type="button" class="ghost">← Return to results</button>
+          <h2 id="companyTitle" tabindex="-1">Company analysis</h2>
+          <div id="companyOverview" role="status">Loading company…</div>
+          <section class="company-panel" aria-label="Current catalyst"><h3>Current catalyst</h3><div id="companyScore" role="status">Loading current score…</div></section>
+          <section class="company-panel" aria-labelledby="historyTitle">
+            <div class="card-head"><h3 id="historyTitle">Score history</h3>
+              <label>History range <select id="historyRange"><option value="30">30 days</option><option value="90">90 days</option><option value="max">Maximum returned</option></select></label>
+            </div>
+            <p id="historyRangeNote" class="muted small">Showing up to 200 stored snapshots and transitions from the last 30 days.</p>
+            <div id="companyHistory" role="status">Loading score history…</div>
+          </section>
+          <section class="company-panel" aria-labelledby="explanationTitle"><h3 id="explanationTitle">Why this state?</h3><div id="companyExplanation" role="status">Loading explanation…</div></section>
+          <section class="company-panel" aria-labelledby="companyEventsTitle"><h3 id="companyEventsTitle">Contextual company events</h3><p class="muted small">Loaded reports are grouped by event cluster. These events do not establish causes of past scores; scoring remains server determined.</p><div id="companyEvents" role="status">Loading events…</div><p id="companyEventsStatus" class="panel-error" role="status"></p><button id="loadCompanyEvents" type="button" class="ghost hidden">Load more</button></section>
+        </section>
+        <section id="eventsView" class="card view hidden" aria-labelledby="eventsTitle">
+          <h2 id="eventsTitle" tabindex="-1">Events</h2>
+          <p class="muted">Search captured event reports across companies. Reports sharing a cluster may describe the same catalyst.</p>
+          <form id="eventFilters" class="filter-grid">
+            <label>Ticker <input id="eventTicker" type="text" autocomplete="off"></label>
+            <label>Family <select id="eventFamily"><option value="">All families</option><option>EARNINGS</option><option>GUIDANCE</option><option>COMMERCIAL</option><option>PRODUCT_TECH</option><option>CORPORATE_ACTION</option><option>CAPITAL_ALLOCATION</option><option>ANALYST</option><option>REGULATORY</option><option>LEGAL</option><option>MANAGEMENT_OWNERSHIP</option><option>INDUSTRY_EXTERNAL</option></select></label>
+            <label>Type <input id="eventType" type="text" autocomplete="off" placeholder="e.g. GUIDANCE_RAISE"></label>
+            <label>Direction <select id="eventDirection"><option value="">All directions</option><option>POSITIVE</option><option>NEGATIVE</option><option>NEUTRAL</option><option>MIXED</option></select></label>
+            <label>First captured from (UTC) <input id="eventFrom" type="date"></label>
+            <label>First captured through (UTC) <input id="eventTo" type="date"></label>
+            <label>Results per page <select id="eventPageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label>
+            <button type="submit">Search events</button>
+          </form>
+          <p id="eventStatus" class="muted" role="status">Open Events to search.</p>
+          <div id="eventResults" class="event-results"></div>
+          <button id="loadEvents" type="button" class="ghost hidden">Load more</button>
+        </section>
+      </main>
+
+      <footer class="muted small">Keys are stored in this tab's session only.</footer>
     </div>
-  </main>
-
-  <footer class="muted small">
-    Keys live in session storage only. API docs at <a id="apiDocs" href="/swagger-ui.html">swagger-ui</a>.
-  </footer>
-
+  </div>
+  <script src="operations-model.js"></script>
+  <script src="operations.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -65,7 +65,7 @@ class InternalControllersTest {
 
     @Test
     fun `triggers pipeline with admin key`() = runTest {
-        whenever(pipeline.runCycle(any())).thenReturn(PipelineResult("SUCCESS", 2, 2, 1))
+        whenever(pipeline.runCycle(any(), org.mockito.kotlin.eq(com.catalystradar.application.operations.OperationTrigger.MANUAL))).thenReturn(PipelineResult("SUCCESS", 2, 2, 1))
 
         mockMvc.post("/internal/ingestion/runs") {
             accept = MediaType.APPLICATION_JSON
@@ -79,7 +79,7 @@ class InternalControllersTest {
 
     @Test
     fun `reports inserts and reuses separately from the original counters`() = runTest {
-        whenever(pipeline.runCycle(any())).thenReturn(
+        whenever(pipeline.runCycle(any(), org.mockito.kotlin.eq(com.catalystradar.application.operations.OperationTrigger.MANUAL))).thenReturn(
             PipelineResult(
                 status = "SUCCESS",
                 documentsProcessed = 5,

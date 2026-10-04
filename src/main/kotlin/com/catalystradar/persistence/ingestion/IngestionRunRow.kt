@@ -4,6 +4,7 @@ import com.catalystradar.application.ingestion.IngestionStatus
 import org.springframework.data.annotation.Id
 import org.springframework.data.relational.core.mapping.Column
 import org.springframework.data.relational.core.mapping.Table
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
@@ -19,6 +20,8 @@ data class IngestionRunRow(
     @Column("error_summary") val error: String?,
     @Column("started_at") val startedAt: Instant,
     @Column("finished_at") val finishedAt: Instant?,
+    @Column("operation_run_id") val runId: UUID? = null,
+    @Column("error_code") val errorCode: String? = null,
 )
 
 data class IngestionRunRecord(
@@ -30,6 +33,10 @@ data class IngestionRunRecord(
     val duplicates: Int,
     val error: String?,
     val finishedAt: Instant?,
+    val startedAt: Instant? = null,
+    val durationMs: Long? = null,
+    val runId: UUID? = null,
+    val errorCode: String? = null,
 )
 
 fun IngestionRunRow.toRecord() = IngestionRunRecord(
@@ -41,4 +48,8 @@ fun IngestionRunRow.toRecord() = IngestionRunRecord(
     duplicates = duplicates,
     error = error,
     finishedAt = finishedAt,
+    startedAt = startedAt,
+    durationMs = finishedAt?.let { Duration.between(startedAt, it).toMillis() },
+    runId = runId,
+    errorCode = errorCode ?: if (status == "FAILED" || status == "PARTIAL") "UNKNOWN_FAILURE" else null,
 )

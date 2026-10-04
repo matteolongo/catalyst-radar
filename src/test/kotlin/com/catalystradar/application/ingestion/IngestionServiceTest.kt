@@ -12,6 +12,9 @@ import com.catalystradar.persistence.document.DocumentProcessingStore
 import com.catalystradar.persistence.document.SourceDocumentCompanyStore
 import com.catalystradar.persistence.document.SourceDocumentStore
 import com.catalystradar.persistence.ingestion.IngestionRunStore
+import com.catalystradar.operations.OperationsFixtures
+import org.springframework.jdbc.core.simple.JdbcClient
+import java.time.Instant
 import com.github.tomakehurst.wiremock.client.WireMock.aResponse
 import com.github.tomakehurst.wiremock.client.WireMock.get
 import com.github.tomakehurst.wiremock.client.WireMock.okJson
@@ -27,6 +30,11 @@ import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.client.RestClient
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
+import java.util.concurrent.CancellationException
+import com.catalystradar.ports.*
 
 @Transactional
 class IngestionServiceTest : PostgresIntegrationTest() {
@@ -48,6 +56,8 @@ class IngestionServiceTest : PostgresIntegrationTest() {
 
     @Autowired
     private lateinit var runs: IngestionRunStore
+
+    @Autowired private lateinit var jdbc: JdbcClient
 
     private val polygon = PolygonNewsProvider(
         RestClient.builder(),
@@ -133,12 +143,21 @@ class IngestionServiceTest : PostgresIntegrationTest() {
             get(urlPathEqualTo("/api/v1/company-news")).willReturn(okJson(FINNHUB_NEWS)),
         )
 
-        val result = service().ingestCycle()
+        val now = Instant.parse("2026-10-04T12:00:00Z")
+        val operationId = OperationsFixtures(jdbc).run(now, "RUNNING")
+        val started = Instant.now()
+        val result = service().ingestCycle(now, operationId)
 
         assertEquals(2, result.runs.size)
         assertEquals(IngestionStatus.FAILED, result.runs[0].status)
         assertEquals(IngestionStatus.SUCCESS, result.runs[1].status)
         assertEquals("finnhub", result.runs[1].provider)
+        assertNotEquals(result.runs[0].id, result.runs[1].id)
+        assertEquals(listOf(operationId, operationId), result.runs.map { it.runId })
+        assertEquals("TEMPORARY_UNAVAILABLE", result.runs[0].errorCode)
+        val finished = Instant.now()
+        assertTrue(result.runs.all { assertNotNull(it.startedAt) >= started && assertNotNull(it.startedAt) <= finished },
+            "provider-run timestamps use actual time independently of ingestion cutoff")
         assertNotNull(documents.findByProviderAndProviderDocumentId("finnhub", "9"))
     }
 
@@ -154,6 +173,53 @@ class IngestionServiceTest : PostgresIntegrationTest() {
 
         assertEquals(1, result.runs.size)
         assertEquals(IngestionStatus.PARTIAL, result.runs[0].status)
+        assertEquals("RATE_LIMITED", result.runs[0].errorCode)
+    }
+
+    @Test
+    fun `partial provider run retains the first registration failure category`() = runTest {
+        repeat(21) { companies.save(Company(ticker = "ZZ${('A'.code + it).toChar()}", name = "Chunk $it")) }
+        var calls = 0
+        val provider = object : NewsProvider {
+            override val name = "polygon"
+            override suspend fun fetch(request: NewsFetchRequest): NewsFetchResult {
+                if (calls++ > 0) throw ProviderException.RateLimited(60)
+                return NewsFetchResult(listOf(
+                    RawArticle(provider = name, providerArticleId = "invalid", url = null, publishedAt = null, title = "", body = "Invalid", tickers = request.tickers),
+                    RawArticle(provider = name, providerArticleId = "valid", url = null, publishedAt = null, title = "Raise story", body = "Evidence", tickers = request.tickers),
+                ), null)
+            }
+        }
+        val result = IngestionService(listOf(provider), IngestionProperties(fallbackProvider = "none"), companies, registrations, runs,
+            CatalystMetrics(SimpleMeterRegistry())).ingestCycle()
+        val run = result.runs.single()
+        assertEquals(IngestionStatus.PARTIAL, run.status)
+        assertEquals("PROCESSING_FAILURE", run.errorCode)
+        assertEquals(2, run.fetched)
+        assertEquals(1, run.added)
+    }
+
+    @Test
+    fun `cancelled provider run retains already registered counts`() = runTest {
+        repeat(21) { companies.save(Company(ticker = "ZZ${('A'.code + it).toChar()}", name = "Chunk $it")) }
+        var calls = 0
+        val provider = object : NewsProvider {
+            override val name = "polygon"
+            override suspend fun fetch(request: NewsFetchRequest): NewsFetchResult {
+                if (calls++ > 0) throw CancellationException("cancel")
+                return NewsFetchResult(listOf(RawArticle(provider = name, providerArticleId = "cancel-valid", url = null, publishedAt = null, title = "Raise story", body = "Evidence", tickers = request.tickers)), null)
+            }
+        }
+        val before = runs.listRecent(100).map { it.id }.toSet()
+        assertFailsWith<CancellationException> {
+            IngestionService(listOf(provider), IngestionProperties(fallbackProvider = "none"), companies, registrations, runs,
+                CatalystMetrics(SimpleMeterRegistry())).ingestCycle()
+        }
+        val run = runs.listRecent(100).single { it.id !in before }
+        assertEquals(IngestionStatus.FAILED, run.status)
+        assertEquals("CANCELLED", run.errorCode)
+        assertEquals(1, run.fetched)
+        assertEquals(1, run.added)
     }
 
     companion object {

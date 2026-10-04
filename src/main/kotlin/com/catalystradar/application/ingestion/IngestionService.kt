@@ -1,6 +1,7 @@
 package com.catalystradar.application.ingestion
 
 import com.catalystradar.observability.CatalystMetrics
+import com.catalystradar.application.operations.OperationalErrors
 import com.catalystradar.persistence.company.CompanyStore
 import com.catalystradar.persistence.ingestion.IngestionRunRecord
 import com.catalystradar.persistence.ingestion.IngestionRunStore
@@ -12,6 +13,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CancellationException
 
 data class IngestionCycleResult(
     val runs: List<IngestionRunRecord>,
@@ -45,7 +47,7 @@ class IngestionService(
     private val log = LoggerFactory.getLogger(IngestionService::class.java)
     private val providersByName = providers.associateBy { it.name }
 
-    suspend fun ingestCycle(now: Instant = Instant.now()): IngestionCycleResult {
+    suspend fun ingestCycle(now: Instant = Instant.now(), operationRunId: UUID? = null): IngestionCycleResult {
         val tickers = companies.findAllActive().map { it.ticker }
         if (tickers.isEmpty()) {
             log.info("ingestion cycle skipped: no active companies")
@@ -57,16 +59,16 @@ class IngestionService(
         )
         val primary = providersByName[properties.provider]
         if (primary == null) {
-            val runId = runs.startRun(properties.provider)
-            runs.finishRun(runId, IngestionStatus.FAILED, 0, 0, 0, "unknown provider: ${properties.provider}")
+            val runId = runs.startRun(properties.provider, operationRunId)
+            runs.finishRun(runId, IngestionStatus.FAILED, 0, 0, 0, OperationalErrors.message("INGESTION_FAILURE"), "INGESTION_FAILURE")
             return IngestionCycleResult(listOfNotNull(runs.findById(runId)))
         }
-        val outcomes = mutableListOf(runProvider(primary, tickers, now))
+        val outcomes = mutableListOf(runProvider(primary, tickers, now, operationRunId))
         val last = outcomes.last()
         if ((last.record.status == IngestionStatus.FAILED || last.record.status == IngestionStatus.PARTIAL) &&
             properties.fallbackProvider != primary.name
         ) {
-            providersByName[properties.fallbackProvider]?.let { outcomes += runProvider(it, tickers, now) }
+            providersByName[properties.fallbackProvider]?.let { outcomes += runProvider(it, tickers, now, operationRunId) }
         }
         return IngestionCycleResult(
             runs = outcomes.map { it.record },
@@ -83,14 +85,15 @@ class IngestionService(
         provider: NewsProvider,
         tickers: List<String>,
         now: Instant,
+        operationRunId: UUID?,
     ): ProviderOutcome {
-        val runId = runs.startRun(provider.name)
+        val runId = runs.startRun(provider.name, operationRunId)
         val started = System.nanoTime()
         var fetched = 0
         var added = 0
         var duplicates = 0
         var unresolved = 0
-        var firstError: String? = null
+        var firstErrorCode: String? = null
         val fresh = mutableListOf<NewDocument>()
         try {
             for (chunk in tickers.chunked(TICKER_CHUNK_SIZE)) {
@@ -105,7 +108,7 @@ class IngestionService(
                 fetched += page.articles.size
                 for (article in page.articles) {
                     try {
-                        when (val registration = registrations.registerIfNew(provider.name, article, now)) {
+                        when (val registration = registrations.registerIfNew(provider.name, article, now, runId)) {
                             is DocumentRegistration.Queued -> {
                                 added++
                                 fresh += NewDocument(registration.documentId, article.tickers)
@@ -121,8 +124,10 @@ class IngestionService(
                                 metrics.documentIngested(provider.name, "duplicate")
                             }
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: RuntimeException) {
-                        if (firstError == null) firstError = e.message
+                        if (firstErrorCode == null) firstErrorCode = "PROCESSING_FAILURE"
                         metrics.documentIngested(provider.name, "failed")
                         log.warn(
                             "ingestion run {} skipping failed document provider={} article={}: {}",
@@ -131,20 +136,28 @@ class IngestionService(
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            runCatching {
+                finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, "CANCELLED")
+            }.onFailure { log.warn("ingestion cancellation recording failed for run {}", runId) }
+            throw e
         } catch (e: ProviderException.RateLimited) {
             // Preserve the window: a later cycle re-fetches it idempotently.
             metrics.ingestionRun(provider.name, elapsedMs(started))
             reportUnresolved(runId, provider.name, unresolved)
-            return ProviderOutcome(finish(runId, IngestionStatus.PARTIAL, fetched, added, duplicates, "rate limited"), fresh)
+            return ProviderOutcome(finish(runId, IngestionStatus.PARTIAL, fetched, added, duplicates, firstErrorCode ?: OperationalErrors.code(e)), fresh)
         } catch (e: ProviderException) {
             metrics.ingestionRun(provider.name, elapsedMs(started))
             reportUnresolved(runId, provider.name, unresolved)
-            return ProviderOutcome(finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, e.message), fresh)
+            return ProviderOutcome(finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, firstErrorCode ?: OperationalErrors.code(e)), fresh)
+        } catch (e: RuntimeException) {
+            finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, firstErrorCode ?: "INGESTION_FAILURE")
+            throw e
         }
-        val status = if (firstError != null) IngestionStatus.PARTIAL else IngestionStatus.SUCCESS
+        val status = if (firstErrorCode != null) IngestionStatus.PARTIAL else IngestionStatus.SUCCESS
         metrics.ingestionRun(provider.name, elapsedMs(started))
         reportUnresolved(runId, provider.name, unresolved)
-        return ProviderOutcome(finish(runId, status, fetched, added, duplicates, firstError), fresh)
+        return ProviderOutcome(finish(runId, status, fetched, added, duplicates, firstErrorCode), fresh)
     }
 
     /**
@@ -168,9 +181,9 @@ class IngestionService(
         fetched: Int,
         added: Int,
         duplicates: Int,
-        error: String?,
+        errorCode: String?,
     ): IngestionRunRecord {
-        runs.finishRun(runId, status, fetched, added, duplicates, error)
+        runs.finishRun(runId, status, fetched, added, duplicates, errorCode?.let(OperationalErrors::message), errorCode)
         return requireNotNull(runs.findById(runId)) { "ingestion run vanished: $runId" }
     }
 

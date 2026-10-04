@@ -35,6 +35,9 @@ class ApiKeyAuthFilter(
         chain: FilterChain,
     ) {
         val path = request.requestURI
+        if (path == "/internal/operations" || path.startsWith("/internal/operations/")) {
+            response.setHeader("Cache-Control", "no-store")
+        }
         when {
             path == "/actuator" || path.startsWith("/actuator/") -> chain.doFilter(request, response)
             path.startsWith("/internal/") -> checkAdmin(request, response, chain)

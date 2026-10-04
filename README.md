@@ -154,7 +154,7 @@ to report healthy, then use:
 
 ```text
 CatalystRadar API   http://localhost:8080
-Analysis dashboard  http://localhost:8080/ops/index.html
+Operations console  http://localhost:8080/ops/index.html
 Health              http://localhost:8080/actuator/health
 PostgreSQL          localhost:5432
 ```
@@ -164,7 +164,7 @@ Run `docker compose down -v` only when a fresh local database is intended.
 
 ### Configure it safely
 
-Flyway applies V1 and the additive V2 migration automatically at application
+Flyway applies V1 and the additive V2/V3 migrations automatically at application
 startup. The local profile seeds the S&P 500 plus Nasdaq-100 reference data,
 but schedulers remain disabled unless explicitly enabled. Ingestion queries
 every active company ticker in batches, so keep the active universe small for a
@@ -190,38 +190,27 @@ Keep scheduled ingestion disabled until you intend to make provider calls.
 
 ### Operator dashboard (POC)
 
-With the API running as above, open `http://localhost:8080/ops/index.html`.
-The dashboard is served by the API itself; it needs no separate UI server,
-build step, or CORS configuration. It opens on **Discover**. Filter bounded
-company results by state, minimum score or velocity, and exact-match sector;
-select a ticker for current catalyst analysis. **Events** searches bounded
-cross-company event pages by ticker, taxonomy, direction, and first-captured
-(`discoveredAt`) dates, with cursor-based **Load more**. Event, source
-publication, and first-captured timestamps remain distinct.
+The explicitly requested optional operations backoffice is served by the API at
+`http://localhost:8080/ops/index.html`, with no separate frontend build or CORS
+configuration. It opens on **Overview** and has six areas: Overview, Pipeline,
+Documents, Models & costs, Intelligence (Discover, Company, Events), and Settings.
+It reads stored data for queue/freshness, bounded investigation histories,
+explicit source/attempt/run correlations and full recorded model cost aggregates.
+GETs make no provider/LLM/replay/recalculation calls. Unknown costs and incomplete
+or legacy history remain explicit.
 
-Company analysis shows the saved current score/state and its server-defined
-range. Its explanation is a current reconstruction shown only when score and
-versions match the saved snapshot. Driver contributions are raw event values,
-not normalized score points. History shows stored snapshots and transitions,
-limited to 200 of each per selected range; contextual events do not prove why
-a past score changed. Pipeline controls and run histories remain under
-**Operations**.
+Save tab-session credentials in Settings: the admin key enables administrative
+reads and the existing **Run pipeline now** POST; a separately issued public API
+key enables Intelligence when public authentication is required. The admin key
+only goes to `/internal/*`, and the public key only to `/v1/*`. Clearing/changing
+keys invalidates protected data. Manual pipeline execution may incur configured
+provider/LLM costs. There is no per-document retry, scheduler editing or automatic
+replay. Run only one application instance and do not expose the local profile
+remotely.
 
-To see ingestion/model-run history or enable **Run pipeline now**, enter the
-local profile's admin key (`local-dev-secret`) and click **Save keys**. The run
-button triggers live provider/LLM calls when provider keys are configured, so
-it may incur API costs. Set `POLYGON_API_KEY`, `FINNHUB_API_KEY`, and
-`OPENAI_API_KEY` before using it for real ingestion. Set
-`CATALYST_INGESTION_ENABLED=true` only if you also want scheduled runs.
-
-If public API authentication is enabled, enter a separately issued public API
-key in the **API key** field to load Discover, Company, and Events. The public
-key is sent only to `/v1/*`, and the admin key only to `/internal/*`. **Clear
-keys** removes both values; otherwise they stay only in this browser tab's
-session storage. Model run details show prompt/extractor versions and source
-document IDs, without prompts or document bodies.
-Do not expose the `local` profile or this key-entry POC on the public Internet.
-See [ui/README.md](ui/README.md) for dashboard details.
+See [the UI walkthrough](ui/README.md) and [operator/API reference](docs/operations-backoffice.md)
+for all 15 reads, scopes/windows/cursors, access, cost coverage and ledger limits.
+This extension does not change v0.1 scoring, taxonomy or public API behavior.
 
 ### Five-minute fixture demo
 
@@ -988,7 +977,9 @@ score/state snapshot and discovery API
 cutoff-safe replay without persistent side effects
 ```
 
-Deliberately deferred are multi-instance scheduling/leases, UI and trading
+The optional [operations backoffice](docs/operations-backoffice.md) extends the original
+API-only v0.1 scope. Deliberately deferred are multi-instance scheduling/leases
+and trading
 features, social/SEC/IR ingestion, webhooks, distributed infrastructure,
 large-universe tuning, broad historical backfills, company aliases, and score
 calibration. `score-v1` remains code-defined while benchmark reports are used

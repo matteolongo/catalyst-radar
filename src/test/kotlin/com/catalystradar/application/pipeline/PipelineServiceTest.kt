@@ -3,6 +3,9 @@ package com.catalystradar.application.pipeline
 import com.catalystradar.adapters.polygon.PolygonNewsProvider
 import com.catalystradar.adapters.polygon.PolygonProperties
 import com.catalystradar.application.catalyst.CatalystService
+import com.catalystradar.application.operations.*
+import com.catalystradar.persistence.operations.OperationRunStore
+import com.catalystradar.persistence.operations.ProcessingAttemptStore
 import com.catalystradar.application.clustering.EventClusteringService
 import com.catalystradar.application.clustering.DedupProperties
 import com.catalystradar.domain.event.Directness
@@ -13,6 +16,7 @@ import com.catalystradar.application.extraction.ExtractionValidator
 import com.catalystradar.application.ingestion.IngestionProperties
 import com.catalystradar.application.ingestion.IngestionService
 import com.catalystradar.application.ingestion.DocumentProcessingStatus
+import com.catalystradar.application.ingestion.IngestionStatus
 import com.catalystradar.application.ingestion.SourceDocumentRegistrationService
 import com.catalystradar.domain.catalyst.CatalystState
 import com.catalystradar.application.company.CompanyService
@@ -52,18 +56,25 @@ import kotlinx.coroutines.test.runTest
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CancellationException
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import org.mockito.kotlin.spy
+import org.mockito.kotlin.doAnswer
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.client.RestClient
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertNotNull
+import kotlin.test.assertFailsWith
 
 @Transactional
 class PipelineServiceTest : PostgresIntegrationTest() {
@@ -110,6 +121,11 @@ class PipelineServiceTest : PostgresIntegrationTest() {
     @Autowired
     private lateinit var persistence: DocumentOutcomePersistenceService
 
+    @Autowired private lateinit var recorder: OperationRunRecorder
+    @Autowired private lateinit var attempts: ProcessingAttemptService
+    @Autowired private lateinit var operationRuns: OperationRunStore
+    @Autowired private lateinit var attemptStore: ProcessingAttemptStore
+
     @Autowired
     private lateinit var jdbc: JdbcClient
 
@@ -122,6 +138,7 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         ingestionProperties: IngestionProperties = IngestionProperties(),
         pipelineProperties: PipelineProperties = PipelineProperties(),
         catalyst: CatalystService = this.catalyst,
+        recorder: OperationRunRecorder = this.recorder,
     ) = PipelineService(
         ingestion = IngestionService(
             providers = providers,
@@ -148,6 +165,8 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         companies = companyStore,
         properties = pipelineProperties,
         metrics = metrics,
+        recorder = recorder,
+        attempts = attempts,
     )
 
     private fun polygon() = PolygonNewsProvider(
@@ -491,7 +510,7 @@ class PipelineServiceTest : PostgresIntegrationTest() {
     fun `does not count a company as rescored when recalculation fails`() = runTest {
         val company = companyStore.save(Company(ticker = "DELL", name = "Dell"))
         val now = Instant.parse("2026-09-16T10:00:00Z")
-        queuedDocument(company, now)
+        val document = queuedDocument(company, now)
         val failingCatalyst = mock<CatalystService>()
         whenever(failingCatalyst.recalculate(eq(company.id), any()))
             .thenThrow(IllegalStateException("snapshot store unavailable"))
@@ -502,6 +521,16 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         assertEquals(1, result.eventsInserted)
         assertEquals(0, result.companiesRescored)
         assertEquals("PARTIAL", result.status)
+        val id = assertNotNull(result.runId)
+        val run = assertNotNull(operationRuns.detail(id, Instant.now())).run
+        assertEquals(1, run.companiesConsidered)
+        assertEquals(1, run.companiesFailed)
+        assertTrue(run.captureComplete)
+        assertEquals("SCORING_FAILURE", run.errorCode)
+        val issue = operationRuns.issues(id, PageRequest(), Instant.now()).items.single()
+        assertEquals(IssuePhase.SCORING, issue.phase)
+        assertEquals(company.id, issue.companyId)
+        assertEquals(AttemptStatus.COMPLETED, attemptStore.search(document.id, PageRequest(), Instant.now()).items.single().status)
     }
 
     @Test
@@ -525,12 +554,117 @@ class PipelineServiceTest : PostgresIntegrationTest() {
 
         val first = async { pipeline.runCycle(Instant.parse("2026-09-16T10:00:00Z")) }
         started.await()
+        val active = recorder.activeIds().single()
         val second = pipeline.runCycle(Instant.parse("2026-09-16T10:00:01Z"))
+        assertNull(second.runId)
+        assertEquals(setOf(active), recorder.activeIds())
         release.complete(Unit)
 
         assertEquals("SKIPPED", second.status)
         assertTrue(second.alreadyRunning)
-        assertEquals("SUCCESS", first.await().status)
+        val completed = first.await()
+        assertEquals("SUCCESS", completed.status)
+        assertEquals(active, completed.runId)
+        assertFalse(recorder.isActive(active))
+    }
+
+    @Test
+    fun `ingestion cancellation closes its provider and operation and releases the guard`() = runTest {
+        companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        var cancel = true
+        val provider = object : NewsProvider {
+            override val name = "polygon"
+            override suspend fun fetch(request: NewsFetchRequest): NewsFetchResult {
+                if (cancel) throw CancellationException("secret cancellation detail")
+                return NewsFetchResult(emptyList(), null)
+            }
+        }
+        val pipeline = pipeline(providers = listOf(provider), ingestionProperties = IngestionProperties(fallbackProvider = "none"))
+        val before = runs.listRecent(100).map { it.id }.toSet()
+        assertFailsWith<CancellationException> { pipeline.runCycle() }
+        val providerRun = runs.listRecent(100).single { it.id !in before }
+        assertEquals(IngestionStatus.FAILED, providerRun.status)
+        assertEquals("CANCELLED", providerRun.errorCode)
+        val runId = assertNotNull(providerRun.runId)
+        val run = assertNotNull(operationRuns.detail(runId, Instant.now())).run
+        assertEquals(OperationStatus.CANCELLED, run.status)
+        assertFalse(run.captureComplete)
+        assertFalse(recorder.isActive(runId))
+        cancel = false
+        assertEquals("SUCCESS", pipeline.runCycle().status)
+    }
+
+    @Test
+    fun `document cancellation interrupts its attempt and never becomes terminal`() = runTest {
+        val now = Instant.parse("2026-09-16T10:00:00Z")
+        val company = companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val document = queuedDocument(company, now)
+        val cancelling = object : EventExtractionProvider {
+            override suspend fun extract(request: ExtractionRequest): ExtractionResult = throw CancellationException("cancel")
+        }
+        val pipeline = drainedPipeline(extraction = cancelling)
+        assertFailsWith<CancellationException> { pipeline.runCycle(now) }
+        val attempt = attemptStore.search(document.id, PageRequest(), Instant.now()).items.single()
+        assertEquals(AttemptStatus.INTERRUPTED, attempt.status)
+        assertEquals("CANCELLED", attempt.errorCode)
+        assertNull(attempt.finishedAt)
+        assertEquals(DocumentProcessingStatus.PROCESSING, processing.findBySourceDocumentId(document.id)?.status)
+        val run = assertNotNull(operationRuns.detail(attempt.runId, Instant.now())).run
+        assertEquals(OperationStatus.CANCELLED, run.status)
+        assertFalse(run.captureComplete)
+        assertFalse(recorder.isActive(attempt.runId))
+        assertEquals(0, run.documentsConsidered)
+    }
+
+    @Test
+    fun `scoring cancellation retains committed document counters and stops the cycle`() = runTest {
+        val now = Instant.parse("2026-09-16T10:00:00Z")
+        val company = companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val document = queuedDocument(company, now)
+        val cancelledCatalyst = mock<CatalystService>()
+        whenever(cancelledCatalyst.recalculate(eq(company.id), any())).thenThrow(CancellationException("cancel"))
+        assertFailsWith<CancellationException> { drainedPipeline(catalyst = cancelledCatalyst).runCycle(now) }
+        val attempt = attemptStore.search(document.id, PageRequest(), Instant.now()).items.single()
+        assertEquals(AttemptStatus.COMPLETED, attempt.status)
+        val run = assertNotNull(operationRuns.detail(attempt.runId, Instant.now())).run
+        assertEquals(OperationStatus.CANCELLED, run.status)
+        assertFalse(run.captureComplete)
+        assertEquals(1, run.documentsCompleted)
+        assertEquals(1, run.eventsInserted)
+        assertEquals(1, run.companiesConsidered)
+        assertEquals(0, run.companiesFailed)
+        assertEquals(0, run.companiesRescored)
+        assertFalse(recorder.isActive(attempt.runId))
+    }
+
+    @Test
+    fun `an unexpected progress failure preserves prior recorded counters and committed outcomes`() = runTest {
+        val now = Instant.parse("2026-09-16T10:00:00Z")
+        val company = companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val first = queuedDocument(company, now)
+        val second = queuedDocument(company, now)
+        val failingRecorder = spy(recorder)
+        doAnswer { call ->
+            val counts = call.getArgument<OperationCounts>(1)
+            if (counts.documentsConsidered == 2) throw IllegalStateException("progress unavailable")
+            call.callRealMethod()
+        }.whenever(failingRecorder).progress(any(), any())
+        val result = pipeline(
+            providers = listOf(NoNewsProvider),
+            ingestionProperties = IngestionProperties(provider = NoNewsProvider.name, fallbackProvider = "none"),
+            recorder = failingRecorder,
+        ).runCycle(now)
+        val id = assertNotNull(result.runId)
+        assertEquals("FAILED", result.status)
+        assertEquals(0, result.documentsProcessed, "legacy outer failure result retains its counters")
+        val run = assertNotNull(operationRuns.detail(id, Instant.now())).run
+        assertEquals(OperationStatus.FAILED, run.status)
+        assertFalse(run.captureComplete)
+        assertEquals("PROCESSING_FAILURE", run.errorCode)
+        assertEquals(1, run.documentsCompleted, "last successfully recorded progress remains visible")
+        assertEquals(DocumentProcessingStatus.COMPLETED, processing.findBySourceDocumentId(first.id)?.status)
+        assertEquals(DocumentProcessingStatus.COMPLETED, processing.findBySourceDocumentId(second.id)?.status)
+        assertFalse(failingRecorder.isActive(id))
     }
 
     private fun newsPage(published: String): String {

@@ -7,6 +7,7 @@ import com.catalystradar.application.ingestion.DocumentProcessingStatus
 import com.catalystradar.application.ingestion.IngestionCycleResult
 import com.catalystradar.application.ingestion.IngestionService
 import com.catalystradar.application.ingestion.IngestionStatus
+import com.catalystradar.application.operations.*
 import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.company.CompanyStore
 import com.catalystradar.persistence.document.DocumentProcessingStore
@@ -20,17 +21,10 @@ import org.springframework.stereotype.Service
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Outcome of one pipeline cycle.
- *
- * `documentsProcessed` and `eventsExtracted` predate the split counters and
- * keep their meaning for existing consumers: documents drained from the
- * durable queue, and events stored for them regardless of whether the row
- * was new or already present. `eventsInserted` and `eventsReused` separate
- * those two cases so operators can see model drift without re-deriving it.
- */
+/** Legacy counters retain their meaning; inserted and reused events are counted separately. */
 data class PipelineResult(
     val status: String,
     val documentsProcessed: Int,
@@ -44,16 +38,12 @@ data class PipelineResult(
     val documentsCompleted: Int = 0,
     val eventsInserted: Int = 0,
     val eventsReused: Int = 0,
+    val runId: UUID? = null,
 ) {
-    /** Documents taken off the durable queue this cycle. */
     val documentsConsidered: Int get() = documentsProcessed
 }
 
-/**
- * End-to-end catalyst pipeline. Ingestion only registers source material;
- * this service drains the durable processing queue so a transient extraction
- * failure is retried on a later cycle even when the document is deduplicated.
- */
+/** Drains the durable queue after ingestion; remote work precedes narrow outcome transactions. */
 @Service
 class PipelineService(
     private val ingestion: IngestionService,
@@ -68,134 +58,139 @@ class PipelineService(
     private val companies: CompanyStore,
     private val properties: PipelineProperties,
     private val metrics: CatalystMetrics,
+    private val recorder: OperationRunRecorder,
+    private val attempts: ProcessingAttemptService,
 ) {
-
     private val log = LoggerFactory.getLogger(PipelineService::class.java)
     private val running = AtomicBoolean(false)
 
-    suspend fun runCycle(now: Instant = Instant.now()): PipelineResult {
+    suspend fun runCycle(now: Instant = Instant.now(), trigger: OperationTrigger = OperationTrigger.MANUAL): PipelineResult {
         if (!running.compareAndSet(false, true)) {
             metrics.pipelineCycle("skipped")
-            return PipelineResult(
-                status = "SKIPPED",
-                documentsProcessed = 0,
-                eventsExtracted = 0,
-                companiesRescored = 0,
-                alreadyRunning = true,
-            )
+            return PipelineResult("SKIPPED", 0, 0, 0, alreadyRunning = true)
         }
+        var runId: UUID? = null
+        var phase = OperationPhase.INGESTION
+        var counts = OperationCounts()
         return try {
-            runCycleOnce(now)
+            val id = recorder.begin(OperationKind.PIPELINE, trigger, now)
+            runId = id
+            require(properties.batchSize in 1..500) { "pipeline batchSize must be within 1..500" }
+            require(properties.maxAttempts >= 1) { "pipeline maxAttempts must be positive" }
+            require(!properties.retryDelay.isNegative && !properties.retryDelay.isZero) { "pipeline retryDelay must be positive" }
+            var firstErrorCode: String? = null
+            val ingestionResult = try {
+                ingestion.ingestCycle(now, id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: RuntimeException) {
+                firstErrorCode = "INGESTION_FAILURE"
+                recorder.issue(id, phase, firstErrorCode)
+                log.warn("pipeline ingestion failed for run {}", id)
+                IngestionCycleResult(emptyList())
+            }
+            ingestionResult.runs.filter { it.status != IngestionStatus.SUCCESS }.forEach { providerRun ->
+                val code = providerRun.errorCode ?: "UNKNOWN_FAILURE"
+                if (firstErrorCode == null) firstErrorCode = code
+                recorder.issue(id, phase, code)
+            }
+            phase = OperationPhase.PROCESSING
+            recorder.phase(id, phase)
+            val affectedCompanies = linkedSetOf<UUID>()
+            for (record in processing.findDue(now, properties.batchSize)) {
+                val outcome = processDocument(record.sourceDocumentId, id, now)
+                affectedCompanies += outcome.affectedCompanies
+                counts = counts.copy(
+                    documentsConsidered = counts.documentsConsidered + 1,
+                    documentsCompleted = counts.documentsCompleted + if (outcome.status == DocumentProcessingStatus.COMPLETED) 1 else 0,
+                    documentsSkipped = counts.documentsSkipped + if (outcome.status == DocumentProcessingStatus.SKIPPED) 1 else 0,
+                    documentsRetryScheduled = counts.documentsRetryScheduled + if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) 1 else 0,
+                    documentsTerminalFailures = counts.documentsTerminalFailures + if (outcome.status == DocumentProcessingStatus.TERMINAL_ERROR) 1 else 0,
+                    eventsInserted = counts.eventsInserted + outcome.eventsInserted,
+                    eventsReused = counts.eventsReused + outcome.eventsReused,
+                )
+                recorder.progress(id, counts)
+                metrics.documentProcessing(outcome.status.name.lowercase())
+                if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) metrics.documentRetryAttempt()
+                if (outcome.error != null && firstErrorCode == null) {
+                    firstErrorCode = processing.findBySourceDocumentId(record.sourceDocumentId)?.lastErrorCode ?: "PROCESSING_FAILURE"
+                }
+            }
+            phase = OperationPhase.SCORING
+            recorder.phase(id, phase)
+            counts = counts.copy(companiesConsidered = affectedCompanies.size)
+            recorder.progress(id, counts)
+            for (companyId in affectedCompanies) {
+                try {
+                    catalyst.recalculate(companyId, now)
+                    counts = counts.copy(companiesRescored = counts.companiesRescored + 1)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: RuntimeException) {
+                    if (firstErrorCode == null) firstErrorCode = "SCORING_FAILURE"
+                    recorder.issue(id, phase, "SCORING_FAILURE", companyId = companyId)
+                    counts = counts.copy(companiesFailed = counts.companiesFailed + 1)
+                    log.warn("pipeline recalculation failed for company {} run {}", companyId, id)
+                }
+                recorder.progress(id, counts)
+            }
+            val providerIssue = ingestionResult.runs.any { it.status != IngestionStatus.SUCCESS }
+            val noProviderSucceeded = ingestionResult.runs.isNotEmpty() && ingestionResult.runs.all {
+                it.status == IngestionStatus.FAILED || (it.status == IngestionStatus.PARTIAL && it.added == 0)
+            }
+            val status = when {
+                noProviderSucceeded && counts.documentsCompleted == 0 -> "FAILED"
+                providerIssue || firstErrorCode != null || counts.documentsRetryScheduled > 0 || counts.documentsTerminalFailures > 0 -> "PARTIAL"
+                else -> "SUCCESS"
+            }
+            recorder.finish(id, OperationStatus.valueOf(status), counts, firstErrorCode, captureComplete = true)
+            metrics.pipelineCycle(status.lowercase())
+            PipelineResult(
+                status = status, documentsProcessed = counts.documentsConsidered,
+                eventsExtracted = counts.eventsInserted + counts.eventsReused, companiesRescored = counts.companiesRescored,
+                error = firstErrorCode?.let(OperationalErrors::message), documentsSkipped = counts.documentsSkipped,
+                documentsRetryScheduled = counts.documentsRetryScheduled, documentsTerminalFailures = counts.documentsTerminalFailures,
+                documentsCompleted = counts.documentsCompleted, eventsInserted = counts.eventsInserted, eventsReused = counts.eventsReused,
+                runId = id,
+            )
+        } catch (e: CancellationException) {
+            runId?.let { finishIncomplete(it, phase, OperationStatus.CANCELLED, "CANCELLED") }
+            throw e
         } catch (e: RuntimeException) {
-            val error = sanitize(e)
-            log.error("pipeline cycle failed: {}", error)
+            val code = when (phase) {
+                OperationPhase.INGESTION -> "INGESTION_FAILURE"
+                OperationPhase.PROCESSING -> "PROCESSING_FAILURE"
+                else -> "SCORING_FAILURE"
+            }
+            runId?.let { finishIncomplete(it, phase, OperationStatus.FAILED, code) }
+            log.error("pipeline cycle failed run={} phase={}", runId, phase)
             metrics.pipelineCycle("failed")
-            PipelineResult("FAILED", 0, 0, 0, error)
+            // The durable ledger preserves committed progress even if an outer stage failed.
+            PipelineResult("FAILED", 0, 0, 0, OperationalErrors.message(code), runId = runId)
         } finally {
             running.set(false)
         }
     }
 
-    private suspend fun runCycleOnce(now: Instant): PipelineResult {
-        require(properties.batchSize in 1..500) { "pipeline batchSize must be within 1..500" }
-        require(properties.maxAttempts >= 1) { "pipeline maxAttempts must be positive" }
-        require(!properties.retryDelay.isNegative && !properties.retryDelay.isZero) {
-            "pipeline retryDelay must be positive"
-        }
-
-        var firstError: String? = null
-        val ingestionResult = try {
-            ingestion.ingestCycle(now)
-        } catch (e: RuntimeException) {
-            firstError = sanitize(e)
-            log.warn("pipeline ingestion failed: {}", firstError)
-            IngestionCycleResult(emptyList())
-        }
-
-        var documentsProcessed = 0
-        var eventsExtracted = 0
-        var eventsInserted = 0
-        var eventsReused = 0
-        var documentsSkipped = 0
-        var documentsRetryScheduled = 0
-        var documentsTerminalFailures = 0
-        var documentsCompleted = 0
-        val affectedCompanies = linkedSetOf<UUID>()
-
-        for (record in processing.findDue(now, properties.batchSize)) {
-            val outcome = processDocument(record.sourceDocumentId, now)
-            documentsProcessed++
-            eventsExtracted += outcome.eventsStored
-            eventsInserted += outcome.eventsInserted
-            eventsReused += outcome.eventsReused
-            affectedCompanies += outcome.affectedCompanies
-            metrics.documentProcessing(outcome.status.name.lowercase())
-            if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) {
-                metrics.documentRetryAttempt()
-            }
-            when (outcome.status) {
-                DocumentProcessingStatus.COMPLETED -> documentsCompleted++
-                DocumentProcessingStatus.SKIPPED -> documentsSkipped++
-                DocumentProcessingStatus.RETRYABLE_ERROR -> documentsRetryScheduled++
-                DocumentProcessingStatus.TERMINAL_ERROR -> documentsTerminalFailures++
-                else -> error("processing outcome must be final")
-            }
-            if (firstError == null && outcome.error != null) firstError = outcome.error
-        }
-
-        var companiesRescored = 0
-        for (companyId in affectedCompanies) {
-            try {
-                catalyst.recalculate(companyId, now)
-                companiesRescored++
-            } catch (e: RuntimeException) {
-                val error = sanitize(e)
-                if (firstError == null) firstError = error
-                log.warn("pipeline recalculation failed for company {}: {}", companyId, error)
-            }
-        }
-
-        val providerIssue = ingestionResult.runs.any { it.status != IngestionStatus.SUCCESS }
-        val noProviderSucceeded = ingestionResult.runs.isNotEmpty() && ingestionResult.runs.all {
-            it.status == IngestionStatus.FAILED || (it.status == IngestionStatus.PARTIAL && it.added == 0)
-        }
-        val status = when {
-            noProviderSucceeded && documentsCompleted == 0 -> "FAILED"
-            providerIssue || firstError != null || documentsRetryScheduled > 0 || documentsTerminalFailures > 0 -> "PARTIAL"
-            else -> "SUCCESS"
-        }
-        val error = firstError ?: ingestionResult.runs.firstOrNull { it.status != IngestionStatus.SUCCESS }?.error
-        metrics.pipelineCycle(status.lowercase())
-        return PipelineResult(
-            status = status,
-            documentsProcessed = documentsProcessed,
-            eventsExtracted = eventsExtracted,
-            companiesRescored = companiesRescored,
-            error = error,
-            documentsSkipped = documentsSkipped,
-            documentsRetryScheduled = documentsRetryScheduled,
-            documentsTerminalFailures = documentsTerminalFailures,
-            documentsCompleted = documentsCompleted,
-            eventsInserted = eventsInserted,
-            eventsReused = eventsReused,
-        )
+    private fun finishIncomplete(id: UUID, phase: OperationPhase, status: OperationStatus, code: String) {
+        runCatching { recorder.issue(id, phase, code) }
+            .onFailure { log.warn("pipeline issue recording failed for run {}", id) }
+        runCatching { recorder.finish(id, status, null, code, captureComplete = false) }
+            .onFailure { log.warn("pipeline final recording failed for run {}", id) }
     }
 
-    private suspend fun processDocument(sourceDocumentId: UUID, now: Instant): DocumentOutcome {
-        val attempt = processing.markProcessing(sourceDocumentId, now)
+    private suspend fun processDocument(sourceDocumentId: UUID, runId: UUID, now: Instant): DocumentOutcome {
+        val attempt = attempts.begin(sourceDocumentId, runId, now)
         return try {
             val document = documents.findById(sourceDocumentId)
-            if (document == null) {
-                processing.markTerminal(sourceDocumentId, "MISSING_DOCUMENT", "source document no longer exists", now)
-                return DocumentOutcome(DocumentProcessingStatus.TERMINAL_ERROR, error = "source document no longer exists")
-            }
+                ?: return attempts.fail(attempt, DocumentProcessingStatus.TERMINAL_ERROR, "PROCESSING_FAILURE", null, now).also {
+                    recorder.issue(runId, OperationPhase.PROCESSING, "PROCESSING_FAILURE", documentId = sourceDocumentId)
+                }
             val resolved = documentCompanies.findCompanyIds(sourceDocumentId).mapNotNull(companies::findById)
             if (resolved.isEmpty()) {
-                processing.markSkipped(sourceDocumentId, now)
-                return DocumentOutcome(DocumentProcessingStatus.SKIPPED)
+                return persistence.persist(DocumentPersistencePlan(sourceDocumentId, emptyList(), attempt.id), DocumentProcessingStatus.SKIPPED, now)
             }
-
-            val extractionResult = extraction.extract(ExtractionRequest(document, resolved))
+            val extractionResult = extraction.extract(ExtractionRequest(document, resolved, attempt.id))
             val prepared = normalization.prepareDocument(document, extractionResult, resolved)
             val plan = DocumentPersistencePlan(
                 sourceDocumentId = sourceDocumentId,
@@ -203,71 +198,35 @@ class PipelineService(
                     PlannedEvent(
                         event = candidate.event,
                         fingerprint = candidate.fingerprint,
-                        cluster = clustering.prepareClustering(
-                            sourceDocumentId = sourceDocumentId,
-                            eventFingerprint = candidate.fingerprint,
-                            event = candidate.event,
-                        ),
+                        cluster = clustering.prepareClustering(sourceDocumentId, candidate.fingerprint, candidate.event, attempt.id),
                     )
                 },
+                processingAttemptId = attempt.id,
             )
-            val finalStatus = if (extractionResult.documentRelevant) {
-                DocumentProcessingStatus.COMPLETED
-            } else {
-                DocumentProcessingStatus.SKIPPED
-            }
+            val finalStatus = if (extractionResult.documentRelevant) DocumentProcessingStatus.COMPLETED else DocumentProcessingStatus.SKIPPED
             persistence.persist(plan, finalStatus, now)
+        } catch (e: CancellationException) {
+            runCatching { attempts.interrupt(attempt, "CANCELLED") }
+                .onFailure { log.warn("pipeline attempt cancellation recording failed for document {}", sourceDocumentId) }
+            throw e
         } catch (e: ProviderException) {
-            handleProviderFailure(sourceDocumentId, attempt.attemptCount, e, now)
+            val retryAt = if (e.isRetryable() && attempt.number < properties.maxAttempts) now.plus(retryDelay(e, attempt.number)) else null
+            val code = OperationalErrors.code(e)
+            attempts.fail(attempt, if (retryAt != null) DocumentProcessingStatus.RETRYABLE_ERROR else DocumentProcessingStatus.TERMINAL_ERROR, code, retryAt, now).also {
+                recorder.issue(runId, OperationPhase.PROCESSING, code, documentId = sourceDocumentId)
+            }
         } catch (e: RuntimeException) {
-            val error = sanitize(e)
-            processing.markTerminal(sourceDocumentId, "PROCESSING_FAILURE", error, now)
-            DocumentOutcome(DocumentProcessingStatus.TERMINAL_ERROR, error = error)
+            attempts.fail(attempt, DocumentProcessingStatus.TERMINAL_ERROR, "PROCESSING_FAILURE", null, now).also {
+                recorder.issue(runId, OperationPhase.PROCESSING, "PROCESSING_FAILURE", documentId = sourceDocumentId)
+            }
         }
-    }
-
-    private fun handleProviderFailure(
-        sourceDocumentId: UUID,
-        attemptCount: Int,
-        failure: ProviderException,
-        now: Instant,
-    ): DocumentOutcome {
-        val error = sanitize(failure)
-        if (failure.isRetryable() && attemptCount < properties.maxAttempts) {
-            processing.markRetryable(
-                sourceDocumentId = sourceDocumentId,
-                errorCode = failure.code(),
-                errorMessage = error,
-                nextAttemptAt = now.plus(retryDelay(failure, attemptCount)),
-                now = now,
-            )
-            return DocumentOutcome(DocumentProcessingStatus.RETRYABLE_ERROR, error = error)
-        }
-        processing.markTerminal(sourceDocumentId, failure.code(), error, now)
-        return DocumentOutcome(DocumentProcessingStatus.TERMINAL_ERROR, error = error)
     }
 
     private fun retryDelay(failure: ProviderException, attemptCount: Int): Duration {
-        if (failure is ProviderException.RateLimited && failure.retryAfterSeconds != null) {
-            return Duration.ofSeconds(failure.retryAfterSeconds)
-        }
-        val multiplier = 1L shl (attemptCount - 1).coerceAtMost(10)
-        return properties.retryDelay.multipliedBy(multiplier)
+        if (failure is ProviderException.RateLimited && failure.retryAfterSeconds != null) return Duration.ofSeconds(failure.retryAfterSeconds)
+        return properties.retryDelay.multipliedBy(1L shl (attemptCount - 1).coerceAtMost(10))
     }
 
     private fun ProviderException.isRetryable(): Boolean =
         this is ProviderException.RateLimited || this is ProviderException.TemporaryUnavailable
-
-    private fun ProviderException.code(): String = when (this) {
-        is ProviderException.RateLimited -> "RATE_LIMITED"
-        is ProviderException.TemporaryUnavailable -> "TEMPORARY_UNAVAILABLE"
-        is ProviderException.AuthenticationFailed -> "AUTHENTICATION_FAILED"
-        is ProviderException.InvalidResponse -> "INVALID_RESPONSE"
-        is ProviderException.PermanentFailure -> "PERMANENT_FAILURE"
-    }
-
-    private fun sanitize(error: Throwable): String =
-        (error.message ?: error::class.simpleName ?: "pipeline failure")
-            .replace(Regex("\\s+"), " ")
-            .take(500)
 }

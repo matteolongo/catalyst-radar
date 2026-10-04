@@ -17,6 +17,10 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.springframework.web.client.RestClient
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import java.math.BigDecimal
+import java.util.UUID
+import com.catalystradar.ports.EmbeddingRequest
 
 class OpenAiEmbeddingProviderTest {
 
@@ -30,6 +34,65 @@ class OpenAiEmbeddingProviderTest {
         runs,
         com.catalystradar.observability.CatalystMetrics(meterRegistry),
     )
+
+    @Test
+    fun `missing embedding usage remains unknown rather than free`() = runTest {
+        wireMock.stubFor(post(urlPathEqualTo("/v1/embeddings")).willReturn(okJson(
+            EMBEDDING_RESPONSE.replace("\"usage\": {\"prompt_tokens\": 8, \"total_tokens\": 8}", "\"usage\": null"),
+        )))
+        provider.embed("hello")
+        verify(runs).record(check<ModelRunInput> {
+            assertNull(it.inputTokens)
+            assertNull(it.outputTokens)
+            assertNull(it.estimatedCost)
+        })
+    }
+
+    @Test
+    fun `known zero embedding usage records zero cost with unknown output tokens`() = runTest {
+        wireMock.stubFor(post(urlPathEqualTo("/v1/embeddings")).willReturn(okJson(
+            EMBEDDING_RESPONSE.replace("\"prompt_tokens\": 8", "\"prompt_tokens\": 0"),
+        )))
+        provider.embed("hello")
+        verify(runs).record(check<ModelRunInput> {
+            assertEquals(0, it.inputTokens)
+            assertNull(it.outputTokens)
+            assertEquals(BigDecimal("0.000000"), it.estimatedCost)
+        })
+    }
+
+    @Test
+    fun `unknown embedding pricing preserves known usage`() = runTest {
+        val unknownProvider = OpenAiEmbeddingProvider(
+            RestClient.builder(),
+            OpenAiProperties(baseUrl = wireMock.baseUrl(), apiKey = "test-key", embeddingModel = "unknown"),
+            runs,
+            com.catalystradar.observability.CatalystMetrics(meterRegistry),
+        )
+        wireMock.stubFor(post(urlPathEqualTo("/v1/embeddings")).willReturn(okJson(EMBEDDING_RESPONSE)))
+        unknownProvider.embed("hello")
+        verify(runs).record(check<ModelRunInput> {
+            assertEquals(8, it.inputTokens)
+            assertNull(it.outputTokens)
+            assertNull(it.estimatedCost)
+        })
+    }
+
+    @Test
+    fun `invalid embedding data retains known usage and cost in one failed run`() = runTest {
+        wireMock.stubFor(post(urlPathEqualTo("/v1/embeddings")).willReturn(okJson(
+            """{"data": [], "usage": {"prompt_tokens": 100}}""",
+        )))
+        assertThrows<com.catalystradar.ports.ProviderException.InvalidResponse> { provider.embed("hello") }
+        verify(runs).record(check<ModelRunInput> {
+            assertEquals(false, it.success)
+            assertEquals(100, it.inputTokens)
+            assertNull(it.outputTokens)
+            assertEquals(BigDecimal("0.000002"), it.estimatedCost)
+            assertEquals("INVALID_RESPONSE", it.errorCode)
+            assertEquals("Provider output did not pass extraction/response validation.", it.error)
+        })
+    }
 
     @Test
     fun `embeds text and records the run`() = runTest {
@@ -46,8 +109,34 @@ class OpenAiEmbeddingProviderTest {
                 assertEquals("embed", it.operation)
                 assertEquals(8, it.inputTokens)
                 assertEquals(true, it.success)
+                assertNull(it.sourceDocumentId)
+                assertNull(it.processingAttemptId)
             },
         )
+    }
+
+    @Test
+    fun `contextual embedding success records the explicit source and attempt`() = runTest {
+        wireMock.stubFor(post(urlPathEqualTo("/v1/embeddings")).willReturn(okJson(EMBEDDING_RESPONSE)))
+        val request = EmbeddingRequest("hello", UUID.randomUUID(), UUID.randomUUID())
+        provider.embed(request)
+        verify(runs).record(check<ModelRunInput> {
+            assertEquals(request.sourceDocumentId, it.sourceDocumentId)
+            assertEquals(request.processingAttemptId, it.processingAttemptId)
+            assertEquals(true, it.success)
+        })
+    }
+
+    @Test
+    fun `contextual embedding failure retains the explicit source and attempt`() = runTest {
+        wireMock.stubFor(post(urlPathEqualTo("/v1/embeddings")).willReturn(aResponse().withStatus(429)))
+        val request = EmbeddingRequest("hello", UUID.randomUUID(), UUID.randomUUID())
+        assertThrows<com.catalystradar.ports.ProviderException.RateLimited> { provider.embed(request) }
+        verify(runs).record(check<ModelRunInput> {
+            assertEquals(request.sourceDocumentId, it.sourceDocumentId)
+            assertEquals(request.processingAttemptId, it.processingAttemptId)
+            assertEquals("RATE_LIMITED", it.errorCode)
+        })
     }
 
     @Test
@@ -59,6 +148,11 @@ class OpenAiEmbeddingProviderTest {
         assertThrows<com.catalystradar.ports.ProviderException.RateLimited> {
             provider.embed("hello")
         }
+        verify(runs).record(check<ModelRunInput> {
+            assertEquals("RATE_LIMITED", it.errorCode)
+            assertEquals("Provider rate limit; wait for the scheduled retry.", it.error)
+            assertNull(it.estimatedCost)
+        })
     }
 
     companion object {

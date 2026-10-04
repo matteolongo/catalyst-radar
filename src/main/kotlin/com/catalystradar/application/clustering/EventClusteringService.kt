@@ -5,6 +5,7 @@ import com.catalystradar.persistence.company.CompanyStore
 import com.catalystradar.persistence.event.EventClusterStore
 import com.catalystradar.persistence.event.EventStore
 import com.catalystradar.ports.EmbeddingProvider
+import com.catalystradar.ports.EmbeddingRequest
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -32,6 +33,7 @@ class EventClusteringService(
         sourceDocumentId: UUID,
         eventFingerprint: String,
         event: CatalystEvent,
+        processingAttemptId: UUID? = null,
     ): EventClusterPlan {
         require(!properties.window.isNegative && !properties.window.isZero) {
             "deduplication window must be positive"
@@ -49,7 +51,7 @@ class EventClusteringService(
         val ticker = requireNotNull(companies.findById(event.companyId)?.ticker) {
             "unknown company: ${event.companyId}"
         }
-        val candidate = embeddings.embed(candidateText(ticker, event))
+        val candidate = embeddings.embed(EmbeddingRequest(candidateText(ticker, event), sourceDocumentId, processingAttemptId))
         val since = at.minus(properties.window)
         // Event timestamps are the clustering clock. A late-arriving document
         // must not join a cluster first observed after this candidate occurred.

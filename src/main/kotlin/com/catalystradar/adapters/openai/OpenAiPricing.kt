@@ -5,8 +5,7 @@ import java.math.RoundingMode
 
 /**
  * Estimated LLM spend per model, USD per million tokens. Estimates only:
- * update when OpenAI republishes pricing. Unknown models estimate zero
- * rather than a fabricated number.
+ * update when OpenAI republishes pricing. Unknown models leave cost unknown.
  */
 object OpenAiPricing {
 
@@ -17,8 +16,8 @@ object OpenAiPricing {
         "text-embedding-3-small" to Price(inputPerMillionUsd = 0.02, outputPerMillionUsd = 0.0),
     )
 
-    fun estimateUsd(model: String, inputTokens: Int, outputTokens: Int): BigDecimal {
-        val price = PRICES[model] ?: return BigDecimal.ZERO
+    fun estimateUsd(model: String, inputTokens: Int, outputTokens: Int): BigDecimal? {
+        val price = PRICES[model] ?: return null
         return BigDecimal.valueOf(inputTokens.toLong()).multiply(BigDecimal.valueOf(price.inputPerMillionUsd))
             .add(BigDecimal.valueOf(outputTokens.toLong()).multiply(BigDecimal.valueOf(price.outputPerMillionUsd)))
             .divide(BigDecimal.valueOf(1_000_000))

@@ -23,6 +23,8 @@ data class ModelRunRow(
     val success: Boolean,
     val error: String?,
     @Column("created_at") val createdAt: Instant,
+    @Column("processing_attempt_id") val processingAttemptId: UUID? = null,
+    @Column("error_code") val errorCode: String? = null,
 )
 
 data class ModelRunRecord(
@@ -40,6 +42,9 @@ data class ModelRunRecord(
     val success: Boolean,
     val error: String?,
     val createdAt: Instant,
+    val processingAttemptId: UUID? = null,
+    val errorCode: String? = null,
+    val runId: UUID? = null,
 )
 
 data class ModelRunInput(
@@ -55,6 +60,8 @@ data class ModelRunInput(
     val estimatedCost: BigDecimal? = null,
     val success: Boolean,
     val error: String? = null,
+    val processingAttemptId: UUID? = null,
+    val errorCode: String? = null,
 )
 
 fun ModelRunRow.toRecord() = ModelRunRecord(
@@ -72,6 +79,8 @@ fun ModelRunRow.toRecord() = ModelRunRecord(
     success = success,
     error = error,
     createdAt = createdAt,
+    processingAttemptId = processingAttemptId,
+    errorCode = errorCode,
 )
 
 fun ModelRunInput.toRow(id: UUID) = ModelRunRow(
@@ -89,4 +98,6 @@ fun ModelRunInput.toRow(id: UUID) = ModelRunRow(
     success = success,
     error = error,
     createdAt = Instant.now(),
+    processingAttemptId = processingAttemptId,
+    errorCode = errorCode,
 )

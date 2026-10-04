@@ -1,11 +1,13 @@
 package com.catalystradar.adapters.openai
 
 import com.catalystradar.adapters.http.mapHttpClientError
+import com.catalystradar.application.operations.OperationalErrors
 import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.extraction.ModelRunInput
 import com.catalystradar.persistence.extraction.ModelRunStore
 import com.catalystradar.ports.Embedding
 import com.catalystradar.ports.EmbeddingProvider
+import com.catalystradar.ports.EmbeddingRequest
 import com.catalystradar.ports.ProviderException
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -21,11 +23,12 @@ import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
 import tools.jackson.core.JacksonException
+import java.util.concurrent.CancellationException
 
 /**
  * OpenAI embeddings adapter. Every call records tokens, latency, and
- * cost like extraction runs; embeddings carry no document link because
- * one vector can serve clustering across many events.
+ * cost like extraction runs; a contextual request carries explicit
+ * document and attempt provenance, while standalone text calls stay unlinked.
  */
 @Component
 class OpenAiEmbeddingProvider(
@@ -49,33 +52,43 @@ class OpenAiEmbeddingProvider(
         .build()
 
     override suspend fun embed(text: String): Embedding =
+        embed(EmbeddingRequest(text))
+
+    override suspend fun embed(request: EmbeddingRequest): Embedding =
         withContext(Dispatchers.IO) {
             val started = System.nanoTime()
+            var response: OpenAiEmbeddingResponse? = null
             try {
-                val response = post(text)
+                response = post(request.text)
                 val values = response.data?.firstOrNull()?.embedding
                     ?: throw ProviderException.InvalidResponse("openai: no embedding data")
-                record(response, elapsedMs(started), success = true, error = null)
+                record(request, response, elapsedMs(started), success = true, error = null)
                 Embedding(values = values, model = properties.embeddingModel)
+            } catch (e: CancellationException) {
+                recordFailure(request, response, started, e)
+                throw e
             } catch (e: HttpClientErrorException) {
                 val mapped = mapHttpClientError("openai", e)
-                recordFailure(started, mapped.message)
+                recordFailure(request, response, started, mapped)
                 throw mapped
             } catch (e: HttpServerErrorException) {
                 val failure = ProviderException.TemporaryUnavailable("openai: ${e.statusCode}")
-                recordFailure(started, failure.message)
+                recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: ProviderException) {
-                recordFailure(started, e.message)
+                recordFailure(request, response, started, e)
                 throw e
             } catch (e: JacksonException) {
                 val failure = ProviderException.InvalidResponse("openai: unusable JSON (${e.message})")
-                recordFailure(started, failure.message)
+                recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: RestClientException) {
                 val failure = ProviderException.InvalidResponse("openai: ${e.message}")
-                recordFailure(started, failure.message)
+                recordFailure(request, response, started, failure)
                 throw failure
+            } catch (e: RuntimeException) {
+                recordFailure(request, response, started, e)
+                throw e
             }
         }
 
@@ -94,16 +107,18 @@ class OpenAiEmbeddingProvider(
     }
 
     private fun record(
-        response: OpenAiEmbeddingResponse,
+        request: EmbeddingRequest,
+        response: OpenAiEmbeddingResponse?,
         latencyMs: Long,
         success: Boolean,
         error: String?,
+        errorCode: String? = null,
     ) {
         metrics.llmCall(
             operation = "embed",
             model = properties.embeddingModel,
             success = success,
-            inputTokens = response.usage?.promptTokens ?: 0,
+            inputTokens = response?.usage?.promptTokens ?: 0,
             outputTokens = 0,
             latencyMs = latencyMs,
         )
@@ -113,16 +128,17 @@ class OpenAiEmbeddingProvider(
                     provider = "openai",
                     operation = "embed",
                     model = properties.embeddingModel,
-                    inputTokens = response.usage?.promptTokens,
+                    sourceDocumentId = request.sourceDocumentId,
+                    processingAttemptId = request.processingAttemptId,
+                    inputTokens = response?.usage?.promptTokens,
                     outputTokens = null,
                     latencyMs = latencyMs,
-                    estimatedCost = OpenAiPricing.estimateUsd(
-                        properties.embeddingModel,
-                        response.usage?.promptTokens ?: 0,
-                        0,
-                    ),
+                    estimatedCost = response?.usage?.promptTokens?.let {
+                        OpenAiPricing.estimateUsd(properties.embeddingModel, it, 0)
+                    },
                     success = success,
                     error = error,
+                    errorCode = errorCode,
                 ),
             )
         }.onFailure {
@@ -130,12 +146,15 @@ class OpenAiEmbeddingProvider(
         }
     }
 
-    private fun recordFailure(started: Long, error: String?) {
+    private fun recordFailure(request: EmbeddingRequest, response: OpenAiEmbeddingResponse?, started: Long, failure: Throwable) {
+        val code = OperationalErrors.code(failure)
         record(
-            OpenAiEmbeddingResponse(data = null, usage = null),
+            request,
+            response,
             elapsedMs(started),
             success = false,
-            error = error,
+            error = OperationalErrors.message(code),
+            errorCode = code,
         )
     }
 

@@ -25,6 +25,7 @@ data class PipelineResultResponse(
     val documentsCompleted: Int,
     val eventsInserted: Int,
     val eventsReused: Int,
+    val runId: UUID? = null,
 )
 
 fun PipelineResult.toResponse() = PipelineResultResponse(
@@ -41,6 +42,7 @@ fun PipelineResult.toResponse() = PipelineResultResponse(
     documentsCompleted = documentsCompleted,
     eventsInserted = eventsInserted,
     eventsReused = eventsReused,
+    runId = runId,
 )
 
 data class CreateApiClientRequest(val name: String)
