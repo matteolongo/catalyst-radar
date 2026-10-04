@@ -4,6 +4,8 @@ import com.catalystradar.application.ingestion.IngestionStatus
 import com.catalystradar.application.operations.*
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import java.sql.ResultSet
 import java.sql.Timestamp
 import java.time.Duration
@@ -11,8 +13,72 @@ import java.time.Instant
 import java.util.UUID
 
 @Repository
-class OperationRunStore(private val jdbc: NamedParameterJdbcTemplate) {
+class OperationRunStore(private val jdbc: NamedParameterJdbcTemplate, transactionManager: PlatformTransactionManager) {
     private val cursor = OperationsCursor()
+    private val transaction = TransactionTemplate(transactionManager)
+
+    fun begin(id: UUID, kind: OperationKind, trigger: OperationTrigger, asOf: Instant, now: Instant) {
+        val params = mapOf("id" to id, "kind" to kind.name, "trigger" to trigger.name,
+            "phase" to if (kind == OperationKind.PIPELINE) "INGESTION" else "SCORING",
+            "asOf" to Timestamp.from(asOf), "now" to Timestamp.from(now),
+            "message" to OperationalErrors.message("UNFINISHED_PREVIOUS_RUN"))
+        transaction.executeWithoutResult {
+            jdbc.update("""UPDATE document_processing_attempts SET status='INTERRUPTED',finished_at=NULL,
+                updated_at=:now,error_code='UNFINISHED_PREVIOUS_RUN',error_message=:message
+                WHERE status='RUNNING' AND operation_run_id IN
+                    (SELECT id FROM operation_runs WHERE kind=:kind AND status='RUNNING')""", params)
+            jdbc.update("""UPDATE operation_runs SET status='INTERRUPTED',finished_at=NULL,capture_complete=FALSE,
+                updated_at=:now,error_code='UNFINISHED_PREVIOUS_RUN',error_message=:message
+                WHERE kind=:kind AND status='RUNNING'""", params)
+            jdbc.update("""INSERT INTO operation_runs(id,kind,trigger_type,status,phase,as_of,started_at,updated_at)
+                VALUES(:id,:kind,:trigger,'RUNNING',:phase,:asOf,:now,:now)""", params)
+        }
+    }
+
+    fun phase(id: UUID, phase: OperationPhase, now: Instant) {
+        require(phase != OperationPhase.FINISHED) { "finish records terminal outcomes" }
+        val updated = jdbc.update("""UPDATE operation_runs SET phase=:phase,updated_at=:now,
+            ingestion_finished_at=CASE WHEN kind='PIPELINE' AND :phase='PROCESSING'
+                THEN COALESCE(ingestion_finished_at,:now) ELSE ingestion_finished_at END,
+            processing_finished_at=CASE WHEN kind='PIPELINE' AND :phase='SCORING'
+                THEN COALESCE(processing_finished_at,:now) ELSE processing_finished_at END
+            WHERE id=:id AND status='RUNNING' AND (kind='PIPELINE' OR :phase='SCORING')""",
+            mapOf("id" to id, "phase" to phase.name, "now" to Timestamp.from(now)))
+        check(updated == 1) { "operation is not running or phase is invalid for its kind" }
+    }
+
+    fun progress(id: UUID, counts: OperationCounts, now: Instant) {
+        val params = counts.parameters() + mapOf("id" to id, "now" to Timestamp.from(now))
+        check(jdbc.update("UPDATE operation_runs SET $countAssignments,updated_at=:now WHERE id=:id AND status='RUNNING'", params) == 1) {
+            "operation is not running"
+        }
+    }
+
+    fun finish(id: UUID, status: OperationStatus, counts: OperationCounts?, code: String?, captureComplete: Boolean, now: Instant) {
+        require(status != OperationStatus.RUNNING) { "finish requires a terminal status" }
+        require(!captureComplete || counts != null) { "complete capture requires final counts" }
+        val params = (counts?.parameters() ?: emptyMap()) + mapOf("id" to id, "status" to status.name,
+            "code" to code, "message" to code?.let(OperationalErrors::message), "complete" to captureComplete, "now" to Timestamp.from(now))
+        val counters = if (counts == null) "" else "$countAssignments,"
+        check(jdbc.update("""UPDATE operation_runs SET ${counters}status=:status,phase='FINISHED',finished_at=:now,
+            updated_at=:now,error_code=:code,error_message=:message,capture_complete=:complete
+            WHERE id=:id AND status='RUNNING'""", params) == 1) { "operation is not running" }
+    }
+
+    fun issue(id: UUID, phase: OperationPhase, code: String, documentId: UUID?, companyId: UUID?, now: Instant) {
+        require(phase != OperationPhase.FINISHED) { "issues require an execution phase" }
+        jdbc.update("""INSERT INTO operation_run_issues(id,operation_run_id,phase,source_document_id,company_id,error_code,error_message,created_at)
+            VALUES(:issueId,:id,:phase,:document,:company,:code,:message,:now)""",
+            mapOf("issueId" to UUID.randomUUID(), "id" to id, "phase" to phase.name, "document" to documentId,
+                "company" to companyId, "code" to code, "message" to OperationalErrors.message(code), "now" to Timestamp.from(now)))
+    }
+
+    private fun OperationCounts.parameters(): Map<String, Any> = mapOf(
+        "documentsConsidered" to documentsConsidered, "documentsCompleted" to documentsCompleted,
+        "documentsSkipped" to documentsSkipped, "documentsRetryScheduled" to documentsRetryScheduled,
+        "documentsTerminalFailures" to documentsTerminalFailures, "eventsInserted" to eventsInserted,
+        "eventsReused" to eventsReused, "companiesConsidered" to companiesConsidered,
+        "companiesRescored" to companiesRescored, "companiesFailed" to companiesFailed)
 
     fun search(query: RunQuery, generatedAt: Instant): OperationsPage<OperationRun> {
         val filters = mapOf("from" to query.window.from.toString(), "to" to query.window.to.toString(),
@@ -113,7 +179,12 @@ class OperationRunStore(private val jdbc: NamedParameterJdbcTemplate) {
     private fun timing(phase: String, start: Instant?, finish: Instant?) = OperationPhaseTiming(phase, start, finish, duration(start, finish))
 
     companion object {
-        internal fun duration(start: Instant?, finish: Instant?): Long? = if (start != null && finish != null) Duration.between(start, finish).toMillis() else null
+        private const val countAssignments = """documents_considered=:documentsConsidered,documents_completed=:documentsCompleted,
+            documents_skipped=:documentsSkipped,documents_retry_scheduled=:documentsRetryScheduled,
+            documents_terminal_failures=:documentsTerminalFailures,events_inserted=:eventsInserted,events_reused=:eventsReused,
+            companies_considered=:companiesConsidered,companies_rescored=:companiesRescored,companies_failed=:companiesFailed"""
+
+        internal fun duration(start: Instant?, finish: Instant?): Long? = if (start != null && finish != null) Duration.between(start, finish).toMillis().coerceAtLeast(0) else null
 
         internal fun mapRun(rs: ResultSet): OperationRun {
             val status = OperationStatus.valueOf(rs.getString("status"))

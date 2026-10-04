@@ -37,6 +37,7 @@ class OperationsService(
     private val openai: OpenAiProperties,
     private val environment: Environment,
     @Qualifier("operationsClock") private val clock: Clock,
+    private val recorder: OperationRunRecorder,
 ) {
     private val policy = OperationsStatusPolicy(properties)
 
@@ -89,14 +90,15 @@ class OperationsService(
     }
 
     fun runs(query: RunQuery): OperationsPage<OperationRun> {
-        val page = runStore.search(query, clock.instant())
         val active = activeIds()
+        val page = runStore.search(query, clock.instant())
         return page.copy(items = page.items.map { it.copy(active = it.id in active) })
     }
 
     fun run(id: UUID): OperationRunDetail {
+        val active = activeIds()
         val detail = requireRun(id, clock.instant())
-        return detail.copy(run = detail.run.copy(active = id in activeIds()))
+        return detail.copy(run = detail.run.copy(active = id in active))
     }
 
     fun runIssues(id: UUID, page: PageRequest): OperationsPage<OperationIssue> {
@@ -139,5 +141,5 @@ class OperationsService(
     private fun providerConfig() = listOf(ProviderConfig("polygon", polygon.apiKey.isNotBlank()),
         ProviderConfig("finnhub", finnhub.apiKey.isNotBlank()), ProviderConfig("openai", openai.apiKey.isNotBlank()))
 
-    private fun activeIds(): Set<UUID> = emptySet()
+    private fun activeIds(): Set<UUID> = recorder.activeIds()
 }

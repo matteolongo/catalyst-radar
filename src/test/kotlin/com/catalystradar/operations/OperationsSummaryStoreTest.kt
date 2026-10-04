@@ -343,12 +343,31 @@ class OperationsSummaryStoreTest : PostgresIntegrationTest() {
         assertEquals(now.minusSeconds(3600), overview.dependencies.first().observedSince)
     }
 
+    @Test
+    fun `service decorates runtime active IDs and keeps guarded processing out of due queue`() {
+        val clock = Clock.fixed(now, ZoneOffset.UTC)
+        val recorder = OperationRunRecorder(runs, clock)
+        val service = service(clock = clock, recorder = recorder)
+        val run = recorder.begin(OperationKind.PIPELINE, OperationTrigger.MANUAL, now)
+        val document = fixtures.document(now)
+        fixtures.processing(document, "PROCESSING", updatedAt = now)
+        fixtures.attempt(document, run, 1, now, "RUNNING")
+        assertTrue(service.run(run).run.active)
+        assertTrue(service.runs(RunQuery(ActivityWindow(now, now.plusSeconds(1)))).items.single().active)
+        assertTrue(service.overview(window).activeRuns.single().active)
+        assertTrue(service.documents(DocumentQuery(runId = run, dueOnly = true)).items.isEmpty())
+        recorder.finish(run, OperationStatus.FAILED, null, "PROCESSING_FAILURE", false)
+        assertFalse(service.run(run).run.active)
+        assertTrue(service.overview(window).activeRuns.isEmpty())
+        assertEquals(listOf(document), service.documents(DocumentQuery(runId = run, dueOnly = true)).items.map { it.id })
+    }
+
     private fun service(ingestion: IngestionProperties = IngestionProperties(), snapshots: SnapshotProperties = SnapshotProperties(),
                         polygon: PolygonProperties = PolygonProperties(), finnhub: FinnhubProperties = FinnhubProperties(), openai: OpenAiProperties = OpenAiProperties(),
-                        clock: Clock = Clock.fixed(now, ZoneOffset.UTC)) =
+                        clock: Clock = Clock.fixed(now, ZoneOffset.UTC), recorder: OperationRunRecorder = OperationRunRecorder(runs, clock)) =
         OperationsService(store, documents, models, runs, attempts, events, OperationsProperties(), ingestion,
             PipelineProperties(maxAttempts = 7), snapshots, polygon, finnhub, openai,
-            MockEnvironment().withProperty("catalyst.api.auth-enabled", "true"), clock)
+            MockEnvironment().withProperty("catalyst.api.auth-enabled", "true"), clock, recorder)
 
     private fun ingestion(start: Instant, finish: Instant?, status: String, provider: String = "polygon", code: String? = null,
                           fetched: Int = 0, duplicates: Int = 0) {
