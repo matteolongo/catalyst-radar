@@ -50,6 +50,10 @@ catalyst:
     # Local-only daily recalculation; it never calls providers or the LLM.
     enabled: false
     interval: PT24H
+  operations:
+    freshness-multiplier: 2
+    dependency-window: PT1H
+    processing-stall-after: PT15M
   polygon:
     base-url: https://api.polygon.io
     # Never commit a real key: export POLYGON_API_KEY in the environment.
