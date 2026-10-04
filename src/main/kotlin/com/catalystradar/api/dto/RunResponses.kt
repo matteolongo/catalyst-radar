@@ -91,6 +91,6 @@ fun ModelRunRecord.toResponse() = ModelRunResponse(
     error = error,
     createdAt = createdAt,
     attemptId = processingAttemptId,
-    runId = null,
+    runId = runId,
     errorCode = errorCode,
 )

@@ -13,7 +13,7 @@ class IngestionRunStore(
     private val template: JdbcAggregateTemplate,
 ) {
 
-    fun startRun(provider: String): UUID {
+    fun startRun(provider: String, operationRunId: UUID? = null, now: Instant = Instant.now()): UUID {
         val id = UUID.randomUUID()
         template.insert(
             IngestionRunRow(
@@ -25,8 +25,9 @@ class IngestionRunStore(
                 added = 0,
                 duplicates = 0,
                 error = null,
-                startedAt = Instant.now(),
+                startedAt = now,
                 finishedAt = null,
+                runId = operationRunId,
             ),
         )
         return id
@@ -39,6 +40,7 @@ class IngestionRunStore(
         added: Int,
         duplicates: Int,
         error: String?,
+        errorCode: String? = null,
     ) {
         val current = repository.findById(id).orElseThrow()
         repository.save(
@@ -48,6 +50,7 @@ class IngestionRunStore(
                 added = added,
                 duplicates = duplicates,
                 error = error,
+                errorCode = errorCode,
                 finishedAt = Instant.now(),
             ),
         )

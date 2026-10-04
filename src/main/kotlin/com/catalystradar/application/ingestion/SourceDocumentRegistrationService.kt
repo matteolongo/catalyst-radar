@@ -46,7 +46,7 @@ class SourceDocumentRegistrationService(
 ) {
 
     @Transactional
-    fun registerIfNew(provider: String, article: RawArticle, now: Instant): DocumentRegistration {
+    fun registerIfNew(provider: String, article: RawArticle, now: Instant, ingestionRunId: UUID? = null): DocumentRegistration {
         val normalized = normalizeArticle(article, now)
         if (existingDocument(provider, normalized.providerDocumentId, normalized.contentHash) != null) {
             return DocumentRegistration.Duplicate
@@ -59,6 +59,7 @@ class SourceDocumentRegistrationService(
                     "provider" to article.provider,
                     "tickers" to article.tickers.joinToString(","),
                 ).toJsonB(),
+                firstIngestionRunId = ingestionRunId,
             )
         } catch (e: DataIntegrityViolationException) {
             if (existingDocument(provider, normalized.providerDocumentId, normalized.contentHash) != null) {

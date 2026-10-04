@@ -7,6 +7,7 @@ import com.catalystradar.persistence.extraction.ModelRunInput
 import com.catalystradar.persistence.extraction.ModelRunStore
 import com.catalystradar.ports.Embedding
 import com.catalystradar.ports.EmbeddingProvider
+import com.catalystradar.ports.EmbeddingRequest
 import com.catalystradar.ports.ProviderException
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -22,11 +23,12 @@ import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
 import tools.jackson.core.JacksonException
+import java.util.concurrent.CancellationException
 
 /**
  * OpenAI embeddings adapter. Every call records tokens, latency, and
- * cost like extraction runs; embeddings carry no document link because
- * one vector can serve clustering across many events.
+ * cost like extraction runs; a contextual request carries explicit
+ * document and attempt provenance, while standalone text calls stay unlinked.
  */
 @Component
 class OpenAiEmbeddingProvider(
@@ -50,34 +52,43 @@ class OpenAiEmbeddingProvider(
         .build()
 
     override suspend fun embed(text: String): Embedding =
+        embed(EmbeddingRequest(text))
+
+    override suspend fun embed(request: EmbeddingRequest): Embedding =
         withContext(Dispatchers.IO) {
             val started = System.nanoTime()
             var response: OpenAiEmbeddingResponse? = null
             try {
-                response = post(text)
+                response = post(request.text)
                 val values = response.data?.firstOrNull()?.embedding
                     ?: throw ProviderException.InvalidResponse("openai: no embedding data")
-                record(response, elapsedMs(started), success = true, error = null)
+                record(request, response, elapsedMs(started), success = true, error = null)
                 Embedding(values = values, model = properties.embeddingModel)
+            } catch (e: CancellationException) {
+                recordFailure(request, response, started, e)
+                throw e
             } catch (e: HttpClientErrorException) {
                 val mapped = mapHttpClientError("openai", e)
-                recordFailure(response, started, mapped)
+                recordFailure(request, response, started, mapped)
                 throw mapped
             } catch (e: HttpServerErrorException) {
                 val failure = ProviderException.TemporaryUnavailable("openai: ${e.statusCode}")
-                recordFailure(response, started, failure)
+                recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: ProviderException) {
-                recordFailure(response, started, e)
+                recordFailure(request, response, started, e)
                 throw e
             } catch (e: JacksonException) {
                 val failure = ProviderException.InvalidResponse("openai: unusable JSON (${e.message})")
-                recordFailure(response, started, failure)
+                recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: RestClientException) {
                 val failure = ProviderException.InvalidResponse("openai: ${e.message}")
-                recordFailure(response, started, failure)
+                recordFailure(request, response, started, failure)
                 throw failure
+            } catch (e: RuntimeException) {
+                recordFailure(request, response, started, e)
+                throw e
             }
         }
 
@@ -96,6 +107,7 @@ class OpenAiEmbeddingProvider(
     }
 
     private fun record(
+        request: EmbeddingRequest,
         response: OpenAiEmbeddingResponse?,
         latencyMs: Long,
         success: Boolean,
@@ -116,6 +128,8 @@ class OpenAiEmbeddingProvider(
                     provider = "openai",
                     operation = "embed",
                     model = properties.embeddingModel,
+                    sourceDocumentId = request.sourceDocumentId,
+                    processingAttemptId = request.processingAttemptId,
                     inputTokens = response?.usage?.promptTokens,
                     outputTokens = null,
                     latencyMs = latencyMs,
@@ -132,9 +146,10 @@ class OpenAiEmbeddingProvider(
         }
     }
 
-    private fun recordFailure(response: OpenAiEmbeddingResponse?, started: Long, failure: Throwable) {
+    private fun recordFailure(request: EmbeddingRequest, response: OpenAiEmbeddingResponse?, started: Long, failure: Throwable) {
         val code = OperationalErrors.code(failure)
         record(
+            request,
             response,
             elapsedMs(started),
             success = false,

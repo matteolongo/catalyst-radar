@@ -12,6 +12,7 @@ import com.catalystradar.domain.company.Company
 import com.catalystradar.domain.event.SourceDocument
 import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.application.operations.ProcessingAttemptService
+import com.catalystradar.application.operations.OperationRunRecorder
 import com.catalystradar.operations.OperationsFixtures
 import com.catalystradar.persistence.PostgresIntegrationTest
 import com.catalystradar.persistence.company.CompanyStore
@@ -24,6 +25,8 @@ import com.catalystradar.persistence.ingestion.IngestionRunStore
 import com.catalystradar.ports.NewsFetchRequest
 import com.catalystradar.ports.NewsFetchResult
 import com.catalystradar.ports.NewsProvider
+import com.catalystradar.ports.*
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import kotlinx.coroutines.test.runTest
@@ -39,6 +42,8 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 
 /**
  * One document's events, clusters, and final status must commit together.
@@ -88,6 +93,8 @@ class PipelineAtomicityTest : PostgresIntegrationTest() {
 
     @Autowired
     private lateinit var attempts: ProcessingAttemptService
+
+    @Autowired private lateinit var recorder: OperationRunRecorder
 
     private val fixtures get() = OperationsFixtures(jdbc)
     private val fixtureDocuments = mutableListOf<UUID>()
@@ -215,6 +222,8 @@ class PipelineAtomicityTest : PostgresIntegrationTest() {
         assertEquals(0, clusterCount(company.id))
         assertEquals(0, result.eventsInserted)
         assertEquals(0, result.documentsCompleted)
+        assertEquals("TERMINAL_ERROR", jdbc.sql("SELECT status FROM document_processing_attempts WHERE source_document_id=:id")
+            .param("id", document.id).query(String::class.java).single())
         assertEquals(
             extractedBefore,
             extractedEventCount(),
@@ -245,6 +254,8 @@ class PipelineAtomicityTest : PostgresIntegrationTest() {
         assertEquals(1, clusterCount(company.id))
         assertEquals(1, result.eventsInserted)
         assertEquals(1, result.documentsCompleted)
+        assertEquals("COMPLETED", jdbc.sql("SELECT status FROM document_processing_attempts WHERE source_document_id=:id")
+            .param("id", document.id).query(String::class.java).single())
         assertEquals(1.0, extractedEventCount() - extractedBefore)
     }
 
@@ -263,10 +274,25 @@ class PipelineAtomicityTest : PostgresIntegrationTest() {
             runs = ingestionRuns,
             metrics = metrics,
         ),
-        extraction = PipelineServiceTest.TitleExtraction,
+        extraction = object : EventExtractionProvider {
+            override suspend fun extract(request: ExtractionRequest): ExtractionResult {
+                assertFalse(TransactionSynchronizationManager.isActualTransactionActive(), "extraction must be outside a transaction")
+                assertNotNull(request.processingAttemptId)
+                return PipelineServiceTest.TitleExtraction.extract(request)
+            }
+        },
         normalization = normalization,
         clustering = EventClusteringService(
-            embeddings = PipelineServiceTest.FakeEmbeddings,
+            embeddings = object : EmbeddingProvider {
+                override val model = PipelineServiceTest.FakeEmbeddings.model
+                override suspend fun embed(text: String) = PipelineServiceTest.FakeEmbeddings.embed(text)
+                override suspend fun embed(request: EmbeddingRequest): Embedding {
+                    assertFalse(TransactionSynchronizationManager.isActualTransactionActive(), "embedding must be outside a transaction")
+                    assertNotNull(request.sourceDocumentId)
+                    assertNotNull(request.processingAttemptId)
+                    return embed(request.text)
+                }
+            },
             clusters = clusters,
             events = eventStore,
             companies = companyStore,
@@ -280,6 +306,8 @@ catalyst = catalyst,
         companies = companyStore,
         properties = PipelineProperties(),
         metrics = metrics,
+        recorder = recorder,
+        attempts = attempts,
     )
 
     object NoNewsProvider : NewsProvider {

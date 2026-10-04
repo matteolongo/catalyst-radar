@@ -29,6 +29,8 @@ import java.math.BigDecimal
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import com.catalystradar.operations.OperationsFixtures
+import org.springframework.jdbc.core.simple.JdbcClient
 
 class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
 
@@ -37,6 +39,8 @@ class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
 
     @Autowired
     private lateinit var documents: SourceDocumentStore
+
+    @Autowired private lateinit var jdbc: JdbcClient
 
     private val meterRegistry = io.micrometer.core.instrument.simple.SimpleMeterRegistry()
 
@@ -74,6 +78,32 @@ class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
         assertNull(recorded.inputTokens)
         assertNull(recorded.outputTokens)
         assertNull(recorded.estimatedCost)
+    }
+
+    @Test
+    fun `contextual extraction records explicit attempt and run on success and failure`() = runTest {
+        val fixtures = OperationsFixtures(jdbc)
+        val at = Instant.parse("2026-10-04T12:00:00Z")
+        val run = fixtures.run(at)
+        val req = request()
+        val attempt = fixtures.attempt(req.document.id, run, 1, at)
+        try {
+            val contextual = req.copy(processingAttemptId = attempt)
+            wireMock.stubFor(post(urlPathEqualTo("/v1/chat/completions")).willReturn(okJson(CHAT_RESPONSE)))
+            provider().extract(contextual)
+            wireMock.stubFor(post(urlPathEqualTo("/v1/chat/completions")).willReturn(aResponse().withStatus(429)))
+            assertThrows<ProviderException.RateLimited> { provider().extract(contextual) }
+            val records = modelRuns.findByDocument(req.document.id)
+            assertEquals(2, records.size)
+            assertTrue(records.all { it.processingAttemptId == attempt && it.runId == run })
+            assertEquals(1, records.count { it.success })
+            assertEquals("RATE_LIMITED", records.single { !it.success }.errorCode)
+        } finally {
+            jdbc.sql("DELETE FROM model_runs WHERE source_document_id=:id").param("id", req.document.id).update()
+            jdbc.sql("DELETE FROM document_processing_attempts WHERE id=:id").param("id", attempt).update()
+            jdbc.sql("DELETE FROM source_documents WHERE id=:id").param("id", req.document.id).update()
+            jdbc.sql("DELETE FROM operation_runs WHERE id=:id").param("id", run).update()
+        }
     }
 
     @Test

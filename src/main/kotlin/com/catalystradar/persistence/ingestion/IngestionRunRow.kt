@@ -51,5 +51,5 @@ fun IngestionRunRow.toRecord() = IngestionRunRecord(
     startedAt = startedAt,
     durationMs = finishedAt?.let { Duration.between(startedAt, it).toMillis() },
     runId = runId,
-    errorCode = errorCode,
+    errorCode = errorCode ?: if (status == "FAILED" || status == "PARTIAL") "UNKNOWN_FAILURE" else null,
 )

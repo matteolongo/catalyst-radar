@@ -26,6 +26,7 @@ import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
 import tools.jackson.core.JacksonException
 import tools.jackson.databind.ObjectMapper
+import java.util.concurrent.CancellationException
 
 /**
  * OpenAI Structured Outputs extraction adapter. Sends the versioned
@@ -69,6 +70,9 @@ class OpenAiEventExtractionProvider(
                 val result = parseContent(response)
                 record(request, response.model, response.usage, elapsedMs(started), success = true, error = null)
                 result
+            } catch (e: CancellationException) {
+                recordFailure(request, response, started, e)
+                throw e
             } catch (e: HttpClientErrorException) {
                 val mapped = mapHttpClientError("openai", e)
                 recordFailure(request, response, started, mapped)
@@ -88,6 +92,9 @@ class OpenAiEventExtractionProvider(
                 val failure = ProviderException.InvalidResponse("openai: ${e.message}")
                 recordFailure(request, response, started, failure)
                 throw failure
+            } catch (e: RuntimeException) {
+                recordFailure(request, response, started, e)
+                throw e
             }
         }
 
@@ -162,6 +169,7 @@ class OpenAiEventExtractionProvider(
                     promptVersion = Versions.PROMPT_V1,
                     extractorVersion = Versions.EXTRACTOR_V1,
                     sourceDocumentId = request.document.id,
+                    processingAttemptId = request.processingAttemptId,
                     inputTokens = usage?.promptTokens,
                     outputTokens = usage?.completionTokens,
                     latencyMs = latencyMs,

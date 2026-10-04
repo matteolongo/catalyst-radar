@@ -8,6 +8,7 @@ import com.catalystradar.domain.event.EventHorizon
 import com.catalystradar.domain.event.EventType
 import com.catalystradar.domain.event.SourceDocument
 import java.time.Instant
+import java.util.UUID
 
 /**
  * Structured event-extraction capability. The provider interprets
@@ -21,6 +22,7 @@ interface EventExtractionProvider {
 data class ExtractionRequest(
     val document: SourceDocument,
     val companies: List<Company>,
+    val processingAttemptId: UUID? = null,
 )
 
 data class ExtractionResult(

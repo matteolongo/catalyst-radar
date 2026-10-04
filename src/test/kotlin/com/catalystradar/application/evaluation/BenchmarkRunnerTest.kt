@@ -119,7 +119,7 @@ class BenchmarkRunnerTest : PostgresIntegrationTest() {
     }
 
     private suspend fun stubEmbeddings() {
-        whenever(embeddings.embed(any())).thenReturn(
+        whenever(embeddings.embed(any<String>())).thenReturn(
             Embedding(List(1536) { if (it == 0) 1f else 0f }, "fake"),
         )
     }

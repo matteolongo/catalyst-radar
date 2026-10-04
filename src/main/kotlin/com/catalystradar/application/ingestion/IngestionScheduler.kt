@@ -1,6 +1,8 @@
 package com.catalystradar.application.ingestion
 
 import com.catalystradar.application.pipeline.PipelineService
+import com.catalystradar.application.operations.OperationTrigger
+import java.util.concurrent.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -23,7 +25,7 @@ class IngestionScheduler(
     @Scheduled(fixedDelayString = "\${catalyst.ingestion.interval:PT30M}")
     fun runIngestion() {
         try {
-            val result = runBlocking { pipeline.runCycle() }
+            val result = runBlocking { pipeline.runCycle(trigger = OperationTrigger.SCHEDULED) }
             log.info(
                 "pipeline cycle finished status={} processed={} events={} rescored={} retries={} terminalFailures={}",
                 result.status,
@@ -33,6 +35,8 @@ class IngestionScheduler(
                 result.documentsRetryScheduled,
                 result.documentsTerminalFailures,
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             log.error("pipeline cycle failed", e)
         }

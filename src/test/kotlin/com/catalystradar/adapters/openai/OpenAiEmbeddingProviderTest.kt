@@ -19,6 +19,8 @@ import org.springframework.web.client.RestClient
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import java.math.BigDecimal
+import java.util.UUID
+import com.catalystradar.ports.EmbeddingRequest
 
 class OpenAiEmbeddingProviderTest {
 
@@ -107,8 +109,34 @@ class OpenAiEmbeddingProviderTest {
                 assertEquals("embed", it.operation)
                 assertEquals(8, it.inputTokens)
                 assertEquals(true, it.success)
+                assertNull(it.sourceDocumentId)
+                assertNull(it.processingAttemptId)
             },
         )
+    }
+
+    @Test
+    fun `contextual embedding success records the explicit source and attempt`() = runTest {
+        wireMock.stubFor(post(urlPathEqualTo("/v1/embeddings")).willReturn(okJson(EMBEDDING_RESPONSE)))
+        val request = EmbeddingRequest("hello", UUID.randomUUID(), UUID.randomUUID())
+        provider.embed(request)
+        verify(runs).record(check<ModelRunInput> {
+            assertEquals(request.sourceDocumentId, it.sourceDocumentId)
+            assertEquals(request.processingAttemptId, it.processingAttemptId)
+            assertEquals(true, it.success)
+        })
+    }
+
+    @Test
+    fun `contextual embedding failure retains the explicit source and attempt`() = runTest {
+        wireMock.stubFor(post(urlPathEqualTo("/v1/embeddings")).willReturn(aResponse().withStatus(429)))
+        val request = EmbeddingRequest("hello", UUID.randomUUID(), UUID.randomUUID())
+        assertThrows<com.catalystradar.ports.ProviderException.RateLimited> { provider.embed(request) }
+        verify(runs).record(check<ModelRunInput> {
+            assertEquals(request.sourceDocumentId, it.sourceDocumentId)
+            assertEquals(request.processingAttemptId, it.processingAttemptId)
+            assertEquals("RATE_LIMITED", it.errorCode)
+        })
     }
 
     @Test

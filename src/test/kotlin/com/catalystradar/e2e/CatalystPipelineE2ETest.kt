@@ -109,7 +109,7 @@ class CatalystPipelineE2ETest : PostgresIntegrationTest() {
                 ),
             )
         }
-        whenever(embeddings.embed(any())).thenReturn(
+        whenever(embeddings.embed(any<com.catalystradar.ports.EmbeddingRequest>())).thenReturn(
             Embedding(List(1536) { if (it == 0) 1f else 0f }, "fake"),
         )
 

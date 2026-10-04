@@ -44,6 +44,7 @@ data class ModelRunRecord(
     val createdAt: Instant,
     val processingAttemptId: UUID? = null,
     val errorCode: String? = null,
+    val runId: UUID? = null,
 )
 
 data class ModelRunInput(
