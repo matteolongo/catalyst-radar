@@ -13,6 +13,139 @@ const DOC_NEW = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const DOC_OLD = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const MODEL_CALL = '55555555-5555-4555-8555-555555555555';
 
+test('missing call provenance and legacy null origins never imply a provider was not invoked', async () => {
+  const support = require('./test-support');
+  const attempts = { ...support.documentAttemptsPageFixture, items: [{
+    ...support.documentAttemptsPageFixture.items[0], modelCallIds: [], modelCallsTotal: 0,
+  }] };
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', documentAttempts: attempts,
+    documentDetail: support.documentDetailFixture(DOC_A, { document: support.documentListItemFixture(DOC_A, {firstIngestionRunId:null}) }),
+    documentModelRuns: { ...support.documentModelPageFixture, items: [] } });
+  await dashboard.openDocument(DOC_A, 'attempts');
+  assert.doesNotMatch(dashboard.html('documentOverview'), /ingestionRunId=null|data-ingestion-run-id=/);
+  assert.match(dashboard.html('documentAttempts'), /missing provenance.*provider was invoked/i);
+  await dashboard.selectDocumentTab('models');
+  assert.match(dashboard.html('documentModels'), /missing provenance.*provider was invoked/i);
+});
+
+test('clearing keys during a detail refresh never restores protected data on a late success or error', async () => {
+  for (const answer of [undefined, 'error']) {
+    const dashboard = startOperations({ storedAdmin: 'admin-secret', deferDocuments: true });
+    await dashboard.openDocument(DOC_A, 'source');
+    dashboard.resolveDocument(DOC_A);
+    await dashboard.flush();
+    assert.match(dashboard.html('documentSource'), /Quoted source/);
+    await dashboard.refresh();
+    dashboard.click('clearKey');
+    dashboard.resolveDocument(DOC_A, answer);
+    await dashboard.flush();
+    assert.equal(dashboard.html('documentSource'), '');
+    assert.equal(dashboard.html('documentOverview'), '');
+    assert.equal(dashboard.element('documentDetail').hidden, true);
+    assert.equal(dashboard.requests.filter((r) => new URL(r.url).pathname.endsWith('/body')).length, 1);
+  }
+});
+
+test('changing a source during an event page fetch discards both late data and errors', async () => {
+  const support = require('./test-support');
+  for (const answer of ['error', { ...support.documentEventsFixture, events: [{
+    ...support.documentEventsFixture.events[0], type: 'OBSOLETE_EVENT',
+  }] }]) {
+    const route = '/internal/operations/documents/' + DOC_A + '/events';
+    const dashboard = startOperations({ storedAdmin: 'admin-secret', deferPublicPaths: [route] });
+    await dashboard.openDocument(DOC_A, 'events');
+    await dashboard.openDocument(DOC_B, 'events');
+    const current = dashboard.html('documentEvents');
+    dashboard.resolvePublic(route, 0, answer);
+    await dashboard.flush();
+    assert.equal(dashboard.html('documentEvents'), current);
+    assert.doesNotMatch(dashboard.html('documentEvents'), /OBSOLETE_EVENT|Unable to load/);
+  }
+});
+
+test('a source model call returns to the exact originating document filters and tab', async () => {
+  const origin = '?view=documents&status=RETRYABLE_ERROR&runId=' + DOC_B + '&documentId=' + DOC_A + '&documentTab=models';
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', search: origin });
+  await dashboard.flush();
+  dashboard.click('documentDetail', { target: { closest: (selector) => selector === '[data-model-run-id]'
+    ? { dataset: { modelRunId: MODEL_CALL } } : null } });
+  await dashboard.flush();
+  assert.equal(dashboard.window.location.search, '?view=models&modelRunId=' + MODEL_CALL);
+  dashboard.click('closeModel');
+  await dashboard.flush();
+  assert.equal(dashboard.window.location.search, origin);
+  assert.equal(dashboard.element('documentModels').hidden, false);
+});
+
+test('run-associated Documents reads keep older discovery records without imposing an activity cutoff', async () => {
+  const support = require('./test-support');
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', documents: {
+    ...support.documentsPageFixture, items: [support.documentListItemFixture(DOC_A, { discoveredAt: '2020-01-01T00:00:00Z' })],
+  } });
+  await dashboard.openDocuments('?view=documents&runId=' + DOC_B);
+  const request = dashboard.requests.find((r) => new URL(r.url).pathname === '/internal/operations/documents');
+  assert.equal(new URL(request.url).searchParams.get('runId'), DOC_B);
+  assert.equal(new URL(request.url).searchParams.has('from'), false);
+  assert.equal(new URL(request.url).searchParams.has('to'), false);
+  assert.match(dashboard.html('documentRows'), /2020/);
+});
+
+test('polling a selected source preserves its tab and filters while showing the new processing outcome', async () => {
+  const support = require('./test-support');
+  let state = 'RETRYABLE_ERROR';
+  const origin = '?view=documents&status=RETRYABLE_ERROR&documentId=' + DOC_A + '&documentTab=source';
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', search: origin,
+    documentDetail: (_url, id) => support.documentDetailFixture(id, { document: support.documentListItemFixture(id, { state }) }) });
+  await dashboard.flush();
+  const source = dashboard.html('documentSource');
+  state = 'COMPLETED';
+  dashboard.tick();
+  await dashboard.flush();
+  assert.equal(dashboard.window.location.search, origin);
+  assert.equal(dashboard.element('documentTabSource').getAttribute('aria-selected'), 'true');
+  assert.match(dashboard.html('documentOverview'), /Completed/);
+  assert.equal(dashboard.html('documentSource'), source);
+  assert.equal(dashboard.requests.filter((r) => new URL(r.url).pathname.endsWith('/body')).length, 1);
+});
+
+test('a model failure after a response retains known paid usage and cost in the source journey', async () => {
+  const support = require('./test-support');
+  const failed = modelCallFixture(MODEL_CALL, { success: false, errorCode: 'MALFORMED_OUTPUT',
+    errorMessage: 'Returned JSON could not be validated.', inputTokens: 123, outputTokens: 45, estimatedCost: 0.002 });
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', modelDetail: failed,
+    documentModelRuns: { ...support.documentModelPageFixture, items: [failed] } });
+  await dashboard.openDocument(DOC_A, 'models');
+  assert.match(dashboard.html('documentModels'), /Recorded call failed/);
+  assert.match(dashboard.html('documentModels'), /123 input.*45 output/);
+  assert.match(dashboard.html('documentModels'), /\$0\.002000/);
+  await dashboard.openModels('?view=models&modelRunId=' + MODEL_CALL);
+  assert.match(dashboard.html('modelDetailContent'), /MALFORMED_OUTPUT/);
+  assert.match(dashboard.html('modelDetailContent'), /123/);
+  assert.match(dashboard.html('modelDetailContent'), /\$0\.002000/);
+});
+
+test('an empty captured dataset stays empty across screens and explains disabled daily jobs', async () => {
+  const support = require('./test-support');
+  const dashboard = startOperations({ storedAdmin: 'admin-secret',
+    documents: { ...support.documentsPageFixture, items: [] }, modelSummary: modelSummaryFixture(0, 0, 0),
+    modelCalls: modelCallsPageFixture(0), operationRuns: operationRunsPageFixture(0), ingestionRuns: ingestionRunsPageFixture(0),
+    config: { ...support.configFixture, ingestion: { ...support.configFixture.ingestion, enabled: false },
+      snapshots: { ...support.configFixture.snapshots, enabled: false } },
+  });
+  await dashboard.openDocuments();
+  assert.match(dashboard.html('documentRows'), /No captured documents/);
+  assert.doesNotMatch(dashboard.html('documentRows'), /data-document-id=/);
+  await dashboard.openModels();
+  assert.equal(dashboard.text('modelCallsTotal'), '0');
+  assert.equal(dashboard.loadedModelRows(), 0);
+  assert.match(dashboard.html('modelRows'), /No recorded model calls/);
+  await dashboard.openPipeline('?view=pipeline&kind=DAILY_SNAPSHOTS');
+  assert.match(dashboard.html('runRows'), /Daily snapshots are disabled\. No cycles are recorded/);
+  assert.match(dashboard.html('ingestionRows'), /No provider ingestion runs recorded/);
+  assert.doesNotMatch(dashboard.html('runRows'), /data-run-id=/);
+  assert.equal(dashboard.requests.some(r => r.method === 'POST'), false);
+});
+
 test('Documents opens company Intelligence and the return control restores the document context', async () => {
   const origin = '?view=documents&status=COMPLETED&documentId=' + DOC_A + '&documentTab=events';
   const dashboard = startDashboard({ search: origin, stored: { 'catalyst-admin-key': 'admin-secret' } });

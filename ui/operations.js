@@ -562,7 +562,7 @@
           ' · <a href="?view=pipeline&runId=' + encodeURIComponent(item.runId) + '" data-operation-run-id="' + esc(item.runId) + '">Open operation run</a></p>' +
           (item.errorMessage ? '<p class="panel-error">' + esc(item.errorMessage) + '</p>' : '') +
           (item.modelCallIds && item.modelCallIds.length ? '<p>Recorded model calls: ' + item.modelCallIds.map(modelCallLink).join(', ') +
-            (item.modelCallsTruncated ? ' · more calls recorded' : '') + '</p>' : '<p>No model call IDs recorded.</p>') + '</article>';
+            (item.modelCallsTruncated ? ' · more calls recorded' : '') + '</p>' : '<p>No model call IDs recorded. This is missing provenance; it does not establish whether the provider was invoked.</p>') + '</article>';
       }).join('');
       if (selectedAttemptId && !state.items.some(function (item) { return item.id === selectedAttemptId; })) {
         html += state.cursor
@@ -576,7 +576,7 @@
     function renderDocumentModels(state) {
       if (state.error) return '<p class="panel-error">' + esc(state.error) + '</p>';
       if (!state.loaded) return '<p class="muted">' + (state.loading ? 'Loading model calls…' : 'Model calls have not been loaded.') + '</p>';
-      if (!state.items.length) return '<p class="muted">No explicitly source-linked model calls are recorded.</p>';
+      if (!state.items.length) return '<p class="muted">No explicitly source-linked model calls are recorded. This is missing provenance; it does not establish whether the provider was invoked.</p>';
       return state.items.map(function (item) {
         var usage = (item.inputTokens == null ? 'Unknown' : integer(item.inputTokens)) + ' input · ' +
           (item.outputTokens == null ? 'Unknown' : integer(item.outputTokens)) + ' output tokens';
