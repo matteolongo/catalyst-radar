@@ -151,6 +151,11 @@ rows may have changed. Current cycle phases and the document overview continue
 refreshing independently. Load more uses the retained cursor; no automatic loop
 fetches older pages. Paused document history is not repainted by metadata polls.
 
+Selecting a valuation from another cycle of the same company preserves its loaded
+company history, cursor and paused-refresh state. The selected valuation and its
+contributions are cleared and checked again for the new cycle context. Changing
+company, screen or credentials clears the company history.
+
 **Reload latest trace/history** deliberately replaces only that collection with
 its latest 25 rows and resumes its normal refresh behavior. The selected exact
 valuation and its already verified parent relationship stay available in the same

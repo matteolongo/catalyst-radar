@@ -2472,14 +2472,22 @@
       }
     }
     function configureTrace() {
-      var key = [screen, params.get('runId'), params.get('documentId'), params.get('attemptId'), (params.get('ticker') || '').toUpperCase()].join('|');
+      var ticker = (params.get('ticker') || '').toUpperCase();
+      var key = [screen, params.get('runId'), params.get('documentId'), params.get('attemptId'), ticker].join('|');
       var next = params.get('valuationId') || null;
+      var companyHistory = null;
       if (key !== traceContext) {
+        var previousContext = traceContext.split('|');
+        // Company history spans all cycles; selecting a cycle changes only the valuation context.
+        companyHistory = credentials().hasAdmin && screen === 'company' && previousContext[0] === screen && previousContext[4] === ticker
+          ? tracePages.companyValuations : null;
         clearTraceData();
         traceContext = key;
+        if (companyHistory) tracePages.companyValuations = companyHistory;
       }
       if (next !== valuationId) clearValuation();
       valuationId = next;
+      if (companyHistory) renderTraceCollection('companyValuations');
       var validParent = (screen === 'pipeline' && selectedRunId && pipelineRouteValid) ||
         (screen === 'documents' && selectedDocumentId && documentRouteValid) ||
         (screen === 'company' && /^[A-Za-z0-9][A-Za-z0-9.-]{0,14}$/.test(params.get('ticker') || '') && (!params.get('runId') || validUuid(params.get('runId'))));
