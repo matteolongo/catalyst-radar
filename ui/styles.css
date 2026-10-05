@@ -104,12 +104,13 @@ footer { padding: 0 24px 24px; }
 .overview-columns .panel { margin-top: 16px; }
 .documents-layout { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); align-items: start; gap: 16px; }
 .documents-layout > .panel { min-width: 0; margin-top: 0; }
-.document-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 10px; margin-bottom: 16px; }
+.document-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 10px; margin-bottom: 16px; }
 .document-filters label { display: grid; gap: 4px; min-width: 0; color: var(--muted); font-size: 12px; }
 .document-filters input, .document-filters select { width: 100%; min-width: 0; min-height: 38px; padding: 8px; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 14px; }
 .document-filters select[multiple] { min-height: 94px; }
 .document-due { display: flex !important; align-items: center; gap: 8px !important; min-height: 38px; }
 .document-due input { width: auto; min-height: auto; }
+.document-filters .document-due, .document-filters > button { align-self: end; }
 .document-rows { display: grid; gap: 8px; }
 .document-row { display: grid; gap: 5px; width: 100%; padding: 10px 12px; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; text-align: left; }
 .document-row:hover, .document-row[aria-current="true"] { border-color: var(--accent); }

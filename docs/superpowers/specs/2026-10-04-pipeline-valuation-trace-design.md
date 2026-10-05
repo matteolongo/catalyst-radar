@@ -117,7 +117,7 @@ On wide screens, use a compact run list/detail workspace and a consistent grid. 
 
 ### History freshness
 
-Retain loaded history pages while updating current operational metadata. Pause automatic and main-refresh updates only for a collection when older pages are loaded or more than one page is being inspected. Show server read times for retained pages, and provide **Reload latest trace/history** to replace that collection with its latest page and resume normal refresh. Current cycle metadata continues refreshing while a history collection is paused. An explicit history reload preserves a previously verified exact valuation in the same parent and credential context, even when its row is older than the reloaded page.
+For the six new trace collections — cycle Documents, cycle Company valuations, company recorded valuations, exact contribution history, document Timeline, and document Valuations — retain loaded history pages while updating current operational metadata. Pause automatic and main-refresh updates only for a collection when older pages are loaded or more than one page is being inspected. Show server read times for retained pages, and provide **Reload latest trace/history** to replace that collection with its latest page and resume normal refresh. Current cycle metadata continues refreshing while a history collection is paused. An explicit history reload preserves a previously verified exact valuation in the same parent and credential context, even when its row is older than the reloaded page. This ruling does not change the inherited refresh behavior of run history, cycle issue/ingestion feeds, or non-trace document tabs.
 
 ## 7. Failure handling, transactions, and safety
 

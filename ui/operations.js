@@ -212,46 +212,39 @@
       lastConfigAt = null;
       el('settingsConfig').textContent = 'Unknown / unavailable';
     }
-    function accessRequired() {
+    function clearProtectedData() {
+      knownActivePipelineIds.clear();
       clearTraceData();
-      var link = 'Admin access required. <a href="?view=settings" data-settings-access>Open Settings to add an admin key</a>.';
+      clearOverview();
+      clearConfig();
+      clearDocumentData();
+      modelGeneration++;
+      modelDetailSequence++;
+      lastModelSummaryAt = null;
+      clearModelData();
+      clearPipelineData();
+      el('documentsWorkspace').classList.remove('has-selection');
+      ['documentFilters', 'documentRows', 'loadDocuments', 'documentDetail', 'loadSteps', 'loadDocumentValuations',
+        'loadAttempts', 'loadDocumentModels', 'loadDocumentEvents', 'modelFilters', 'modelRows', 'loadModels', 'modelDetail'].forEach(function (id) {
+        toggleHidden(id, true);
+      });
+      ACCESS_STATUS_IDS.concat('settingsStatus').forEach(function (id) { el(id).textContent = 'Admin access required.'; });
+      el('accessStatus').textContent = 'Admin access required. Keys stay in this tab’s session storage.';
+      el('runNow').disabled = true;
+      el('lastRefresh').textContent = 'No successful refresh yet';
+    }
+    function accessRequired() {
       if (credentials().hasAdmin) invalidate();
+      clearProtectedData();
+      var link = 'Admin access required. <a href="?view=settings" data-settings-access>Open Settings to add an admin key</a>.';
       if (screen === 'overview') {
-        clearOverview();
         el('overviewStatus').innerHTML = link;
       } else if (screen === 'settings') {
-        clearConfig();
         el('settingsStatus').textContent = 'Admin access required to read server configuration.';
-        el('accessStatus').textContent = 'Admin access required. Keys stay in this tab’s session storage.';
       } else {
         var statusId = { pipeline: 'pipelineStatus', documents: 'documentStatus', models: 'modelStatus' }[screen];
         if (statusId) el(statusId).innerHTML = link;
-        if (screen === 'pipeline') {
-          clearPipelineData();
-          toggleHidden('runRows', true);
-          toggleHidden('loadRuns', true);
-          toggleHidden('runDetail', true);
-          toggleHidden('ingestionRows', true);
-          toggleHidden('loadIngestion', true);
-          toggleHidden('ingestionDetail', true);
-          el('runNow').disabled = true;
-        } else if (screen === 'documents') {
-          clearDocumentData();
-          toggleHidden('documentFilters', true);
-          toggleHidden('documentRows', true);
-          toggleHidden('loadDocuments', true);
-          toggleHidden('documentDetail', true);
-        } else if (screen === 'models') {
-          modelGeneration++;
-          modelDetailSequence++;
-          clearModelData();
-          toggleHidden('modelFilters', true);
-          toggleHidden('modelRows', true);
-          toggleHidden('loadModels', true);
-          toggleHidden('modelDetail', true);
-        }
       }
-      el('lastRefresh').textContent = 'No successful refresh yet';
       return false;
     }
     function metric(title, value, context, link) {
@@ -2457,6 +2450,7 @@
       el('valuationSummary').innerHTML = '';
       el('valuationContributions').innerHTML = '';
       el('valuationStatus').textContent = '';
+      el('valuationTitle').textContent = '';
       toggleHidden('valuationDetail', true);
       toggleHidden('loadContributions', true);
     }
@@ -2473,7 +2467,7 @@
         el(id).innerHTML = 'Admin access denied. ' + traceLink('?view=settings', 'Open Settings to update the admin key') + '.';
       } else {
         invalidate();
-        clearTraceData();
+        clearProtectedData();
         el('companyValuations').innerHTML = '<p class="panel-error">Admin access denied. ' + traceLink('?view=settings', 'Open Settings to update the admin key') + '.</p>';
       }
     }
@@ -2550,8 +2544,9 @@
         return true;
       }).catch(function (error) {
         if (!current(revision, requestSequence, expected) || context !== traceContext || error.name === 'AbortError') return false;
-        state.error = error.status === 403 ? 'Admin access was denied. Update the key in Settings.' : 'Unable to load recorded data. Retry this read.';
-        if (error.status === 403) denyTraceAccess();
+        var denied = error.status === 403 || error.code === 'FORBIDDEN';
+        state.error = denied ? 'Admin access was denied. Update the key in Settings.' : 'Unable to load recorded data. Retry this read.';
+        if (denied) denyTraceAccess();
         return false;
       }).finally(function () {
         if (current(revision, requestSequence, expected) && context === traceContext && tracePages[key] === state) {
@@ -2632,7 +2627,7 @@
         return loadTraceCollection('contributions', false, false);
       }).catch(function (error) {
         if (!current(revision, requestSequence, expected) || id !== valuationId || error.name === 'AbortError') return false;
-        if (error.status === 403) denyTraceAccess();
+        if (error.status === 403 || error.code === 'FORBIDDEN') denyTraceAccess();
         else el('valuationStatus').textContent = error.code === 'VALUATION_NOT_FOUND' ? 'Recorded valuation not found.' : 'Unable to read this valuation. Use Refresh to retry.';
         return false;
       }).finally(function () { if (current(revision, requestSequence, expected) && id === valuationId) valuationLoading = false; });
@@ -2834,34 +2829,12 @@
       return refresh(false);
     }
     function credentialsChanged() {
-      knownActivePipelineIds.clear();
       if (disposed) return;
       invalidate();
-      clearTraceData();
-      clearOverview();
-      clearConfig();
-      documentItems = [];
-      documentCursor = null;
-      documentGeneratedAt = null;
-      documentPageLoaded = false;
-      documentPageError = null;
-      selectedDocumentDetail = null;
-      selectedDocumentLoaded = false;
-      selectedDocumentLoading = false;
-      documentTabCache = {};
-      clearDocumentDetailViews();
-      clearModelData();
-      clearPipelineData();
+      clearProtectedData();
       setDocumentPane();
       renderDocumentRows();
-      if (!credentials().hasAdmin) {
-        clearOverview();
-        clearConfig();
-        accessRequired();
-      } else {
-        overviewLoaded = false;
-        configLoaded = false;
-      }
+      if (!credentials().hasAdmin) accessRequired();
       return refresh(false);
     }
     function ownsView(view) { return OPERATIONAL.indexOf(view) >= 0; }

@@ -162,5 +162,8 @@ clears the detail and its proof; document filter changes reset document pages.
 
 A denied trace or exact-valuation read clears both trace and existing protected
 Pipeline/Document panels, invalidates concurrent reads, and shows a visible denial
-message with a Settings link. A denial in Company clears only the protected
-valuation subsection; public company analysis remains usable.
+message with a Settings link. Every known admin denial purges all protected
+operational caches and rendered data, including previously loaded Source bodies,
+document/model/cycle history, Overview and configuration. Returning to an earlier
+screen requires a new authorized read. Saved keys remain available for recovery;
+public company analysis and its independent requests remain usable.
