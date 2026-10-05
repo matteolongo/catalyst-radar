@@ -1,5 +1,6 @@
 package com.catalystradar.operations
 
+import com.catalystradar.persistence.operations.DocumentStepStore
 import com.catalystradar.application.catalyst.CatalystService
 import com.catalystradar.application.clustering.DedupProperties
 import com.catalystradar.application.clustering.EventClusteringService
@@ -46,6 +47,7 @@ class RecordedPipelineFixture(
     private val modelRuns: ModelRunStore,
     private val recorder: OperationRunRecorder,
     private val attempts: ProcessingAttemptService,
+    private val steps: DocumentStepStore,
 ) {
     fun build(
         company: Company,
@@ -119,7 +121,7 @@ class RecordedPipelineFixture(
             persistence = persistence, catalyst = catalyst, documents = documents,
             documentCompanies = documentCompanies, processing = processing,
             companies = companyStore, properties = PipelineProperties(), metrics = metrics,
-            recorder = recorder, attempts = attempts,
+            recorder = recorder, attempts = attempts, steps = steps,
         )
     }
 }

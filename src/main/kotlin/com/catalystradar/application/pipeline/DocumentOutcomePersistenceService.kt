@@ -10,6 +10,7 @@ import com.catalystradar.persistence.event.EventClusterStore
 import com.catalystradar.persistence.event.EventStore
 import com.catalystradar.persistence.operations.ProcessingAttemptStore
 import com.catalystradar.application.operations.AttemptStatus
+import com.catalystradar.persistence.operations.DocumentStepStore
 import com.pgvector.PGvector
 import org.springframework.stereotype.Service
 import org.springframework.beans.factory.annotation.Qualifier
@@ -49,6 +50,7 @@ class DocumentOutcomePersistenceService(
     private val metrics: CatalystMetrics,
     transactionManager: PlatformTransactionManager,
     private val attempts: ProcessingAttemptStore,
+    private val steps: DocumentStepStore,
     @Qualifier("operationsClock") private val clock: Clock,
 ) {
 
@@ -78,6 +80,7 @@ class DocumentOutcomePersistenceService(
         finalStatus: DocumentProcessingStatus,
         now: Instant,
     ): CommittedDocument {
+        plan.persistenceStepId?.let { steps.requirePersistenceStep(it, plan.sourceDocumentId, plan.processingAttemptId) }
         var eventsInserted = 0
         var eventsReused = 0
         val insertedEvents = mutableListOf<CatalystEvent>()
@@ -103,6 +106,8 @@ class DocumentOutcomePersistenceService(
             DocumentProcessingStatus.COMPLETED -> processing.markCompleted(plan.sourceDocumentId, now)
             else -> processing.markSkipped(plan.sourceDocumentId, now)
         }
+        plan.persistenceStepId?.let { steps.finish(it, outputCount = eventsInserted + eventsReused,
+            eventsInserted = eventsInserted, eventsReused = eventsReused) }
         return CommittedDocument(
             outcome = DocumentOutcome(
                 status = finalStatus,

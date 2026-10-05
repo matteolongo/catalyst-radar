@@ -259,7 +259,7 @@
         '<details><summary>Scoring details</summary><p>Score version: ' + esc(data.scoreVersion) + '</p>' + factorDetails(driver) + '</details></article>';
     }).join('');
     var calcFields = ['contributionSum', 'familyCount', 'convergenceMultiplier', 'rawScore', 'normalizationScale', 'contributionCutoff'];
-    $('companyExplanation').innerHTML = '<p class="muted">Reconstructed current explanation: the saved snapshot does not retain its original driver list. Matching score and versions do not prove original driver membership.</p>' +
+    $('companyExplanation').innerHTML = '<p class="muted">Reconstructed current explanation: matching score and versions do not prove original driver membership. Use Recorded valuations for the exact inputs retained by captured cycles.</p>' +
       summary + (drivers || '<p>No reconstructed drivers available.</p>') +
       '<details><summary>Scoring details</summary><p>Score version: ' + esc(data.scoreVersion) + '</p><dl class="fact-grid">' +
       calcFields.map(function (key) { return '<div><dt>' + esc(key) + '</dt><dd>' + esc(fmtFactor(calculation[key])) + '</dd></div>'; }).join('') + '</dl></details>';
@@ -303,7 +303,7 @@
       snapshots.map(function (s) { return '<circle class="score-point" cx="' + x(s.asOf) + '" cy="' + y(s.score) + '" r="4"><title>' + esc(fmtTime(s.asOf)) + ' UTC · ' + esc(fmtScore(s.score)) + ' · ' + esc(s.state) + '</title></circle>'; }).join('') +
       transitions.map(function (t) { return '<path class="transition-mark" d="M' + x(t.at) + ' 20V130"><title>' + esc(fmtTime(t.at)) + ' UTC · ' + esc(t.from) + ' → ' + esc(t.to) + '</title></path>'; }).join('') + '</svg>';
     $('companyHistory').innerHTML = chart + '<div class="history-table"><table><caption>Stored score snapshots</caption><thead><tr><th>Date</th><th>Score</th><th>State</th><th>As of</th></tr></thead><tbody>' +
-      snapshots.map(function (s) { return '<tr><td>' + esc(s.asOf && !isNaN(new Date(s.asOf)) ? new Date(s.asOf).toISOString().slice(0, 10) : '–') + '</td><td>' + esc(fmtScore(s.score)) + '</td><td>' + esc(s.state) + '</td><td>' + timeLabel(s.asOf) + '</td></tr>'; }).join('') +
+      snapshots.map(function (s) { return '<tr><td data-label="Date">' + esc(s.asOf && !isNaN(new Date(s.asOf)) ? new Date(s.asOf).toISOString().slice(0, 10) : '–') + '</td><td data-label="Score">' + esc(fmtScore(s.score)) + '</td><td data-label="State">' + esc(s.state) + '</td><td data-label="As of">' + timeLabel(s.asOf) + '</td></tr>'; }).join('') +
       '</tbody></table></div>' + transitionList;
   }
 
@@ -595,7 +595,7 @@
     document.querySelectorAll('.intelligence-tabs').forEach(function (tabs) { tabs.classList.toggle('hidden', !intelligence); });
 
     if (view === 'company') {
-      if (route.get('ticker') !== currentCompany) refreshCompany(route.get('ticker').toUpperCase());
+      if (route.get('ticker').toUpperCase() !== currentCompany) refreshCompany(route.get('ticker').toUpperCase());
     } else {
       companyRequest++;
       historyRequest++;

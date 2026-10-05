@@ -11,6 +11,7 @@ import com.catalystradar.application.clustering.EventClusterPlan
 import com.catalystradar.ports.Embedding
 import com.catalystradar.persistence.PostgresIntegrationTest
 import com.catalystradar.persistence.document.DocumentProcessingStore
+import com.catalystradar.persistence.operations.DocumentStepStore
 import com.catalystradar.persistence.operations.DocumentInspectionStore
 import com.catalystradar.persistence.operations.ProcessingAttemptStore
 import org.junit.jupiter.api.AfterEach
@@ -27,6 +28,7 @@ import kotlin.test.*
 
 /** Commits are intentional: rollback assertions must read the real committed state. */
 class ProcessingAttemptServiceTest : PostgresIntegrationTest() {
+    @Autowired private lateinit var steps: DocumentStepStore
     @Autowired private lateinit var store: ProcessingAttemptStore
     @Autowired private lateinit var processing: DocumentProcessingStore
     @Autowired private lateinit var inspection: DocumentInspectionStore
@@ -42,7 +44,7 @@ class ProcessingAttemptServiceTest : PostgresIntegrationTest() {
     private val companyIds = mutableListOf<UUID>()
     private val fixtures get() = OperationsFixtures(jdbc)
     private val service get() = ProcessingAttemptService(processing, store, Clock.fixed(t0, ZoneOffset.UTC), transactions)
-    private val writer get() = DocumentOutcomePersistenceService(events, clusters, processing, metrics, transactions, store, Clock.fixed(t0, ZoneOffset.UTC))
+    private val writer get() = DocumentOutcomePersistenceService(events, clusters, processing, metrics, transactions, store, steps, Clock.fixed(t0, ZoneOffset.UTC))
 
     private fun document(attempts: Int = 0): UUID = fixtures.document(t0).also {
         documentIds += it

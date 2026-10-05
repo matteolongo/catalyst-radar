@@ -1,5 +1,6 @@
 package com.catalystradar.application.pipeline
 
+import com.catalystradar.persistence.operations.DocumentStepStore
 import com.catalystradar.application.catalyst.CatalystService
 import com.catalystradar.application.clustering.DedupProperties
 import com.catalystradar.application.clustering.EventClusteringService
@@ -94,6 +95,7 @@ class PipelineAtomicityTest : PostgresIntegrationTest() {
     @Autowired
     private lateinit var attempts: ProcessingAttemptService
 
+    @Autowired private lateinit var steps: DocumentStepStore
     @Autowired private lateinit var recorder: OperationRunRecorder
 
     private val fixtures get() = OperationsFixtures(jdbc)
@@ -139,6 +141,13 @@ class PipelineAtomicityTest : PostgresIntegrationTest() {
         }
         jdbc.sql("DELETE FROM operation_run_issues WHERE company_id=:id").param("id", testCompanyId()).update()
         operationIds.forEach { id -> jdbc.sql("DELETE FROM operation_run_issues WHERE operation_run_id=:id").param("id", id).update() }
+        jdbc.sql("""DELETE FROM company_valuation_contribution_sources WHERE contribution_id IN
+            (SELECT c.id FROM company_valuation_event_contributions c JOIN company_valuation_records v ON v.id=c.valuation_id WHERE v.company_id=:id)""")
+            .param("id", testCompanyId()).update()
+        jdbc.sql("DELETE FROM company_valuation_event_contributions WHERE valuation_id IN (SELECT id FROM company_valuation_records WHERE company_id=:id)")
+            .param("id", testCompanyId()).update()
+        jdbc.sql("DELETE FROM company_valuation_records WHERE company_id=:id").param("id", testCompanyId()).update()
+        ownedDocuments.forEach { id -> jdbc.sql("DELETE FROM document_processing_steps WHERE source_document_id=:id").param("id", id).update() }
         ownedDocuments.forEach { id -> jdbc.sql("DELETE FROM document_processing_attempts WHERE source_document_id=:id").param("id", id).update() }
         jdbc.sql("DELETE FROM events WHERE company_id = :id").param("id", testCompanyId()).update()
         jdbc.sql("DELETE FROM event_clusters WHERE company_id = :id").param("id", testCompanyId()).update()
@@ -308,6 +317,7 @@ catalyst = catalyst,
         metrics = metrics,
         recorder = recorder,
         attempts = attempts,
+        steps = steps,
     )
 
     object NoNewsProvider : NewsProvider {

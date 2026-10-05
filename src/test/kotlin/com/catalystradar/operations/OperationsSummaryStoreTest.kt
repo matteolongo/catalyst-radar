@@ -32,6 +32,9 @@ import kotlin.test.*
 
 @Transactional
 class OperationsSummaryStoreTest : PostgresIntegrationTest() {
+    @Autowired private lateinit var stepStore: com.catalystradar.persistence.operations.DocumentStepStore
+    @Autowired private lateinit var valuations: com.catalystradar.persistence.operations.CompanyValuationStore
+    @Autowired private lateinit var companies: com.catalystradar.persistence.company.CompanyStore
     @Autowired private lateinit var store: OperationsSummaryStore
     @Autowired private lateinit var documents: DocumentInspectionStore
     @Autowired private lateinit var models: ModelInspectionStore
@@ -369,7 +372,7 @@ class OperationsSummaryStoreTest : PostgresIntegrationTest() {
                         clock: Clock = Clock.fixed(now, ZoneOffset.UTC), recorder: OperationRunRecorder = OperationRunRecorder(runs, clock)) =
         OperationsService(store, documents, models, runs, attempts, events, OperationsProperties(), ingestion,
             PipelineProperties(maxAttempts = 7), snapshots, polygon, finnhub, openai,
-            MockEnvironment().withProperty("catalyst.api.auth-enabled", "true"), clock, recorder)
+            MockEnvironment().withProperty("catalyst.api.auth-enabled", "true"), clock, recorder, stepStore, valuations, companies)
 
     private fun ingestion(start: Instant, finish: Instant?, status: String, provider: String = "polygon", code: String? = null,
                           fetched: Int = 0, duplicates: Int = 0) {

@@ -80,15 +80,14 @@
           <label class="sr-only" for="pipelineKind">Pipeline kind</label>
           <select id="pipelineKind" class="hidden" aria-hidden="true" tabindex="-1"><option>PIPELINE</option><option>DAILY_SNAPSHOTS</option></select>
           <div class="pipeline-actions">
-            <label for="pipelineRunStatusFilter">Run status</label>
-            <select id="pipelineRunStatusFilter">
+            <label>Run status<select id="pipelineRunStatusFilter">
               <option value="">All statuses</option><option>RUNNING</option><option>SUCCESS</option><option>PARTIAL</option>
               <option>FAILED</option><option>CANCELLED</option><option>INTERRUPTED</option>
-            </select>
+            </select></label>
             <button id="runNow" type="button">Run pipeline now</button>
             <p id="runNowCaption" class="muted small">Fetches news and can use paid model calls.</p>
           </div>
-          <div class="pipeline-layout">
+          <div id="pipelineWorkspace" class="pipeline-layout">
             <section class="panel pipeline-history-panel" aria-label="Pipeline history">
               <div id="runRows" class="pipeline-records" aria-live="polite"></div>
               <button id="loadRuns" class="ghost hidden" type="button">Load more runs</button>
@@ -99,6 +98,8 @@
                 <button id="closeRun" type="button" class="ghost">Close</button>
               </div>
               <div id="runDetailContent"></div>
+              <section class="trace-collection" aria-label="Documents for selected cycle"><h4>Documents</h4><div id="runDocuments" aria-live="polite"></div><button id="loadRunDocuments" class="ghost hidden" type="button">Load more cycle documents</button></section>
+              <section class="trace-collection" aria-label="Company valuations for selected cycle"><h4>Company valuations</h4><div id="runValuations" aria-live="polite"></div><button id="loadRunValuations" class="ghost hidden" type="button">Load more cycle valuations</button></section>
               <section aria-label="Ingestion runs for selected cycle">
                 <h4>Ingestion runs for this cycle</h4><div id="runIngestionRows" aria-live="polite"></div>
                 <button id="loadRunIngestion" class="ghost hidden" type="button">Load more cycle ingestion runs</button>
@@ -112,10 +113,10 @@
           <section class="panel ingestion-panel" aria-labelledby="ingestionTitle">
             <h3 id="ingestionTitle">Provider ingestion runs</h3>
             <form id="ingestionFilters" class="pipeline-ingestion-filters">
-              <label for="ingestionProvider">Provider</label><select id="ingestionProvider"><option value="">All providers</option><option value="polygon">Polygon</option><option value="finnhub">Finnhub</option></select>
-              <label for="ingestionStatusFilter">Status</label><select id="ingestionStatusFilter">
+              <label>Provider<select id="ingestionProvider"><option value="">All providers</option><option value="polygon">Polygon</option><option value="finnhub">Finnhub</option></select></label>
+              <label>Status<select id="ingestionStatusFilter">
                 <option value="">All statuses</option><option>RUNNING</option><option>SUCCESS</option><option>PARTIAL</option><option>FAILED</option>
-              </select>
+              </select></label>
               <button type="submit" class="ghost">Apply filters</button>
             </form>
             <div id="ingestionRows" class="pipeline-records" aria-live="polite"></div>
@@ -157,12 +158,18 @@
                 <button id="closeDocument" type="button" class="ghost">Close</button>
               </div>
               <div class="document-tabs" role="tablist" aria-label="Document details">
+                <button id="documentTabSteps" type="button" role="tab" data-document-tab="steps">Timeline</button>
                 <button id="documentTabOverview" type="button" role="tab" data-document-tab="overview">Overview</button>
+                <button id="documentTabValuations" type="button" role="tab" data-document-tab="valuations">Valuations</button>
                 <button id="documentTabAttempts" type="button" role="tab" data-document-tab="attempts">Attempts</button>
                 <button id="documentTabModels" type="button" role="tab" data-document-tab="models">Models</button>
                 <button id="documentTabEvents" type="button" role="tab" data-document-tab="events">Events</button>
                 <button id="documentTabSource" type="button" role="tab" data-document-tab="source">Source</button>
               </div>
+              <section id="documentSteps" class="document-tab-panel" role="tabpanel"></section>
+              <button id="loadSteps" class="ghost hidden" type="button">Load older steps</button>
+              <section id="documentValuations" class="document-tab-panel hidden" role="tabpanel"></section>
+              <button id="loadDocumentValuations" class="ghost hidden" type="button">Load more document valuations</button>
               <section id="documentOverview" class="document-tab-panel" role="tabpanel"></section>
               <section id="documentAttempts" class="document-tab-panel hidden" role="tabpanel"></section>
               <button id="loadAttempts" class="ghost hidden" type="button">Load older attempts</button>
@@ -179,10 +186,10 @@
           <h2 id="modelsTitle">Models &amp; costs</h2>
           <p id="modelStatus" class="screen-status" role="status">Recorded model usage has not been loaded.</p>
           <form id="modelFilters" class="panel model-filters">
-            <label for="modelProvider">Provider</label><select id="modelProvider"><option value="">All providers</option><option value="openai">OpenAI</option></select>
-            <label for="modelOperation">Operation</label><select id="modelOperation"><option value="">All operations</option><option value="extract">Extract</option><option value="embed">Embed</option></select>
-            <label for="modelName">Model</label><input id="modelName" type="search" maxlength="128" autocomplete="off">
-            <label for="modelSuccess">Outcome</label><select id="modelSuccess"><option value="">All outcomes</option><option value="true">Successful</option><option value="false">Failed</option></select>
+            <label>Provider<select id="modelProvider"><option value="">All providers</option><option value="openai">OpenAI</option></select></label>
+            <label>Operation<select id="modelOperation"><option value="">All operations</option><option value="extract">Extract</option><option value="embed">Embed</option></select></label>
+            <label>Model<input id="modelName" type="search" maxlength="128" autocomplete="off"></label>
+            <label>Outcome<select id="modelSuccess"><option value="">All outcomes</option><option value="true">Successful</option><option value="false">Failed</option></select></label>
             <button type="submit">Apply filters</button>
           </form>
           <section class="panel model-summary" aria-label="Recorded model usage totals">
@@ -265,6 +272,7 @@
             <div id="companyHistory" role="status">Loading score history…</div>
           </section>
           <section class="company-panel" aria-labelledby="explanationTitle"><h3 id="explanationTitle">Why this state?</h3><div id="companyExplanation" role="status">Loading explanation…</div></section>
+          <section class="company-panel" aria-labelledby="companyValuationsTitle"><h3 id="companyValuationsTitle">Recorded valuations</h3><p class="muted small">Exact calculations saved with pipeline and daily snapshot cycles, across all dates. Earlier snapshots may have no recorded valuation.</p><div id="companyValuations" aria-live="polite"></div><button id="loadCompanyValuations" class="ghost hidden" type="button">Load more company valuations</button></section>
           <section class="company-panel" aria-labelledby="companyEventsTitle"><h3 id="companyEventsTitle">Contextual company events</h3><p class="muted small">Loaded reports are grouped by event cluster. These events do not establish causes of past scores; scoring remains server determined.</p><div id="companyEvents" role="status">Loading events…</div><p id="companyEventsStatus" class="panel-error" role="status"></p><button id="loadCompanyEvents" type="button" class="ghost hidden">Load more</button></section>
         </section>
         <section id="eventsView" class="card view hidden" aria-labelledby="eventsTitle">
@@ -283,6 +291,10 @@
           <p id="eventStatus" class="muted" role="status">Open Events to search.</p>
           <div id="eventResults" class="event-results"></div>
           <button id="loadEvents" type="button" class="ghost hidden">Load more</button>
+        </section>
+        <section id="valuationDetail" class="panel valuation-detail hidden" aria-labelledby="valuationTitle">
+          <div class="panel-heading"><div><h2 id="valuationTitle" tabindex="-1">Recorded valuation</h2><p id="valuationStatus" role="status"></p></div><button id="closeValuation" class="ghost" type="button">Close valuation</button></div>
+          <div id="valuationSummary"></div><h3>Recorded event contributions</h3><div id="valuationContributions" aria-live="polite"></div><button id="loadContributions" class="ghost hidden" type="button">Load more contributions</button>
         </section>
       </main>
 

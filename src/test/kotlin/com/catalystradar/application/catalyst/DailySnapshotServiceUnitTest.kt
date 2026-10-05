@@ -31,7 +31,7 @@ class DailySnapshotServiceUnitTest {
         val failing = Company(ticker = "AAA", name = "Failing")
         val succeeding = Company(ticker = "ZZZ", name = "Succeeding")
         whenever(companies.findAllActive()).thenReturn(listOf(succeeding, failing))
-        whenever(catalyst.recalculate(eq(failing.id), any())).thenThrow(IllegalStateException("database timeout"))
+        whenever(catalyst.recalculate(eq(failing.id), any(), any())).thenThrow(IllegalStateException("database timeout"))
 
         val result = service.recalculateActive(asOf)
 
@@ -39,14 +39,14 @@ class DailySnapshotServiceUnitTest {
         assertEquals(2, result.companiesConsidered)
         assertEquals(1, result.companiesRecalculated)
         assertEquals(1, result.failures)
-        verify(catalyst).recalculate(succeeding.id, asOf)
+        verify(catalyst).recalculate(succeeding.id, asOf, runId)
     }
 
     @Test
     fun `company cancellation propagates instead of becoming a partial cycle`() {
         val company = Company(ticker = "AAA", name = "Cancelled")
         whenever(companies.findAllActive()).thenReturn(listOf(company))
-        whenever(catalyst.recalculate(eq(company.id), any())).thenThrow(CancellationException("cancelled"))
+        whenever(catalyst.recalculate(eq(company.id), any(), any())).thenThrow(CancellationException("cancelled"))
 
         assertFailsWith<CancellationException> { service.recalculateActive(asOf) }
         verify(recorder).finish(runId, OperationStatus.CANCELLED, null, "CANCELLED", false)

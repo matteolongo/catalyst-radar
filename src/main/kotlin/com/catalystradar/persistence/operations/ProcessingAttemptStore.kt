@@ -53,6 +53,9 @@ class ProcessingAttemptStore(private val jdbc: NamedParameterJdbcTemplate) {
     }
 
     fun interruptRunningForDocument(documentId: UUID, code: String, now: Instant) {
+        jdbc.update("""UPDATE document_processing_steps SET status='INTERRUPTED',error_code=:code,error_message=:message,
+            finished_at=NULL,updated_at=:now WHERE source_document_id=:id AND status='RUNNING'""",
+            mapOf("id" to documentId, "code" to code, "message" to OperationalErrors.message(code), "now" to Timestamp.from(now)))
         jdbc.update("""UPDATE document_processing_attempts SET status='INTERRUPTED',error_code=:code,error_message=:message,
             finished_at=NULL,next_attempt_at=NULL,updated_at=:now WHERE source_document_id=:id AND status='RUNNING'""",
             mapOf("id" to documentId, "code" to code, "message" to OperationalErrors.message(code), "now" to Timestamp.from(now)))

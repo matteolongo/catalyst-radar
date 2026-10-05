@@ -12,7 +12,7 @@ enum class OperationStatus { RUNNING, SUCCESS, PARTIAL, FAILED, CANCELLED, INTER
 enum class OperationPhase { INGESTION, PROCESSING, SCORING, FINISHED }
 enum class IssuePhase { INGESTION, PROCESSING, SCORING }
 enum class AttemptStatus { RUNNING, COMPLETED, SKIPPED, RETRYABLE_ERROR, TERMINAL_ERROR, INTERRUPTED }
-enum class OperationsResource { DOCUMENT, OPERATION_RUN, MODEL_RUN }
+enum class OperationsResource { DOCUMENT, OPERATION_RUN, MODEL_RUN, VALUATION }
 enum class FreshnessStatus { OFF, NEVER, CURRENT, OVERDUE }
 enum class DependencyStatus { NOT_CONFIGURED, UNOBSERVED, OK, DEGRADED }
 enum class SignalSeverity { ERROR, WARNING, INFO }
@@ -62,7 +62,9 @@ data class DocumentListItem(
     val id: UUID, val provider: String, val title: String, val publishedAt: Instant?, val discoveredAt: Instant,
     val createdAt: Instant, val state: DocumentState, val attemptCount: Int?, val nextAttemptAt: Instant?,
     val updatedAt: Instant?, val lastErrorCode: String?, val lastErrorMessage: String?, val tickers: List<String>,
-    val tickersTruncated: Boolean, val eventReports: Long, val canonicalClusters: Long, val firstIngestionRunId: UUID?,
+    val tickersTruncated: Boolean, val eventReports: Long, val canonicalClusters: Long, val firstIngestionRunId: UUID?, val traceVersion: String? = null,
+    val runAttemptStatus: String? = null, val runAttemptNumber: Int? = null,
+    val runLastStage: String? = null, val runLastStepStatus: String? = null,
 )
 data class DocumentDetail(
     val generatedAt: Instant, val document: DocumentListItem, val canonicalUrl: String?, val providerDocumentId: String?,
@@ -92,7 +94,7 @@ data class OperationRun(
     val documentsConsidered: Int, val documentsCompleted: Int, val documentsSkipped: Int,
     val documentsRetryScheduled: Int, val documentsTerminalFailures: Int, val eventsInserted: Int,
     val eventsReused: Int, val companiesConsidered: Int, val companiesRescored: Int, val companiesFailed: Int,
-    val errorCode: String?, val errorMessage: String?,
+    val errorCode: String?, val errorMessage: String?, val traceVersion: String? = null,
 )
 data class OperationRunDetail(val generatedAt: Instant, val run: OperationRun, val ingestionRuns: Long, val documentAttempts: Long, val issues: Long, val phases: List<OperationPhaseTiming>)
 data class OperationPhaseTiming(val phase: String, val startedAt: Instant?, val finishedAt: Instant?, val durationMs: Long?)

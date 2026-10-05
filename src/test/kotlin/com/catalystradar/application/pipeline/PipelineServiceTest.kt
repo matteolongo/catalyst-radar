@@ -2,6 +2,7 @@ package com.catalystradar.application.pipeline
 
 import com.catalystradar.adapters.polygon.PolygonNewsProvider
 import com.catalystradar.adapters.polygon.PolygonProperties
+import com.catalystradar.persistence.operations.DocumentStepStore
 import com.catalystradar.application.catalyst.CatalystService
 import com.catalystradar.application.operations.*
 import com.catalystradar.persistence.operations.OperationRunStore
@@ -121,6 +122,7 @@ class PipelineServiceTest : PostgresIntegrationTest() {
     @Autowired
     private lateinit var persistence: DocumentOutcomePersistenceService
 
+    @Autowired private lateinit var steps: DocumentStepStore
     @Autowired private lateinit var recorder: OperationRunRecorder
     @Autowired private lateinit var attempts: ProcessingAttemptService
     @Autowired private lateinit var operationRuns: OperationRunStore
@@ -167,6 +169,7 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         metrics = metrics,
         recorder = recorder,
         attempts = attempts,
+        steps = steps,
     )
 
     private fun polygon() = PolygonNewsProvider(
@@ -512,7 +515,7 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         val now = Instant.parse("2026-09-16T10:00:00Z")
         val document = queuedDocument(company, now)
         val failingCatalyst = mock<CatalystService>()
-        whenever(failingCatalyst.recalculate(eq(company.id), any()))
+        whenever(failingCatalyst.recalculate(eq(company.id), any(), any()))
             .thenThrow(IllegalStateException("snapshot store unavailable"))
 
         val result = drainedPipeline(catalyst = failingCatalyst).runCycle(now)
@@ -622,7 +625,7 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         val company = companyStore.save(Company(ticker = "DELL", name = "Dell"))
         val document = queuedDocument(company, now)
         val cancelledCatalyst = mock<CatalystService>()
-        whenever(cancelledCatalyst.recalculate(eq(company.id), any())).thenThrow(CancellationException("cancel"))
+        whenever(cancelledCatalyst.recalculate(eq(company.id), any(), any())).thenThrow(CancellationException("cancel"))
         assertFailsWith<CancellationException> { drainedPipeline(catalyst = cancelledCatalyst).runCycle(now) }
         val attempt = attemptStore.search(document.id, PageRequest(), Instant.now()).items.single()
         assertEquals(AttemptStatus.COMPLETED, attempt.status)

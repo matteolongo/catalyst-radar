@@ -6,7 +6,7 @@
   var OPERATIONAL = ['overview', 'pipeline', 'documents', 'models', 'settings'];
   var ACCESS_STATUS_IDS = ['overviewStatus', 'pipelineStatus', 'documentStatus', 'modelStatus'];
   var DOCUMENT_STATES = ['PENDING', 'PROCESSING', 'COMPLETED', 'SKIPPED', 'RETRYABLE_ERROR', 'TERMINAL_ERROR', 'UNRESOLVED', 'NOT_TRACKED'];
-  var DOCUMENT_TABS = ['overview', 'attempts', 'models', 'events', 'source'];
+  var DOCUMENT_TABS = ['steps', 'overview', 'valuations', 'attempts', 'models', 'events', 'source'];
   var MODEL_PROVIDERS = ['openai'];
   var MODEL_OPERATIONS = ['extract', 'embed'];
   var PIPELINE_KINDS = ['PIPELINE', 'DAILY_SNAPSHOTS'];
@@ -51,7 +51,7 @@
     var selectedDocumentDetail = null;
     var selectedDocumentLoaded = false;
     var selectedDocumentLoading = false;
-    var selectedDocumentTab = 'overview';
+    var selectedDocumentTab = 'steps';
     var selectedDocumentOpener = null;
     var selectedAttemptId = null;
     var documentTabCache = {};
@@ -127,6 +127,12 @@
     var snapshotScheduleLoaded = false;
     var snapshotScheduleLoading = false;
     var pendingPost = false;
+    var tracePages = {};
+    var traceContext = '';
+    var valuationId = null;
+    var valuation = null;
+    var valuationLoading = false;
+    var valuationError = null;
 
     function el(id) { return document.getElementById(id); }
     function esc(value) {
@@ -149,6 +155,8 @@
       requests.forEach(function (controller) { controller.abort(); });
       requests.clear();
       pending = null;
+      valuationLoading = false;
+      Object.keys(tracePages).forEach(function (key) { tracePages[key].loading = false; });
       documentPageLoading = false;
       selectedDocumentLoading = false;
       Object.keys(documentTabCache).forEach(function (tab) { documentTabCache[tab].loading = false; });
@@ -204,45 +212,39 @@
       lastConfigAt = null;
       el('settingsConfig').textContent = 'Unknown / unavailable';
     }
+    function clearProtectedData() {
+      knownActivePipelineIds.clear();
+      clearTraceData();
+      clearOverview();
+      clearConfig();
+      clearDocumentData();
+      modelGeneration++;
+      modelDetailSequence++;
+      lastModelSummaryAt = null;
+      clearModelData();
+      clearPipelineData();
+      el('documentsWorkspace').classList.remove('has-selection');
+      ['documentFilters', 'documentRows', 'loadDocuments', 'documentDetail', 'loadSteps', 'loadDocumentValuations',
+        'loadAttempts', 'loadDocumentModels', 'loadDocumentEvents', 'modelFilters', 'modelRows', 'loadModels', 'modelDetail'].forEach(function (id) {
+        toggleHidden(id, true);
+      });
+      ACCESS_STATUS_IDS.concat('settingsStatus').forEach(function (id) { el(id).textContent = 'Admin access required.'; });
+      el('accessStatus').textContent = 'Admin access required. Keys stay in this tab’s session storage.';
+      el('runNow').disabled = true;
+      el('lastRefresh').textContent = 'No successful refresh yet';
+    }
     function accessRequired() {
-      var link = 'Admin access required. <a href="?view=settings" data-settings-access>Open Settings to add an admin key</a>.';
       if (credentials().hasAdmin) invalidate();
+      clearProtectedData();
+      var link = 'Admin access required. <a href="?view=settings" data-settings-access>Open Settings to add an admin key</a>.';
       if (screen === 'overview') {
-        clearOverview();
         el('overviewStatus').innerHTML = link;
       } else if (screen === 'settings') {
-        clearConfig();
         el('settingsStatus').textContent = 'Admin access required to read server configuration.';
-        el('accessStatus').textContent = 'Admin access required. Keys stay in this tab’s session storage.';
       } else {
         var statusId = { pipeline: 'pipelineStatus', documents: 'documentStatus', models: 'modelStatus' }[screen];
         if (statusId) el(statusId).innerHTML = link;
-        if (screen === 'pipeline') {
-          clearPipelineData();
-          toggleHidden('runRows', true);
-          toggleHidden('loadRuns', true);
-          toggleHidden('runDetail', true);
-          toggleHidden('ingestionRows', true);
-          toggleHidden('loadIngestion', true);
-          toggleHidden('ingestionDetail', true);
-          el('runNow').disabled = true;
-        } else if (screen === 'documents') {
-          clearDocumentData();
-          toggleHidden('documentFilters', true);
-          toggleHidden('documentRows', true);
-          toggleHidden('loadDocuments', true);
-          toggleHidden('documentDetail', true);
-        } else if (screen === 'models') {
-          modelGeneration++;
-          modelDetailSequence++;
-          clearModelData();
-          toggleHidden('modelFilters', true);
-          toggleHidden('modelRows', true);
-          toggleHidden('loadModels', true);
-          toggleHidden('modelDetail', true);
-        }
       }
-      el('lastRefresh').textContent = 'No successful refresh yet';
       return false;
     }
     function metric(title, value, context, link) {
@@ -343,6 +345,7 @@
     function validUuid(value) {
       return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
     }
+    function sameId(left, right) { return typeof left === 'string' && typeof right === 'string' && left.toLowerCase() === right.toLowerCase(); }
     function normalizeDocumentFilters(filters) {
       var normalized = Object.assign({}, filters, {
         q: String(filters.q || '').trim(),
@@ -369,7 +372,7 @@
     function documentFiltersFromRoute(route, preserveWhenOmitted) {
       var filterKeys = ['q', 'provider', 'ticker', 'status', 'from', 'to', 'dueOnly', 'runId', 'ingestionRunId'];
       var hasRouteFilters = filterKeys.some(function (key) { return route.has(key); });
-      var next = preserveWhenOmitted && !hasRouteFilters
+      var next = preserveWhenOmitted && !hasRouteFilters && !route.has('documentId')
         ? Object.assign({}, documentFilters, { statuses: documentFilters.statuses.slice() })
         : { q: '', provider: '', ticker: '', statuses: [], from: '', to: '', dueOnly: false, runId: '', ingestionRunId: '' };
       if (route.has('q')) next.q = route.get('q');
@@ -417,7 +420,7 @@
       if (filters.runId) route.set('runId', filters.runId);
       if (filters.ingestionRunId) route.set('ingestionRunId', filters.ingestionRunId);
       if (selection && selection.id) route.set('documentId', selection.id);
-      if (selection && selection.tab && selection.tab !== 'overview') route.set('documentTab', selection.tab);
+      if (selection && selection.tab && selection.tab !== 'steps') route.set('documentTab', selection.tab);
       if (selection && selection.attemptId) route.set('attemptId', selection.attemptId);
       return '?' + route.toString();
     }
@@ -466,7 +469,7 @@
           '<span class="document-row-title">' + esc(item.title || 'Untitled document') + '</span>' +
           '<span class="document-row-meta"><span>' + esc(item.provider) + '</span><span>' + esc(tickers) + '</span>' +
           '<span>' + esc(time(item.discoveredAt)) + ' UTC</span><span class="pill ' + documentStateClass(item.state) + '">' + esc(documentStateLabel(item.state)) + '</span>' +
-          '<span>' + esc(attempts) + '</span>' + (item.nextAttemptAt ? '<span>Next retry ' + esc(time(item.nextAttemptAt)) + ' UTC</span>' : '') +
+          '<span>' + esc(attempts) + '</span>' + (documentFilters.runId ? '<span>Cycle attempt: ' + esc(readable(item.runAttemptStatus)) + ' #' + esc(recorded(item.runAttemptNumber)) + ' · Last cycle stage: ' + esc(readable(item.runLastStage)) + ' / ' + esc(readable(item.runLastStepStatus)) + '</span><span>Queue state above is current globally.</span>' : '') + (item.nextAttemptAt ? '<span>Next retry ' + esc(time(item.nextAttemptAt)) + ' UTC</span>' : '') +
           '</span></button>';
       }).join('') : '<p class="muted">No captured documents match these filters.</p>');
       var loaded = documentItems.length + ' loaded document' + (documentItems.length === 1 ? '' : 's');
@@ -479,6 +482,119 @@
       el('loadDocuments').disabled = documentPageLoading || (!documentCursor && documentPageLoaded);
       el('loadDocuments').textContent = documentPageLoaded ? (documentPageError && !documentCursor ? 'Retry documents' : 'Load more') : 'Load documents';
     }
+    function recorded(value, digits) {
+      if (value == null || value === '') return 'Not recorded';
+      return typeof value === 'number' && digits != null ? value.toLocaleString('en-US', { maximumFractionDigits: digits }) : String(value);
+    }
+    function readable(value) { return value ? String(value).toLowerCase().replace(/_/g, ' ').replace(/^./, function (ch) { return ch.toUpperCase(); }) : 'Not recorded'; }
+    function traceCoverage(version, subject) {
+      return version ? '<p class="muted small">Trace: ' + esc(version) + '</p>' :
+        '<p class="trace-notice">Detailed trace not recorded for this ' + esc(subject) + '. Available records are partial history. Missing stages and original score inputs are not reconstructed.</p>';
+    }
+    function traceLink(route, label) {
+      var target = new URLSearchParams(route.slice(1)).get('valuationId');
+      return '<a href="' + esc(route) + '" data-trace-route="' + esc(route) + '"' + (target && target === valuationId ? ' aria-current="true"' : '') + '>' + esc(label) + '</a>';
+    }
+    function traceRoute(overrides) {
+      var route = new URLSearchParams(params);
+      Object.keys(overrides).forEach(function (key) {
+        if (overrides[key] == null || overrides[key] === '') route.delete(key);
+        else route.set(key, overrides[key]);
+      });
+      return '?' + route.toString();
+    }
+    function valuationRoute(item) {
+      return traceRoute({ valuationId: item.id, runId: screen === 'company' ? item.operationRunId : params.get('runId') });
+    }
+    function retainTracePage(state, page, appendPage, sortField) {
+      var incoming = page.items || [];
+      var refreshed = new Map(incoming.map(function (item) { return [item.id, item]; }));
+      var previous = state.items.map(function (item) { return refreshed.get(item.id) || item; });
+      var existingIds = new Set(state.items.map(function (item) { return item.id; }));
+      var overlaps = incoming.some(function (item) { return existingIds.has(item.id); });
+      state.items = window.CatalystOperationsModel.mergePage(
+        { items: appendPage ? previous : incoming }, { items: appendPage ? incoming : previous }).items;
+      state.items.sort(function (a, b) {
+        return new Date(b[sortField] || b.asOf || b.startedAt || b.discoveredAt || b.createdAt) - new Date(a[sortField] || a.asOf || a.startedAt || a.discoveredAt || a.createdAt) || b.id.localeCompare(a.id);
+      });
+      if (appendPage || !state.loaded || !overlaps) state.cursor = page.nextCursor || null;
+      state.historyPaused = !!(state.historyPaused || appendPage || state.items.length > 25);
+      state.firstLoadedAt = state.firstLoadedAt || page.generatedAt || null;
+      state.generatedAt = page.generatedAt || state.generatedAt || null;
+    }
+    function traceHistoryNotice(state, key) {
+      if (!state.historyPaused) return '';
+      return '<div class="trace-notice"><p>History refresh is paused while inspecting retained pages. ' +
+        (state.firstLoadedAt ? 'Pages read from ' + timeMark(state.firstLoadedAt) + ' to ' + timeMark(state.generatedAt) + '. ' : '') +
+        'Rows keep their last read values; running steps and document outcomes may have changed. Automatic refresh remains active for cycle phases and document overview. Load more continues from the retained page.</p>' +
+        '<button type="button" data-reload-trace="' + esc(key) + '"' + (state.loading ? ' disabled' : '') + '>Reload latest trace/history</button>' +
+        '<p class="small">Reload starts with the latest 25 rows. Any already verified valuation detail stays open.</p></div>';
+    }
+    function renderValuationRows(state, origin) {
+      var rows = state.items.map(function (item) {
+        var companyRoute = '?view=company&ticker=' + encodeURIComponent(item.ticker) + '&runId=' + encodeURIComponent(item.operationRunId) + '&valuationId=' + encodeURIComponent(item.id);
+        return '<article class="trace-row"><strong>' + traceLink(valuationRoute(item), item.ticker + ' · ' + item.companyName) + '</strong>' +
+          '<p>' + esc(recorded(item.beforeScore, 2)) + ' / ' + esc(recorded(item.beforeState)) + ' → ' + esc(recorded(item.afterScore, 2)) + ' / ' + esc(recorded(item.afterState)) + '</p>' +
+          '<p class="small muted">Scoring as of ' + timeMark(item.asOf) + ' · ' + esc(item.scoreVersion) + '</p>' +
+          '<p class="small">Cycle ' + traceLink('?view=pipeline&runId=' + encodeURIComponent(item.operationRunId), item.operationRunId) +
+          (item.transitionId ? ' · Stored transition ' + esc(item.transitionId) : ' · No recorded transition') + '</p>' +
+          (origin !== 'company' ? '<p>' + traceLink(companyRoute, 'Open company analysis') + '</p>' : '') + '</article>';
+      });
+      var html = rows.join('');
+      if (origin === 'company') {
+        var groups = new Map();
+        state.items.forEach(function (item, index) {
+          if (!groups.has(item.operationRunId)) groups.set(item.operationRunId, []);
+          groups.get(item.operationRunId).push(rows[index]);
+        });
+        html = Array.from(groups.entries()).map(function (group) {
+          return '<section class="trace-collection"><h4>Cycle ' + traceLink('?view=pipeline&runId=' + encodeURIComponent(group[0]), group[0]) + '</h4>' + group[1].join('') + '</section>';
+        }).join('');
+      }
+      if (!state.items.length) html = '<p class="muted">' + (state.loading ? 'Loading recorded valuations…' : state.loaded ? 'No recorded valuations for this context. Missing history is not evidence of a zero score or successful recalculation.' : 'Recorded valuations have not been loaded.') + '</p>';
+      if (origin === 'document') html = '<p class="muted small">These valuations include this document as recorded evidence. Each underlying event contributes once; extra reports provide supporting evidence.</p>' + html;
+      if (origin === 'company' && params.get('runId') && state.loaded && !state.items.some(function (item) { return item.operationRunId === params.get('runId'); })) {
+        html = '<p class="muted small">No successful valuation for the selected cycle is present in the loaded company pages. ' + traceLink('?view=pipeline&runId=' + encodeURIComponent(params.get('runId')), 'Inspect cycle issues') + (state.cursor ? '. Additional history remains on later pages.</p>' : '. No additional recorded valuation pages are available.</p>') + html;
+      }
+      if (state.error) html += '<p class="panel-error">' + esc(state.error) + '</p>';
+      return traceHistoryNotice(state, origin === 'document' ? 'valuations' : origin === 'company' ? 'companyValuations' : 'runValuations') + html;
+    }
+    function renderDocumentSteps(state) {
+      var item = selectedDocumentDetail && selectedDocumentDetail.document || {};
+      var html = traceHistoryNotice(state, 'steps') + traceCoverage(item.traceVersion, 'document intake') + '<p class="muted small">Only executed, persisted stages appear. Times are operational UTC times; scoring as-of and source publication/discovery remain separate. Showing ' + state.items.length + ' loaded stages.</p>';
+      if (documentFilters.runId) html += '<p>Selected cycle: ' + traceLink('?view=pipeline&runId=' + encodeURIComponent(documentFilters.runId), documentFilters.runId) + '</p>';
+      if (selectedAttemptId) html += '<p>Selected attempt: ' + esc(selectedAttemptId) + '</p>';
+      if (!state.items.length) html += '<p class="muted">' + (state.loading ? 'Loading recorded steps…' : 'No stages recorded for this document and selected run/attempt context. Later stages are not assumed to have run.') + '</p>';
+      var groups = new Map();
+      state.items.slice().sort(function (a, b) { return new Date(a.startedAt) - new Date(b.startedAt) || a.sequence - b.sequence || a.id.localeCompare(b.id); }).forEach(function (step) {
+        var key = step.operationRunId + ':' + (step.processingAttemptId || 'intake');
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(step);
+      });
+      groups.forEach(function (steps) {
+        var first = steps[0];
+        var runRoute = '?view=pipeline&runId=' + encodeURIComponent(first.operationRunId);
+        var attemptRoute = documentSearch(documentFilters, { id: selectedDocumentId, tab: 'attempts', attemptId: first.processingAttemptId });
+        html += '<section class="step-group"><h4>' + (first.processingAttemptId ? 'Attempt ' + esc(recorded(first.attemptNumber)) : 'Document intake') + '</h4><p class="small">Cycle ' + traceLink(runRoute, first.operationRunId) +
+          (first.processingAttemptId ? ' · ' + traceLink(attemptRoute, 'Inspect attempt ' + first.processingAttemptId) : '') + '</p><ol class="step-timeline">' + steps.map(function (step) {
+          var badge = ['FAILED', 'INTERRUPTED'].includes(step.status) ? 'bad' : step.status === 'SUCCEEDED' ? 'ok' : 'info';
+          var modelsRoute = documentSearch(Object.assign({}, documentFilters, { runId: step.operationRunId }), { id: step.sourceDocumentId, tab: 'models', attemptId: step.processingAttemptId });
+          return '<li><h5>' + esc(readable(step.stage)) + ' <span class="pill ' + badge + '">' + esc(readable(step.status)) + '</span></h5>' +
+            '<dl class="fact-grid">' + documentTime('Started', step.startedAt) + documentTime('Finished', step.finishedAt) +
+            '<div><dt>Recorded duration</dt><dd>' + esc(step.durationMs == null ? 'Not recorded' : recorded(step.durationMs) + ' ms') + '</dd></div>' +
+            '<div><dt>Input / output</dt><dd>' + esc(recorded(step.inputCount)) + ' / ' + esc(recorded(step.outputCount)) + '</dd></div>' +
+            '<div><dt>Events inserted / reused</dt><dd>' + esc(recorded(step.eventsInserted)) + ' / ' + esc(recorded(step.eventsReused)) + '</dd></div></dl>' +
+            (step.errorCode || step.errorMessage ? '<p class="panel-error">' + esc(recorded(step.errorCode)) + ' · ' + esc(recorded(step.errorMessage)) + '</p>' : '') +
+            (step.processingAttemptId ? '<p>' + traceLink(modelsRoute, 'Recorded model calls for this attempt') + '</p>' : '') + '</li>';
+        }).join('') + '</ol></section>';
+      });
+      html += '<p>' + traceLink(documentSearch(documentFilters, { id: selectedDocumentId, tab: 'events' }), 'Inspect stored events and clusters') + ' · ' +
+        traceLink(documentSearch(documentFilters, { id: selectedDocumentId, tab: 'valuations' }), 'Inspect linked company valuations') + '</p>';
+      if (state.cursor) html += '<p class="muted small">Earlier stages remain on older pages. Loaded stages are arranged chronologically within each run/attempt group.</p>';
+      if (state.error) html += '<p class="panel-error">' + esc(state.error) + '</p>';
+      return html;
+    }
+    function onLoadTraceDocument() { loadDocumentTab(false, !!tabState(selectedDocumentTab).cursor).then(function () { if (valuationId) loadTraceScreen(false); }); }
     function documentTime(label, value) {
       return '<div><dt>' + esc(label) + '</dt><dd>' + (value ? '<time datetime="' + esc(value) + '">' + esc(time(value)) + ' UTC</time>' : 'Unknown') + '</dd></div>';
     }
@@ -519,7 +635,7 @@
         documentTime('Document processing completed', detail.completedAt) +
         '<div><dt>Recorded model calls</dt><dd>' + esc(integer(detail.modelCallsRecorded)) + '</dd></div>' +
         '<div><dt>Event reports / canonical clusters</dt><dd>' + esc(integer(detail.eventReports)) + ' / ' + esc(integer(detail.canonicalClusters)) + '</dd></div>' +
-        '</dl><h4>Source</h4><p>' + externalSourceLink(detail.canonicalUrl, 'Open original source') +
+        '</dl>' + traceCoverage(item.traceVersion, 'document intake') + '<h4>Source</h4><p>' + externalSourceLink(detail.canonicalUrl, 'Open original source') +
         (detail.providerDocumentId ? ' · Provider document ID: ' + esc(detail.providerDocumentId) : '') + '</p>' +
         '<h4>Origin</h4><p>' + ingestion + '</p>' + error +
         '<h4>Supported companies (' + esc(integer(detail.companiesTotal)) + (detail.companiesTruncated ? '+)' : ')') + '</h4>' +
@@ -529,24 +645,29 @@
     }
     function setDocumentPane() {
       var hasSelection = !!selectedDocumentId;
+      el('documentsWorkspace').classList.toggle('has-selection', hasSelection && credentials().hasAdmin);
       toggleHidden('documentDetail', !hasSelection);
       DOCUMENT_TABS.forEach(function (tab) {
-        el('documentTab' + tab[0].toUpperCase() + tab.slice(1)).setAttribute('aria-selected', String(tab === selectedDocumentTab));
-        toggleHidden('document' + tab[0].toUpperCase() + tab.slice(1), !hasSelection || tab !== selectedDocumentTab);
+        var suffix = tab[0].toUpperCase() + tab.slice(1);
+        el('documentTab' + suffix).setAttribute('aria-selected', String(tab === selectedDocumentTab));
+        el('documentTab' + suffix).setAttribute('aria-controls', 'document' + suffix);
+        el('document' + suffix).setAttribute('aria-labelledby', 'documentTab' + suffix);
+        toggleHidden('document' + suffix, !hasSelection || tab !== selectedDocumentTab);
       });
+      ['loadSteps', 'loadDocumentValuations', 'loadAttempts', 'loadDocumentModels', 'loadDocumentEvents'].forEach(function (button) { toggleHidden(button, true); });
       if (!hasSelection) {
         el('documentDetailTitle').textContent = '';
         el('documentDetailStatus').textContent = '';
       }
     }
-    function renderDocumentDetail() {
+    function renderDocumentDetail(keepRetainedHistory) {
       if (!selectedDocumentId || !selectedDocumentDetail) return;
       var detail = selectedDocumentDetail;
       var item = detail.document || {};
       el('documentDetailTitle').textContent = item.title || 'Untitled document';
-      el('documentDetailStatus').textContent = 'Captured ' + time(item.discoveredAt) + ' UTC · ' + documentStateLabel(item.state);
+      el('documentDetailStatus').textContent = 'Captured ' + time(item.discoveredAt) + ' UTC · Current global state: ' + documentStateLabel(item.state);
       renderDocumentOverview(detail);
-      renderSelectedDocumentTab();
+      if (!keepRetainedHistory || !['steps', 'valuations'].includes(selectedDocumentTab) || !tabState(selectedDocumentTab).historyPaused) renderSelectedDocumentTab();
     }
     function tabState(tab) {
       if (!documentTabCache[tab]) documentTabCache[tab] = { loaded: false, loading: false, items: [], cursor: null, error: null, body: null };
@@ -599,8 +720,10 @@
     function renderDocumentModels(state) {
       if (state.error) return '<p class="panel-error">' + esc(state.error) + '</p>';
       if (!state.loaded) return '<p class="muted">' + (state.loading ? 'Loading model calls…' : 'Model calls have not been loaded.') + '</p>';
-      if (!state.items.length) return '<p class="muted">No explicitly source-linked model calls are recorded. This is missing provenance; it does not establish whether the provider was invoked.</p>';
-      return state.items.map(function (item) {
+      var items = state.items.filter(function (item) { return (!selectedAttemptId || item.attemptId === selectedAttemptId) && (!documentFilters.runId || item.runId === documentFilters.runId); });
+      var context = '<p class="muted small">Explicitly source-linked calls across all dates' + (documentFilters.runId ? ' · cycle ' + esc(documentFilters.runId) : '') + (selectedAttemptId ? ' · attempt ' + esc(selectedAttemptId) : '') + '. Filters apply to loaded pages; use Load more for older calls.</p>';
+      if (!items.length) return context + '<p class="muted">No matching explicitly source-linked model calls in the loaded pages. This is missing provenance; it does not establish whether the provider was invoked.</p>';
+      return context + items.map(function (item) {
         var usage = (item.inputTokens == null ? 'Unknown' : integer(item.inputTokens)) + ' input · ' +
           (item.outputTokens == null ? 'Unknown' : integer(item.outputTokens)) + ' output tokens';
         var price = item.estimatedCost == null ? 'Unknown cost' : cost(item.estimatedCost, 1, 1);
@@ -627,7 +750,7 @@
           var company = item.ticker ? '<a href="?view=company&ticker=' + encodeURIComponent(item.ticker) + '" data-document-company="' + esc(item.ticker) + '">' +
             esc(item.ticker) + (item.companyName ? ' · ' + esc(item.companyName) : '') + '</a>' : 'No linked company';
           var evidence = (item.evidence || []).map(function (entry) { return '<blockquote>' + esc(entry.quoteOrFact) + '</blockquote>'; }).join('');
-          return '<article class="event-report"><strong>' + esc(item.type) + ' · ' + esc(item.family) + ' · ' + esc(item.direction) + '</strong>' +
+          return '<article class="event-report"><strong>' + esc(item.type) + ' · ' + esc(item.family) + ' · ' + esc(item.direction) + '</strong><p class="small">Stored event ID: ' + esc(item.id) + '</p>' +
             '<p>Event ' + timeMark(item.eventTimestamp) + ' · source published ' + timeMark(item.source && item.source.publishedAt) +
             ' · captured ' + timeMark(item.discoveredAt) + '</p><p>' + company + '</p>' + evidence + '</article>';
         }).join('') + '</section>';
@@ -652,11 +775,19 @@
       }
       var state = tabState(selectedDocumentTab);
       var id = 'document' + selectedDocumentTab[0].toUpperCase() + selectedDocumentTab.slice(1);
-      var html = selectedDocumentTab === 'attempts' ? renderAttempts(state)
+      var html = selectedDocumentTab === 'steps' ? renderDocumentSteps(state)
+        : selectedDocumentTab === 'valuations' ? renderValuationRows(state, 'document')
+        : selectedDocumentTab === 'attempts' ? renderAttempts(state)
         : (selectedDocumentTab === 'models' ? renderDocumentModels(state)
           : (selectedDocumentTab === 'events' ? renderDocumentEvents(state) : renderDocumentSource(state)));
       el(id).innerHTML = html;
-      if (selectedDocumentTab === 'attempts') {
+      ['loadSteps', 'loadDocumentValuations', 'loadAttempts', 'loadDocumentModels', 'loadDocumentEvents'].forEach(function (button) { toggleHidden(button, true); });
+      if (selectedDocumentTab === 'steps' || selectedDocumentTab === 'valuations') {
+        var button = selectedDocumentTab === 'steps' ? 'loadSteps' : 'loadDocumentValuations';
+        toggleHidden(button, !state.cursor && !state.error);
+        el(button).disabled = state.loading;
+        el(button).textContent = state.error ? 'Retry recorded read' : (selectedDocumentTab === 'steps' ? 'Load older steps' : 'Load more document valuations');
+      } else if (selectedDocumentTab === 'attempts') {
         toggleHidden('loadAttempts', !state.cursor);
         el('loadAttempts').disabled = state.loading;
       } else if (selectedDocumentTab === 'models') {
@@ -717,7 +848,7 @@
         selectedDocumentDetail = result.data;
         selectedDocumentLoaded = true;
         el('documentDetailStatus').textContent = '';
-        renderDocumentDetail();
+        renderDocumentDetail(force);
         return true;
       }).catch(function (error) {
         if (!current(revision, requestSequence, 'documents') || error.name === 'AbortError') return false;
@@ -733,10 +864,12 @@
     function documentTabPath(tab, cursor) {
       var base = '/internal/operations/documents/' + encodeURIComponent(selectedDocumentId);
       if (tab === 'source') return base + '/body';
-      var suffix = tab === 'attempts' ? 'attempts' : (tab === 'models' ? 'model-runs' : 'events');
+      var suffix = ['steps', 'valuations'].includes(tab) ? tab : (tab === 'attempts' ? 'attempts' : (tab === 'models' ? 'model-runs' : 'events'));
       var query = new URLSearchParams();
       query.set('limit', '25');
       if (cursor) query.set('cursor', cursor);
+      if (['steps', 'valuations'].includes(tab) && documentFilters.runId) query.set('runId', documentFilters.runId);
+      if (tab === 'steps' && selectedAttemptId) query.set('attemptId', selectedAttemptId);
       return base + '/' + suffix + '?' + query.toString();
     }
     function loadDocumentTab(force, appendPage) {
@@ -744,6 +877,7 @@
       if (!selectedDocumentId || tab === 'overview' || !credentials().hasAdmin) return Promise.resolve(false);
       var state = tabState(tab);
       if (state.loading || (appendPage && !state.cursor) || (state.loaded && !force && !appendPage)) return Promise.resolve(state.loaded);
+      if (force && state.loaded && state.historyPaused && ['steps', 'valuations'].includes(tab)) return Promise.resolve(true);
       var id = selectedDocumentId;
       var revision = credentials().revision;
       var requestSequence = sequence;
@@ -754,6 +888,7 @@
       return read(documentTabPath(tab, cursor), revision, requestSequence, 'documents').then(function (result) {
         if (!result.current || selectedDocumentId !== id || selectedDocumentTab !== tab) return false;
         if (tab === 'source') state.body = result.data;
+        else if (['steps', 'valuations'].includes(tab)) retainTracePage(state, result.data, appendPage);
         else {
           var incoming = tab === 'events' ? (result.data.events || []) : (result.data.items || []);
           state.items = appendPage ? window.CatalystOperationsModel.mergePage({ items: state.items }, { items: incoming }).items : incoming.slice();
@@ -785,7 +920,7 @@
       else if (state.cursor) el('documentDetailStatus').textContent = 'Attempt ' + selectedAttemptId + ': Load older attempts to locate this record.';
     }
     function clearDocumentDetailViews() {
-      ['documentOverview', 'documentAttempts', 'documentModels', 'documentEvents', 'documentSource'].forEach(function (panel) {
+      ['documentSteps', 'documentValuations', 'documentOverview', 'documentAttempts', 'documentModels', 'documentEvents', 'documentSource'].forEach(function (panel) {
         el(panel).innerHTML = '';
       });
       el('documentDetailTitle').textContent = '';
@@ -836,7 +971,7 @@
       }
       renderDocumentFilters();
       var nextId = route.get('documentId') || null;
-      var nextTab = route.get('documentTab') || 'overview';
+      var nextTab = route.get('documentTab') || 'steps';
       var nextAttemptId = route.get('attemptId') || null;
       var invalidIdMessage = nextId && !validUuid(nextId) ? 'Document ID must be a UUID.'
         : (nextAttemptId && !validUuid(nextAttemptId) ? 'Attempt ID must be a UUID.'
@@ -850,14 +985,14 @@
         el('documentStatus').textContent = invalidIdMessage;
         return false;
       }
-      if (nextAttemptId) nextTab = 'attempts';
+      if (nextAttemptId && !route.has('documentTab')) nextTab = 'steps';
       if (!DOCUMENT_TABS.includes(nextTab)) {
         documentRouteValid = false;
         el('documentStatus').textContent = 'Choose a valid document detail tab.';
         setDocumentPane();
         return false;
       }
-      if (nextId !== selectedDocumentId) resetSelectedDocument(nextId);
+      if (nextId !== selectedDocumentId || filtersChanged || nextAttemptId !== selectedAttemptId) resetSelectedDocument(nextId);
       selectedAttemptId = nextAttemptId;
       selectedDocumentTab = nextTab;
       documentRouteValid = true;
@@ -882,8 +1017,11 @@
         documentPageError = null;
         if (selectedDocumentId) {
           selectedDocumentLoaded = false;
-          var cachedSource = documentTabCache.source;
-          documentTabCache = cachedSource && cachedSource.loaded ? { source: cachedSource } : {};
+          var retained = {};
+          ['source', 'steps', 'valuations'].forEach(function (tab) {
+            if (documentTabCache[tab] && (tab !== 'source' || documentTabCache[tab].loaded)) retained[tab] = documentTabCache[tab];
+          });
+          documentTabCache = retained;
         }
       }
       var tasks = [];
@@ -937,7 +1075,7 @@
     }
     function selectDocument(id, opener) {
       selectedDocumentOpener = opener || null;
-      options.navigate(documentSearch(documentFilters, { id: id, tab: 'overview' }));
+      options.navigate(documentSearch(documentFilters, { id: id, tab: 'steps' }));
     }
     function closeSelectedDocument() {
       if (!selectedDocumentId) return;
@@ -949,7 +1087,7 @@
     }
     function selectDocumentTab(tab) {
       if (!selectedDocumentId || !DOCUMENT_TABS.includes(tab)) return;
-      var attemptId = tab === 'attempts' ? selectedAttemptId : null;
+      var attemptId = ['attempts', 'steps', 'models'].includes(tab) ? selectedAttemptId : null;
       options.navigate(documentSearch(documentFilters, { id: selectedDocumentId, tab: tab, attemptId: attemptId }));
     }
     function onDocumentRowsClick(event) {
@@ -1131,8 +1269,8 @@
         '<thead><tr><th scope="col">Provider</th><th scope="col">Operation</th><th scope="col">Model</th><th scope="col">Calls</th><th scope="col">Failed</th><th scope="col">Estimated cost</th></tr></thead><tbody>' +
         groups.map(function (group) {
           var usage = group.usage || {};
-          return '<tr><td>' + esc(group.provider) + '</td><td>' + esc(group.operation) + '</td><td>' + esc(group.model) + '</td>' +
-            '<td>' + esc(integer(usage.calls)) + '</td><td>' + esc(integer(usage.failedCalls)) + '</td><td>' +
+          return '<tr><td data-label="Provider">' + esc(group.provider) + '</td><td data-label="Operation">' + esc(group.operation) + '</td><td data-label="Model">' + esc(group.model) + '</td>' +
+            '<td data-label="Calls">' + esc(integer(usage.calls)) + '</td><td data-label="Failed">' + esc(integer(usage.failedCalls)) + '</td><td data-label="Estimated cost">' +
             esc(modelCostLabel(usage.estimatedCostUsd, usage.costKnownCalls, usage.calls)) + '</td></tr>';
         }).join('') + '</tbody></table></div>' : '<p class="muted">No model calls are recorded for this window.</p>';
       if (summary.groupsTruncated) el('modelBreakdown').innerHTML += '<p class="muted">More groups are not shown; the server returned its first 50 groups.</p>';
@@ -1148,14 +1286,14 @@
           '<thead><tr><th scope="col">Call</th><th scope="col">Provider / operation / model</th><th scope="col">Outcome</th>' +
           '<th scope="col">Recorded at (UTC)</th><th scope="col">Input / output tokens</th><th scope="col">Estimated cost</th><th scope="col">Latency</th><th scope="col">Associations</th></tr></thead><tbody>' +
           modelItems.map(function (item) {
-            return '<tr' + (item.id === selectedModelCallId ? ' class="model-call-selected"' : '') + '><td><button type="button" class="ghost model-row-button" data-model-run-id="' +
+            return '<tr' + (item.id === selectedModelCallId ? ' class="model-call-selected"' : '') + '><td data-label="Call"><button type="button" class="ghost model-row-button" data-model-run-id="' +
               esc(item.id) + '" aria-current="' + (item.id === selectedModelCallId ? 'true' : 'false') + '">Inspect call</button></td>' +
-              '<td>' + esc(item.provider) + ' · ' + esc(item.operation) + ' · ' + esc(item.model) + '</td>' +
-              '<td><span class="pill ' + (item.success ? 'ok' : 'bad') + '">' + (item.success ? 'Success' : 'Failed') + '</span>' +
+              '<td data-label="Provider / operation / model">' + esc(item.provider) + ' · ' + esc(item.operation) + ' · ' + esc(item.model) + '</td>' +
+              '<td data-label="Outcome"><span class="pill ' + (item.success ? 'ok' : 'bad') + '">' + (item.success ? 'Success' : 'Failed') + '</span>' +
               (item.errorCode ? '<br>' + esc(item.errorCode) : '') + '</td>' +
-              '<td>' + esc(time(item.createdAt)) + '</td><td>' + esc(integer(item.inputTokens)) + ' / ' + esc(integer(item.outputTokens)) + '</td>' +
-              '<td>' + esc(modelRowCost(item)) + '</td><td>' + esc(item.latencyMs == null ? 'Unknown' : integer(item.latencyMs) + ' ms') +
-              '</td><td>' + renderModelLinks(item) + '</td></tr>';
+              '<td data-label="Recorded at (UTC)">' + esc(time(item.createdAt)) + '</td><td data-label="Input / output tokens">' + esc(integer(item.inputTokens)) + ' / ' + esc(integer(item.outputTokens)) + '</td>' +
+              '<td data-label="Estimated cost">' + esc(modelRowCost(item)) + '</td><td data-label="Latency">' + esc(item.latencyMs == null ? 'Unknown' : integer(item.latencyMs) + ' ms') +
+              '</td><td data-label="Associations">' + renderModelLinks(item) + '</td></tr>';
           }).join('') + '</tbody></table></div>' : '<p class="muted">No recorded model calls match these filters.</p>');
       if (modelPageError && modelItems.length) content += '<p class="panel-error">' + esc(modelPageError) + '</p>';
       el('modelRows').innerHTML = content;
@@ -1462,6 +1600,7 @@
       el('pipelineTabSnapshots').setAttribute('aria-selected', String(pipelineKind === 'DAILY_SNAPSHOTS'));
     }
     function clearPipelineData() {
+      el('pipelineWorkspace').classList.remove('has-selection');
       pipelineGeneration++;
       pipelineRuns = [];
       pipelineWindow = null;
@@ -1760,6 +1899,7 @@
       });
     }
     function setRunDetailPane() {
+      el('pipelineWorkspace').classList.toggle('has-selection', !!selectedRunId && credentials().hasAdmin);
       toggleHidden('runDetail', !selectedRunId || !credentials().hasAdmin);
       if (!selectedRunId) {
         el('runDetailStatus').textContent = '';
@@ -1774,9 +1914,9 @@
     }
     function renderSelectedRunDetail(detail) {
       var run = detail.run || {};
-      el('runDetailTitle').textContent = pipelineKind === 'DAILY_SNAPSHOTS' ? 'Selected daily snapshot cycle' : 'Selected pipeline cycle';
+      el('runDetailTitle').textContent = run.kind === 'DAILY_SNAPSHOTS' ? 'Selected daily snapshot cycle' : 'Selected pipeline cycle';
       var records = [
-        ['Cycle ID', run.id], ['Trigger', run.trigger], ['Status', runStatusLabel(run)], ['Phase', run.phase],
+        ['Cycle ID', run.id], ['Trace version', run.traceVersion || 'Not recorded'], ['Trigger', run.trigger], ['Status', runStatusLabel(run)], ['Phase', run.phase],
         ['Started at (UTC)', run.startedAt ? time(run.startedAt) : 'Unknown'],
         ['Finished at (UTC)', run.finishedAt ? time(run.finishedAt) : 'Not finished'],
         ['Duration', runDuration(run)], ['Capture', run.captureComplete ? 'Complete' : 'Recorded so far'],
@@ -1797,7 +1937,7 @@
         esc(run.id) + '">Inspect documents for this cycle</a>';
       el('runDetailContent').innerHTML = '<dl class="pipeline-detail-grid">' + records.map(function (entry) {
         return '<div><dt>' + esc(entry[0]) + '</dt><dd>' + esc(entry[1] == null || entry[1] === '' ? 'Unknown' : entry[1]) + '</dd></div>';
-      }).join('') + '</dl>' + phaseHtml + '<p>' + documents + '</p>';
+      }).join('') + '</dl>' + traceCoverage(run.traceVersion, 'run') + phaseHtml + '<p>' + documents + '</p>';
       el('runDetailStatus').textContent = selectedRunError || '';
     }
     function renderRunIssues() {
@@ -1810,11 +1950,12 @@
         var links = [];
         if (validUuid(issue.documentId)) links.push('<a href="?view=documents&amp;runId=' + encodeURIComponent(issue.runId) +
           '&amp;documentId=' + encodeURIComponent(issue.documentId) + '" data-run-document-id="' + esc(issue.documentId) + '">Inspect document</a>');
-        if (issue.ticker) links.push('<a href="?view=company&amp;ticker=' + encodeURIComponent(issue.ticker) +
+        if (issue.ticker) links.push('<a href="?view=company&amp;runId=' + encodeURIComponent(issue.runId) + '&amp;ticker=' + encodeURIComponent(issue.ticker) +
           '" data-run-company-ticker="' + esc(issue.ticker) + '">Inspect company</a>');
         return '<li><span class="pill bad">' + esc(issue.phase) + '</span> <strong>' + esc(issue.errorCode) + '</strong><br>' +
           esc(issue.errorMessage) + '<br><span class="muted">Provider: ' + esc(issue.provider || 'Unknown') + '</span>' +
           '<br><span class="muted">' + esc(time(issue.createdAt)) + '</span>' +
+          (issue.phase === 'SCORING' && issue.companyId ? '<p class="small">Company recalculation failed. This issue is not a successful valuation or a recorded output score.</p>' : '') +
           (links.length ? '<p>' + links.join(' · ') + '</p>' : '') + '</li>';
       }).join('') + '</ul>';
       if (runIssuesError && runIssues.length) content += '<p class="panel-error">' + esc(runIssuesError) + '</p>';
@@ -2226,7 +2367,7 @@
       var companyLink = event.target.closest('[data-run-company-ticker]');
       if (companyLink) {
         if (event.preventDefault) event.preventDefault();
-        options.navigate('?view=company&ticker=' + encodeURIComponent(companyLink.dataset.runCompanyTicker), { returnSearch: currentLocalSearch() });
+        options.navigate('?view=company&runId=' + encodeURIComponent(selectedRunId || '') + '&ticker=' + encodeURIComponent(companyLink.dataset.runCompanyTicker), { returnSearch: currentLocalSearch() });
         return;
       }
       onIngestionAssociationClick(event);
@@ -2297,20 +2438,301 @@
           : 'Unable to load configuration. Retry the read.';
       });
     }
+    function tracePage(key) {
+      if (!tracePages[key]) tracePages[key] = { items: [], cursor: null, loaded: false, loading: false, error: null };
+      return tracePages[key];
+    }
+    function clearValuation() {
+      valuation = null;
+      valuationLoading = false;
+      valuationError = null;
+      delete tracePages.contributions;
+      el('valuationSummary').innerHTML = '';
+      el('valuationContributions').innerHTML = '';
+      el('valuationStatus').textContent = '';
+      el('valuationTitle').textContent = '';
+      toggleHidden('valuationDetail', true);
+      toggleHidden('loadContributions', true);
+    }
+    function clearTraceData() {
+      tracePages = {};
+      clearValuation();
+      ['runDocuments', 'runValuations', 'companyValuations'].forEach(function (id) { el(id).innerHTML = ''; });
+      ['loadRunDocuments', 'loadRunValuations', 'loadCompanyValuations'].forEach(function (id) { toggleHidden(id, true); });
+    }
+    function denyTraceAccess() {
+      if (OPERATIONAL.includes(screen)) {
+        accessRequired();
+        var id = { pipeline: 'pipelineStatus', documents: 'documentStatus', models: 'modelStatus', overview: 'overviewStatus', settings: 'settingsStatus' }[screen];
+        el(id).innerHTML = 'Admin access denied. ' + traceLink('?view=settings', 'Open Settings to update the admin key') + '.';
+      } else {
+        invalidate();
+        clearProtectedData();
+        el('companyValuations').innerHTML = '<p class="panel-error">Admin access denied. ' + traceLink('?view=settings', 'Open Settings to update the admin key') + '.</p>';
+      }
+    }
+    function configureTrace() {
+      var ticker = (params.get('ticker') || '').toUpperCase();
+      var key = [screen, params.get('runId'), params.get('documentId'), params.get('attemptId'), ticker].join('|');
+      var next = params.get('valuationId') || null;
+      var companyHistory = null;
+      if (key !== traceContext) {
+        var previousContext = traceContext.split('|');
+        // Company history spans all cycles; selecting a cycle changes only the valuation context.
+        companyHistory = credentials().hasAdmin && screen === 'company' && previousContext[0] === screen && previousContext[4] === ticker
+          ? tracePages.companyValuations : null;
+        clearTraceData();
+        traceContext = key;
+        if (companyHistory) tracePages.companyValuations = companyHistory;
+      }
+      if (next !== valuationId) clearValuation();
+      valuationId = next;
+      if (companyHistory) renderTraceCollection('companyValuations');
+      var validParent = (screen === 'pipeline' && selectedRunId && pipelineRouteValid) ||
+        (screen === 'documents' && selectedDocumentId && documentRouteValid) ||
+        (screen === 'company' && /^[A-Za-z0-9][A-Za-z0-9.-]{0,14}$/.test(params.get('ticker') || '') && (!params.get('runId') || validUuid(params.get('runId'))));
+      if (next && (!validUuid(next) || !validParent)) {
+        valuationError = 'Choose a valid valuation ID and its run, document, or company context.';
+      }
+      toggleHidden('valuationDetail', !next || !credentials().hasAdmin || !['pipeline', 'documents', 'company'].includes(screen));
+      if (valuationError && next) el('valuationStatus').textContent = valuationError;
+    }
+    function traceCollectionPath(key, cursor) {
+      var path;
+      var query = new URLSearchParams({ limit: '25' });
+      if (cursor) query.set('cursor', cursor);
+      if (key === 'runDocuments') { path = '/documents'; query.set('runId', selectedRunId); }
+      else if (key === 'runValuations') path = '/runs/' + encodeURIComponent(selectedRunId) + '/valuations';
+      else if (key === 'documentValuations') {
+        path = '/documents/' + encodeURIComponent(selectedDocumentId) + '/valuations';
+        if (documentFilters.runId) query.set('runId', documentFilters.runId);
+      } else if (key === 'companyValuations') path = '/companies/' + encodeURIComponent(params.get('ticker').toUpperCase()) + '/valuations';
+      else path = '/valuations/' + encodeURIComponent(valuationId) + '/contributions';
+      return '/internal/operations' + path + '?' + query.toString();
+    }
+    function renderRunDocuments(state) {
+      var html = state.items.map(function (item) {
+        var route = '?view=documents&runId=' + encodeURIComponent(selectedRunId) + '&documentId=' + encodeURIComponent(item.id);
+        return '<article class="trace-row"><strong>' + traceLink(route, item.title || 'Untitled document') + '</strong><p>' + esc(item.provider) + ' · ' + esc((item.tickers || []).join(', ') || 'No supported company linked') + '</p>' +
+          '<p>Cycle attempt: ' + esc(readable(item.runAttemptStatus)) + ' · number ' + esc(recorded(item.runAttemptNumber)) + '</p>' +
+          '<p>Last cycle stage: ' + esc(readable(item.runLastStage)) + ' · ' + esc(readable(item.runLastStepStatus)) + '</p>' +
+          '<p class="small muted">Current global queue state: ' + esc(documentStateLabel(item.state)) + ' · discovered ' + timeMark(item.discoveredAt) + '</p>' +
+          (!item.traceVersion ? '<p class="small muted">Detailed intake trace not recorded.</p>' : '') + '</article>';
+      }).join('');
+      if (!state.items.length) html = '<p class="muted">' + (state.loading ? 'Loading cycle documents…' : state.loaded ? 'No documents explicitly linked to this cycle.' : 'Cycle documents have not been loaded.') + '</p>';
+      if (state.error) html += '<p class="panel-error">' + esc(state.error) + '</p>';
+      return traceHistoryNotice(state, 'runDocuments') + html;
+    }
+    function renderTraceCollection(key) {
+      var state = tracePage(key);
+      var targets = { runDocuments: ['runDocuments', 'loadRunDocuments'], runValuations: ['runValuations', 'loadRunValuations'], companyValuations: ['companyValuations', 'loadCompanyValuations'], contributions: ['valuationContributions', 'loadContributions'] };
+      if (key === 'documentValuations') return;
+      var target = targets[key];
+      el(target[0]).innerHTML = key === 'runDocuments' ? renderRunDocuments(state) : key === 'contributions' ? renderContributions(state) : renderValuationRows(state, key === 'companyValuations' ? 'company' : 'run');
+      toggleHidden(target[1], !state.cursor && !state.error);
+      el(target[1]).disabled = state.loading;
+      el(target[1]).textContent = state.error ? 'Retry recorded read' : 'Load more ' + (key === 'contributions' ? 'contributions' : key === 'runDocuments' ? 'cycle documents' : 'valuations');
+    }
+    function loadTraceCollection(key, appendPage, force) {
+      var state = tracePage(key);
+      if (!credentials().hasAdmin || state.loading || (appendPage && !state.cursor) || (!appendPage && state.loaded && !force)) return Promise.resolve(state.loaded);
+      if (force && state.loaded && state.historyPaused) return Promise.resolve(true);
+      var revision = credentials().revision;
+      var requestSequence = sequence;
+      var context = traceContext;
+      var expected = screen;
+      var selected = valuationId;
+      state.loading = true;
+      state.error = null;
+      renderTraceCollection(key);
+      return read(traceCollectionPath(key, appendPage ? state.cursor : null), revision, requestSequence, expected).then(function (result) {
+        if (!result.current || context !== traceContext || (key === 'contributions' && selected !== valuationId)) return false;
+        retainTracePage(state, result.data, appendPage, key === 'contributions' ? 'createdAt' : null);
+        state.loaded = true;
+        return true;
+      }).catch(function (error) {
+        if (!current(revision, requestSequence, expected) || context !== traceContext || error.name === 'AbortError') return false;
+        var denied = error.status === 403 || error.code === 'FORBIDDEN';
+        state.error = denied ? 'Admin access was denied. Update the key in Settings.' : 'Unable to load recorded data. Retry this read.';
+        if (denied) denyTraceAccess();
+        return false;
+      }).finally(function () {
+        if (current(revision, requestSequence, expected) && context === traceContext && tracePages[key] === state) {
+          state.loading = false;
+          renderTraceCollection(key);
+        }
+      });
+    }
+    function valuationSummary(item) {
+      var fields = [['Company ID', item.companyId], ['Snapshot ID', item.snapshotId], ['Previous snapshot ID', item.previousSnapshotId], ['Transition ID', item.transitionId],
+        ['Score version', item.scoreVersion], ['Taxonomy version', item.taxonomyVersion], ['Contributing events', item.contributionCount], ['Contribution sum', item.contributionSum],
+        ['Independent families', item.familyCount], ['Convergence multiplier', item.convergenceMultiplier], ['Raw score', item.rawScore], ['Normalization scale', item.normalizationScale],
+        ['Contribution cutoff', item.contributionCutoff], ['1-day velocity', item.velocity1d], ['3-day velocity', item.velocity3d], ['7-day velocity', item.velocity7d]];
+      return '<div class="valuation-summary"><strong>' + esc(item.ticker) + ' · ' + esc(item.companyName) + '</strong><span>' + esc(recorded(item.beforeScore, 2)) + ' / ' + esc(recorded(item.beforeState)) + ' → <strong>' + esc(recorded(item.afterScore, 2)) + ' / ' + esc(recorded(item.afterState)) + '</strong></span></div>' +
+        '<p>Cycle: ' + traceLink('?view=pipeline&runId=' + encodeURIComponent(item.operationRunId), item.operationRunId) + '</p><dl class="fact-grid">' +
+        documentTime('Scoring as of', item.asOf) + documentTime('Record created', item.createdAt) + fields.map(function (field) { return '<div><dt>' + esc(field[0]) + '</dt><dd>' + esc(recorded(field[1])) + '</dd></div>'; }).join('') + '</dl>' +
+        '<p class="trace-equation">Stored calculation: contribution sum ' + esc(recorded(item.contributionSum)) + ' × convergence ' + esc(recorded(item.convergenceMultiplier)) + ' → raw score ' + esc(recorded(item.rawScore)) + '. Saved score: ' + esc(recorded(item.afterScore)) + '.<br>' +
+        (item.scoreVersion === 'score-v1' ? '<code>rawScore = contributionSum × convergenceMultiplier; score = 0 when rawScore ≤ 0, otherwise clamp(100 × rawScore / (rawScore + normalizationScale), 0, 100).</code>' : 'Normalization formula is not displayed for this scoring version.') + '</p>' +
+        '<p class="muted small">Inputs and result were saved with this cycle. Raw contributions are not final score points. Each underlying event contributes once; extra reports provide supporting evidence.</p>';
+    }
+    function renderContributions(state) {
+      var html = state.items.map(function (item) {
+        var fields = [['Sign', item.sign], ['Base weight', item.baseWeight], ['Confidence', item.confidence], ['Materiality', item.materialityFactor], ['Surprise', item.surpriseFactor], ['Source quality', item.sourceQualityFactor], ['Directness', item.directnessFactor], ['Time decay', item.timeDecayFactor]];
+        return '<details class="valuation-contribution"><summary><strong>' + esc(item.eventType) + '</strong> · ' + esc(item.direction) + ' · Raw contribution ' + esc(recorded(item.value)) + '</summary>' +
+          '<p>Event ID: ' + esc(item.eventId) + ' · Cluster ID: ' + esc(recorded(item.clusterId)) + ' · ' + esc(item.family) + '</p><dl class="fact-grid">' +
+          documentTime('Event occurrence', item.eventTimestamp) + documentTime('Event discovered', item.discoveredAt) + documentTime('Contribution recorded', item.createdAt) +
+          fields.map(function (field) { return '<div><dt>' + esc(field[0]) + '</dt><dd>' + esc(recorded(field[1])) + '</dd></div>'; }).join('') + '</dl>' +
+          '<p class="small muted">Showing ' + (item.supportingSources || []).length + ' of ' + esc(recorded(item.supportingDocumentsTotal)) + ' recorded supporting documents.' + (item.supportingDocumentsTruncated ? ' Source details are limited; recorded document links remain available.' : '') + '</p>' +
+          (item.supportingSources || []).map(function (source) {
+            var route = '?view=documents&documentId=' + encodeURIComponent(source.sourceDocumentId);
+            return '<section class="valuation-evidence"><h4>' + traceLink(route, source.title || source.sourceDocumentId) + '</h4><p>' + esc(source.provider) + ' · Source ID ' + esc(source.sourceDocumentId) + ' · Supporting report event ID ' + esc(source.eventId) + '</p>' +
+              '<p>Published ' + timeMark(source.publishedAt) + ' · discovered ' + timeMark(source.discoveredAt) + '</p>' +
+              (source.evidence || []).map(function (fact) { return '<blockquote>' + esc(fact) + '</blockquote>'; }).join('') +
+              (source.evidenceTruncated ? '<p class="muted small">Evidence facts or text are truncated.</p>' : '') + '<p>' + externalSourceLink(source.canonicalUrl, 'Open original source') + '</p></section>';
+          }).join('') + '</details>';
+      }).join('');
+      if (!state.items.length) html = '<p class="muted">' + (state.loading ? 'Loading recorded contributions…' : state.loaded ? 'No retained contributions were recorded for this valuation.' : 'Contributions have not been loaded.') + '</p>';
+      if (state.cursor) html += '<p class="muted small">Additional contributions remain on later pages; totals above are the saved full calculation.</p>';
+      if (state.error) html += '<p class="panel-error">' + esc(state.error) + '</p>';
+      return traceHistoryNotice(state, 'contributions') + html;
+    }
+    function loadSelectedValuation() {
+      if (!valuationId || valuationError || valuationLoading || !credentials().hasAdmin) return Promise.resolve(false);
+      // Its parent was verified before display; only context/key changes clear that proof.
+      if (valuation) return loadTraceCollection('contributions', false, false);
+      if (screen === 'documents') {
+        var page = tracePage('documentValuations');
+        var loadedDocumentValuations = page.items.concat(tabState('valuations').items);
+        if (!loadedDocumentValuations.some(function (item) { return sameId(item.id, valuationId); })) {
+          clearValuation();
+          toggleHidden('valuationDetail', false);
+          el('valuationStatus').innerHTML = (page.cursor || tabState('valuations').cursor ? 'This valuation is not on the loaded document pages. Load more document valuations to find the recorded connection. ' : 'No recorded connection to this document appears in the loaded valuations. ') +
+            traceLink(traceRoute({ documentTab: 'valuations' }), 'Open document valuations');
+          return Promise.resolve(false);
+        }
+      }
+      var id = valuationId;
+      var revision = credentials().revision;
+      var requestSequence = sequence;
+      var expected = screen;
+      valuationLoading = true;
+      el('valuationStatus').textContent = 'Loading exact recorded valuation…';
+      return read('/internal/operations/valuations/' + encodeURIComponent(id), revision, requestSequence, expected).then(function (result) {
+        if (!result.current || id !== valuationId) return false;
+        var item = result.data;
+        var run = params.get('runId');
+        var ticker = screen === 'company' ? params.get('ticker').toUpperCase() : null;
+        if (!sameId(item.id, id) || (run && !sameId(item.operationRunId, run)) || (ticker && item.ticker !== ticker)) {
+          valuationError = 'This valuation does not belong to the selected run or company.';
+          el('valuationStatus').textContent = valuationError;
+          return false;
+        }
+        valuation = item;
+        el('valuationTitle').textContent = item.ticker + ' · Recorded valuation';
+        el('valuationSummary').innerHTML = valuationSummary(item);
+        el('valuationStatus').textContent = 'Exact saved inputs · valuation ID ' + item.id;
+        el('valuationTitle').focus();
+        return loadTraceCollection('contributions', false, false);
+      }).catch(function (error) {
+        if (!current(revision, requestSequence, expected) || id !== valuationId || error.name === 'AbortError') return false;
+        if (error.status === 403 || error.code === 'FORBIDDEN') denyTraceAccess();
+        else el('valuationStatus').textContent = error.code === 'VALUATION_NOT_FOUND' ? 'Recorded valuation not found.' : 'Unable to read this valuation. Use Refresh to retry.';
+        return false;
+      }).finally(function () { if (current(revision, requestSequence, expected) && id === valuationId) valuationLoading = false; });
+    }
+    function loadTraceScreen(force) {
+      if (!credentials().hasAdmin) {
+        clearTraceData();
+        if (screen === 'company') el('companyValuations').innerHTML = '<p class="muted">Admin access required for recorded valuations. ' + traceLink('?view=settings', 'Open Settings') + '</p>';
+        return Promise.resolve();
+      }
+      var tasks = [];
+      if (screen === 'pipeline' && selectedRunId && pipelineRouteValid) {
+        tasks.push(loadTraceCollection('runDocuments', false, force));
+        tasks.push(loadTraceCollection('runValuations', false, force));
+      } else if (screen === 'company' && /^[A-Za-z0-9][A-Za-z0-9.-]{0,14}$/.test(params.get('ticker') || '')) {
+        tasks.push(loadTraceCollection('companyValuations', false, force));
+      } else if (screen === 'documents' && selectedDocumentId && documentRouteValid && valuationId && !valuation) {
+        if (!tabState('valuations').items.some(function (item) { return sameId(item.id, valuationId); })) tasks.push(loadTraceCollection('documentValuations', false, force));
+      }
+      var revision = credentials().revision;
+      var requestSequence = sequence;
+      return Promise.allSettled(tasks).then(function () {
+        if (current(revision, requestSequence) && valuationId && ['pipeline', 'documents', 'company'].includes(screen)) return loadSelectedValuation();
+      });
+    }
+    function onTraceClick(event) {
+      var link = event.target.closest('[data-trace-route]');
+      if (link) {
+        if (event.button > 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        options.navigate(link.dataset.traceRoute, { returnSearch: currentLocalSearch() });
+        return;
+      }
+      var reload = event.target.closest('[data-reload-trace]');
+      if (reload) {
+        var reloadKey = reload.dataset.reloadTrace;
+        var documentHistory = screen === 'documents' && reloadKey === selectedDocumentTab && ['steps', 'valuations'].includes(reloadKey);
+        var collectionHistory = (screen === 'pipeline' && ['runDocuments', 'runValuations'].includes(reloadKey)) ||
+          (screen === 'company' && reloadKey === 'companyValuations') || (valuation && reloadKey === 'contributions');
+        if (!credentials().hasAdmin || (!documentHistory && !collectionHistory)) return;
+        invalidate();
+        // Aborted sibling reads cannot repaint after sequence invalidation; release controls without replacing retained content.
+        [['loadRunDocuments', tracePages.runDocuments], ['loadRunValuations', tracePages.runValuations],
+          ['loadCompanyValuations', tracePages.companyValuations], ['loadContributions', tracePages.contributions],
+          ['loadSteps', documentTabCache.steps], ['loadDocumentValuations', documentTabCache.valuations]].forEach(function (control) {
+          el(control[0]).disabled = !(control[1] && (control[1].cursor || control[1].error));
+        });
+        document.querySelectorAll('[data-reload-trace]').forEach(function (button) {
+          var key = button.dataset.reloadTrace;
+          var state = ['steps', 'valuations'].includes(key) ? documentTabCache[key] : tracePages[key];
+          button.disabled = !(state && state.loaded && state.historyPaused);
+        });
+        if (documentHistory) delete documentTabCache[reloadKey];
+        else delete tracePages[reloadKey];
+        var context = traceContext;
+        var revision = credentials().revision;
+        var requestSequence = sequence;
+        var loaded = documentHistory ? loadDocumentTab(false, false) : loadTraceCollection(reloadKey, false, false);
+        loaded.then(function () {
+          if (current(revision, requestSequence) && context === traceContext && valuationId) loadSelectedValuation();
+        });
+        return;
+      }
+      var id = event.target.id;
+      var keys = { loadRunDocuments: 'runDocuments', loadRunValuations: 'runValuations', loadCompanyValuations: 'companyValuations', loadContributions: 'contributions' };
+      if (keys[id]) {
+        var key = keys[id];
+        loadTraceCollection(key, !!tracePage(key).cursor, false);
+      } else if (id === 'closeValuation') options.navigate(traceRoute({ valuationId: null }));
+    }
+    function onTabKeydown(event) {
+      var tab = event.target.closest('[data-document-tab]');
+      if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      var index = DOCUMENT_TABS.indexOf(tab.dataset.documentTab);
+      var next = event.key === 'Home' ? 0 : event.key === 'End' ? DOCUMENT_TABS.length - 1 :
+        (index + (event.key === 'ArrowRight' ? 1 : -1) + DOCUMENT_TABS.length) % DOCUMENT_TABS.length;
+      selectDocumentTab(DOCUMENT_TABS[next]);
+      var name = DOCUMENT_TABS[next];
+      el('documentTab' + name[0].toUpperCase() + name.slice(1)).focus();
+    }
     function refresh(force) {
       if (disposed) return Promise.resolve();
+      configureTrace();
       if (force === undefined) force = true;
       if (pending) return pending;
       var revision = credentials().revision;
       var requestSequence = sequence;
       var expectedScreen = screen;
       var tasks = [loadHealth(revision, requestSequence, expectedScreen)];
+      tasks.push(loadTraceScreen(force));
       if (credentials().hasAdmin && screen === 'overview') tasks.push(loadOverview(revision, requestSequence));
       else if (credentials().hasAdmin && screen === 'settings') tasks.push(loadConfig(revision, requestSequence));
       else if (credentials().hasAdmin && screen === 'pipeline') tasks.push(loadPipelineScreen(force));
       else if (credentials().hasAdmin && screen === 'documents') tasks.push(loadDocumentsScreen(force));
       else if (credentials().hasAdmin && screen === 'models') tasks.push(loadModelsScreen(force));
-      else if (!credentials().hasAdmin) accessRequired();
+      else if (!credentials().hasAdmin && OPERATIONAL.includes(screen)) accessRequired();
       var operation = Promise.allSettled(tasks).then(function () {});
       var wrapped = operation.finally(function () { if (pending === wrapped) pending = null; });
       pending = wrapped;
@@ -2321,6 +2743,18 @@
       if (document.hidden) {
         invalidate();
         return;
+      }
+      if (credentials().hasAdmin && ['pipeline', 'company', 'documents'].includes(screen)) {
+        ['runDocuments', 'runValuations', 'companyValuations', 'contributions'].forEach(function (key) {
+          if (tracePages[key]) renderTraceCollection(key);
+        });
+        if (screen === 'documents' && selectedDocumentId) renderSelectedDocumentTab();
+        if ((screen === 'company' && !tracePage('companyValuations').loaded) ||
+          (screen === 'pipeline' && selectedRunId && (!tracePage('runDocuments').loaded || !tracePage('runValuations').loaded)) ||
+          (valuationId && !valuationError && (!valuation || !tracePage('contributions').loaded))) {
+          refresh(false);
+          return;
+        }
       }
       if (autoRefreshEnabled() && POLLED.indexOf(screen) >= 0) refresh();
       else if (!healthLoaded || (screen === 'overview' && !overviewLoaded) ||
@@ -2346,6 +2780,10 @@
       el('loadAttempts').addEventListener('click', onLoadAttemptsClick);
       el('loadDocumentModels').addEventListener('click', onLoadDocumentModelsClick);
       el('loadDocumentEvents').addEventListener('click', onLoadDocumentEventsClick);
+      el('loadSteps').addEventListener('click', onLoadTraceDocument);
+      el('loadDocumentValuations').addEventListener('click', onLoadTraceDocument);
+      document.addEventListener('click', onTraceClick);
+      document.addEventListener('keydown', onTabKeydown);
       el('pipelineView').addEventListener('click', onPipelineTabClick);
       el('pipelineRunStatusFilter').addEventListener('change', onPipelineStatusChange);
       el('runNow').addEventListener('click', onRunNowClick);
@@ -2393,36 +2831,18 @@
         if (screen === 'overview' && !overviewLoaded) el('overviewStatus').textContent = 'Loading operational summary…';
         if (screen === 'settings' && !configLoaded) el('settingsStatus').textContent = 'Configuration has not been loaded.';
       }
+      configureTrace();
       if (OPERATIONAL.indexOf(screen) >= 0 && !credentials().hasAdmin) accessRequired();
       if (!changed) return Promise.resolve();
       return refresh(false);
     }
     function credentialsChanged() {
-      knownActivePipelineIds.clear();
       if (disposed) return;
       invalidate();
-      documentItems = [];
-      documentCursor = null;
-      documentGeneratedAt = null;
-      documentPageLoaded = false;
-      documentPageError = null;
-      selectedDocumentDetail = null;
-      selectedDocumentLoaded = false;
-      selectedDocumentLoading = false;
-      documentTabCache = {};
-      clearDocumentDetailViews();
-      clearModelData();
-      clearPipelineData();
+      clearProtectedData();
       setDocumentPane();
       renderDocumentRows();
-      if (!credentials().hasAdmin) {
-        clearOverview();
-        clearConfig();
-        accessRequired();
-      } else {
-        overviewLoaded = false;
-        configLoaded = false;
-      }
+      if (!credentials().hasAdmin) accessRequired();
       return refresh(false);
     }
     function ownsView(view) { return OPERATIONAL.indexOf(view) >= 0; }
@@ -2450,6 +2870,10 @@
       el('loadAttempts').removeEventListener('click', onLoadAttemptsClick);
       el('loadDocumentModels').removeEventListener('click', onLoadDocumentModelsClick);
       el('loadDocumentEvents').removeEventListener('click', onLoadDocumentEventsClick);
+      el('loadSteps').removeEventListener('click', onLoadTraceDocument);
+      el('loadDocumentValuations').removeEventListener('click', onLoadTraceDocument);
+      document.removeEventListener('click', onTraceClick);
+      document.removeEventListener('keydown', onTabKeydown);
       el('pipelineView').removeEventListener('click', onPipelineTabClick);
       el('pipelineRunStatusFilter').removeEventListener('change', onPipelineStatusChange);
       el('runNow').removeEventListener('click', onRunNowClick);

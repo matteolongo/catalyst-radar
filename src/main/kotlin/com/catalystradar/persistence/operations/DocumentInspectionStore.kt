@@ -39,7 +39,7 @@ class DocumentInspectionStore(
             params["title"] = "%${it.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")}%"
         }
         query.runId?.let {
-            where += "EXISTS (SELECT 1 FROM document_processing_attempts a WHERE a.source_document_id=d.id AND a.operation_run_id=:runId)"
+            where += """(EXISTS (SELECT 1 FROM document_processing_attempts a WHERE a.source_document_id=d.id AND a.operation_run_id=:runId) OR EXISTS (SELECT 1 FROM ingestion_runs i WHERE i.id=d.first_ingestion_run_id AND i.operation_run_id=:runId) OR EXISTS (SELECT 1 FROM document_processing_steps s WHERE s.source_document_id=d.id AND s.operation_run_id=:runId))"""
             params["runId"] = it
         }
         query.ingestionRunId?.let { where += "d.first_ingestion_run_id=:ingestionRunId"; params["ingestionRunId"] = it }
@@ -57,11 +57,26 @@ class DocumentInspectionStore(
             where += "(p.status='PENDING' OR (p.status='RETRYABLE_ERROR' AND p.next_attempt_at <= :generatedAt) OR (p.status='PROCESSING' AND $recoverable))"
             params["generatedAt"] = Timestamp.from(generatedAt)
         }
+        val runProjection = if (query.runId == null) "" else
+            ", run_attempt.status AS run_attempt_status, run_attempt.attempt_number AS run_attempt_number, " +
+                "run_step.stage AS run_last_stage, run_step.status AS run_last_step_status"
+        val runJoins = if (query.runId == null) "" else """
+            LEFT JOIN LATERAL (
+                SELECT status, attempt_number FROM document_processing_attempts
+                WHERE source_document_id=d.id AND operation_run_id=:runId
+                ORDER BY started_at DESC, id DESC LIMIT 1
+            ) run_attempt ON TRUE
+            LEFT JOIN LATERAL (
+                SELECT stage, status FROM document_processing_steps
+                WHERE source_document_id=d.id AND operation_run_id=:runId
+                ORDER BY started_at DESC, sequence DESC, id DESC LIMIT 1
+            ) run_step ON TRUE
+            """
         val rows = jdbc.query(
-            "SELECT $PROJECTION FROM source_documents d LEFT JOIN document_processing p ON p.source_document_id=d.id " +
+            "SELECT $PROJECTION$runProjection FROM source_documents d LEFT JOIN document_processing p ON p.source_document_id=d.id $runJoins " +
                 (if (where.isEmpty()) "" else "WHERE ${where.joinToString(" AND ")} ") +
                 "ORDER BY d.discovered_at DESC, d.id DESC LIMIT :limit", params,
-        ) { rs, _ -> listItem(rs) }
+        ) { rs, _ -> listItem(rs, runContext = query.runId != null) }
         val page = rows.take(query.page.limit)
         val associations = tickers(page.map { it.id })
         val items = page.map { item ->
@@ -142,7 +157,7 @@ class DocumentInspectionStore(
             .groupBy({ it.first }, { it.second })
     }
 
-    private fun listItem(rs: ResultSet): DocumentListItem {
+    private fun listItem(rs: ResultSet, runContext: Boolean = false): DocumentListItem {
         val state = DocumentState.valueOf(rs.getString("state"))
         val storedErrorCode = rs.getString("last_error_code")
         val hasRecordedError = storedErrorCode != null || rs.getString("last_error_message") != null ||
@@ -166,6 +181,11 @@ class DocumentInspectionStore(
             eventReports = rs.getLong("event_reports"),
             canonicalClusters = rs.getLong("canonical_clusters"),
             firstIngestionRunId = rs.getObject("first_ingestion_run_id", UUID::class.java),
+            traceVersion = rs.getString("trace_version"),
+            runAttemptStatus = if (runContext) rs.getString("run_attempt_status") else null,
+            runAttemptNumber = if (runContext) rs.getObject("run_attempt_number", Int::class.javaObjectType) else null,
+            runLastStage = if (runContext) rs.getString("run_last_stage") else null,
+            runLastStepStatus = if (runContext) rs.getString("run_last_step_status") else null,
         )
     }
 
@@ -178,7 +198,7 @@ class DocumentInspectionStore(
             ELSE 'NOT_TRACKED' END"""
         private const val PROJECTION = """d.id, d.provider, d.title, d.published_at, d.discovered_at, d.created_at,
             $STATE AS state, p.attempt_count, p.next_attempt_at, p.updated_at, p.last_error_code, p.last_error_message,
-            d.first_ingestion_run_id,
+            d.first_ingestion_run_id, d.trace_version,
             (SELECT COUNT(*) FROM events e WHERE e.source_document_id=d.id) AS event_reports,
             (SELECT COUNT(DISTINCT e.cluster_id) FROM events e WHERE e.source_document_id=d.id) AS canonical_clusters"""
     }

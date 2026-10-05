@@ -199,7 +199,7 @@ class InternalControllersTest {
             jsonPath("$.state") { value("BUILDING") }
         }
 
-        org.mockito.kotlin.verify(catalyst).recalculate(eq(company.id), any())
+        org.mockito.kotlin.verify(catalyst).recalculate(eq(company.id), any(), org.mockito.kotlin.isNull())
     }
 
     @Test
