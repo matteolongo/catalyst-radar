@@ -183,6 +183,15 @@ class CatalystPipelineE2ETest : PostgresIntegrationTest() {
             }
             jdbc.sql("DELETE FROM operation_run_issues WHERE company_id=:id").param("id", id).update()
             operationIds.forEach { run -> jdbc.sql("DELETE FROM operation_run_issues WHERE operation_run_id=:id").param("id", run).update() }
+            jdbc.sql(
+                """DELETE FROM company_valuation_contribution_sources WHERE contribution_id IN
+                    (SELECT c.id FROM company_valuation_event_contributions c
+                    JOIN company_valuation_records v ON v.id=c.valuation_id WHERE v.company_id=:id)""",
+            ).param("id", id).update()
+            jdbc.sql("DELETE FROM company_valuation_event_contributions WHERE valuation_id IN (SELECT id FROM company_valuation_records WHERE company_id=:id)")
+                .param("id", id).update()
+            jdbc.sql("DELETE FROM company_valuation_records WHERE company_id=:id").param("id", id).update()
+            docs.forEach { doc -> jdbc.sql("DELETE FROM document_processing_steps WHERE source_document_id=:id").param("id", doc).update() }
             docs.forEach { doc -> jdbc.sql("DELETE FROM document_processing_attempts WHERE source_document_id=:id").param("id", doc).update() }
             jdbc.sql("DELETE FROM events WHERE company_id = :id").param("id", id).update()
             jdbc.sql("DELETE FROM event_clusters WHERE company_id = :id").param("id", id).update()

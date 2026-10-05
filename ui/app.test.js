@@ -12,13 +12,18 @@ function sourceClick(dashboard, container, id) {
 test('source inspection preserves the reconstructed explanation and server state band', async () => {
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL', stored: { 'catalyst-admin-key': 'admin-secret' } });
   await dashboard.flush();
-  assert.match(dashboard.html('companyExplanation'), /saved snapshot does not retain its original driver list/);
+  assert.match(dashboard.html('companyExplanation'), /Reconstructed current explanation: matching score and versions do not prove original driver membership/);
+  assert.match(dashboard.html('companyExplanation'), /Use Recorded valuations for the exact inputs retained by captured cycles/);
   assert.match(dashboard.html('companyExplanation'), /documentId=source-1.*Inspect source in backoffice/s);
   assert.match(dashboard.html('companyEvents'), /documentId=source-1.*Inspect source in backoffice/s);
   assert.match(dashboard.html('companyScore'), /68\.0.*CATALYZED.*65\.0.*80\.0/s);
   assert.match(dashboard.html('companyScore'), /Saved as of.*UTC/s);
   assert.doesNotMatch(dashboard.html('companyScore'), /Live/);
-  assert.equal(dashboard.requests.some(({ url }) => new URL(url).pathname.startsWith('/internal/')), false);
+  const adminReads = dashboard.requests.filter(({ url }) => new URL(url).pathname.startsWith('/internal/'));
+  assert.deepEqual(adminReads.map(({ url }) => new URL(url).pathname), ['/internal/operations/companies/DELL/valuations']);
+  assert.equal(new URL(adminReads[0].url).searchParams.get('limit'), '25');
+  assert.equal(adminReads[0].headers['X-Admin-Key'], 'admin-secret');
+  assert.equal(adminReads[0].headers.Authorization, undefined);
 });
 
 test('source inspection requires independent admin access and resumes the local Source tab after setup', async () => {
@@ -108,7 +113,7 @@ test('stored-history chart tooltips and date columns display UTC even for offset
     transitions: [{ from: 'NORMAL', to: 'WATCH', score: 44, at: '2026-10-01T23:30:00-05:00', scoreVersion: 'score-v1' }],
   } } });
   await dashboard.flush();
-  assert.match(dashboard.html('companyHistory'), /<td>2026-10-02<\/td>/);
+  assert.match(dashboard.html('companyHistory'), /<td\b[^>]*>2026-10-02<\/td>/);
   assert.match(dashboard.html('companyHistory'), /<title>10\/2\/2026, 4:30:00 AM UTC · 44\.0 · WATCH<\/title>/);
   assert.match(dashboard.html('companyHistory'), /<title>10\/2\/2026, 4:30:00 AM UTC · NORMAL → WATCH<\/title>/);
 });
@@ -413,7 +418,8 @@ test('company route renders metadata, current metrics, reconstructed evidence, a
   assert.match(score, /1-day velocity.*3-day velocity.*7-day velocity.*Total events.*Events 7d.*score-v1.*taxonomy-v1/s);
   const why = dashboard.elements.get('companyExplanation').innerHTML;
   assert.match(why, /reconstructed/i);
-  assert.match(why, /original driver list/i);
+  assert.match(why, /matching score and versions do not prove original driver membership/i);
+  assert.match(why, /Use Recorded valuations for the exact inputs retained by captured cycles/);
   assert.match(why, /Raised guidance &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.match(why, /Event date.*First captured.*Source publication date/s);
   assert.match(why, /https:\/\/example.com\/story.*noopener noreferrer/s);

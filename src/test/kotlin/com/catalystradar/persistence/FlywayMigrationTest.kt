@@ -22,6 +22,8 @@ class FlywayMigrationTest : PostgresIntegrationTest() {
         assertTrue(applied.any { it.version.version == "1" }, "V1 migration not applied: $applied")
         assertTrue(applied.any { it.version.version == "2" }, "V2 migration not applied: $applied")
         assertTrue(applied.any { it.version.version == "3" }, "V3 migration not applied: $applied")
+        assertTrue(applied.any { it.version.version == "4" }, "V4 migration not applied: $applied")
+        assertTrue(applied.any { it.version.version == "5" }, "V5 migration not applied: $applied")
     }
 
     @Test
@@ -40,6 +42,10 @@ class FlywayMigrationTest : PostgresIntegrationTest() {
                 "operation_runs",
                 "document_processing_attempts",
                 "operation_run_issues",
+                "document_processing_steps",
+                "company_valuation_records",
+                "company_valuation_event_contributions",
+                "company_valuation_contribution_sources",
                 "event_clusters",
                 "events",
                 "catalyst_snapshots",
