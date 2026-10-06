@@ -249,6 +249,11 @@
 
         <section id="discoverView" class="card view hidden" aria-labelledby="discoverTitle">
           <div class="card-head"><div><h2 id="discoverTitle" tabindex="-1">Discover</h2><p class="muted">Find companies by their current catalyst profile.</p></div></div>
+          <form id="companyLookup" class="filter-grid company-lookup" novalidate>
+            <label>Company ticker<input id="companyLookupTicker" type="search" maxlength="15" autocomplete="off" spellcheck="false" placeholder="e.g. ABNB or BRK.B" aria-describedby="companyLookupStatus"></label>
+            <button type="submit">Open company</button>
+            <p id="companyLookupStatus" class="panel-error" role="alert"></p>
+          </form>
           <form id="discoveryFilters" class="filter-grid">
             <label>States
               <select id="discoveryStates" multiple size="5" aria-describedby="stateHelp">
