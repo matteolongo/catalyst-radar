@@ -65,7 +65,11 @@ class ApiExceptionHandler {
             HttpStatus.BAD_REQUEST,
             "INVALID_REQUEST",
             "Invalid request",
-            rootMessage(e),
+            if (e is MethodArgumentTypeMismatchException) {
+                "Invalid value for parameter '${e.name}'. Choose a supported value."
+            } else {
+                rootMessage(e)
+            },
             request,
         )
 
