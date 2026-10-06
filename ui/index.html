@@ -54,6 +54,11 @@
             <article class="metric"><h2>Terminal documents</h2><p class="metric-value">—</p></article>
             <article class="metric"><h2>Estimated recorded model cost</h2><p class="metric-value">—</p></article>
           </div>
+          <section class="panel" aria-labelledby="overviewCoverageTitle">
+            <h2 id="overviewCoverageTitle">Document coverage</h2>
+            <p class="muted small">Current stored coverage across all capture dates. Missing company links or processing state are separate from terminal failures.</p>
+            <div id="overviewCoverage" class="coverage-metrics" role="status">Waiting for an authorized operational read.</div>
+          </section>
           <section class="panel" aria-labelledby="overviewActivityTitle">
             <h2 id="overviewActivityTitle">Activity</h2>
             <div id="overviewActivity" role="status">Waiting for an authorized operational read.</div>
@@ -65,6 +70,7 @@
             </section>
             <section class="panel" aria-labelledby="overviewDependenciesTitle">
               <h2 id="overviewDependenciesTitle">Dependencies</h2>
+              <p class="muted small">Recorded provider outcomes, with their observation times. No recent observation does not confirm current provider health; API availability is shown separately above.</p>
               <div id="overviewDependencies" role="status">Waiting for an authorized operational read.</div>
             </section>
           </div>

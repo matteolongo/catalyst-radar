@@ -205,6 +205,7 @@
         '<article class="metric"><h2>Terminal documents</h2><p class="metric-value">—</p></article>' +
         '<article class="metric"><h2>Estimated recorded model cost</h2><p class="metric-value">—</p></article>';
       el('overviewActivity').textContent = 'Waiting for an authorized operational read.';
+      el('overviewCoverage').innerHTML = '<p class="muted">Waiting for an authorized operational read.</p>';
       el('overviewSignals').textContent = 'Waiting for an authorized operational read.';
       el('overviewDependencies').textContent = 'Waiting for an authorized operational read.';
     }
@@ -279,9 +280,17 @@
           label: 'Inspect waiting documents', route: '?view=documents&status=PENDING&status=RETRYABLE_ERROR'
         }),
         metric('Terminal documents', integer(q.terminal), 'Current queue scope', {
-          label: 'Unresolved: ' + integer(q.unresolved), route: '?view=documents&status=UNRESOLVED'
+          label: 'Inspect terminal failures', route: '?view=documents&status=TERMINAL_ERROR'
         }),
         metric('Estimated recorded model cost', cost(m.estimatedCostUsd, m.costKnownCalls, m.calls), costCoverage)
+      ].join('');
+      el('overviewCoverage').innerHTML = [
+        metric('Documents without a company link', integer(q.unresolved), 'No company association is stored. This is not necessarily a processing failure.', {
+          label: 'Inspect unattributed documents', route: '?view=documents&status=UNRESOLVED'
+        }),
+        metric('Processing state not recorded', integer(q.notTracked), 'A company link exists, but no processing state is stored.', {
+          label: 'Inspect missing processing state', route: '?view=documents&status=NOT_TRACKED'
+        })
       ].join('');
       var recalculation = a.recalculationHistoryAvailable
         ? integer(a.successfulRecalculations) + ' successful recalculations · ' + integer(a.recalculationFailures) + ' failed'
@@ -303,11 +312,12 @@
         return '<li><span class="pill ' + severityClass + '">' +
           esc(signal.severity || 'INFO') + '</span> ' + link +
           (signal.provider ? ' · ' + esc(signal.provider) : '') + '</li>';
-      }).join('') + '</ul>' : '<p class="muted">No active signals.</p>';
+      }).join('') + '</ul>' : '<p class="muted">No active operational signals. Review document coverage separately.</p>';
       var dependencies = Array.isArray(data.dependencies) ? data.dependencies : [];
       el('overviewDependencies').innerHTML = dependencies.length
         ? '<ul class="dependency-list">' + dependencies.map(function (item) {
-          return '<li><strong>' + esc(item.provider) + '</strong> · ' + esc(item.status) +
+          var status = { UNOBSERVED: 'No recent observation', NOT_CONFIGURED: 'Not configured', OK: 'Recent observations without reported failures', DEGRADED: 'Failures in recent observations' }[item.status] || item.status;
+          return '<li><strong>' + esc(item.provider) + '</strong> · ' + esc(status) +
             ' · ' + (item.configured ? 'configured' : 'not configured') +
             ' · observed since ' + esc(item.observedSince ? time(item.observedSince) : 'Unknown') +
             ' · last observed ' + esc(item.lastObservedAt ? time(item.lastObservedAt) : 'Unknown') +
@@ -2968,6 +2978,7 @@
       });
       el('overviewSignals').removeEventListener('click', onLocalRouteClick);
       el('overviewMetrics').removeEventListener('click', onLocalRouteClick);
+      el('overviewCoverage').removeEventListener('click', onLocalRouteClick);
       ACCESS_STATUS_IDS.forEach(function (id) { el(id).removeEventListener('click', onAccessClick); });
     }
     function onLocalRouteClick(event) {
@@ -2982,6 +2993,7 @@
 
     el('overviewSignals').addEventListener('click', onLocalRouteClick);
     el('overviewMetrics').addEventListener('click', onLocalRouteClick);
+    el('overviewCoverage').addEventListener('click', onLocalRouteClick);
     ACCESS_STATUS_IDS.forEach(function (id) { el(id).addEventListener('click', onAccessClick); });
     return { init: init, show: show, refresh: refresh, credentialsChanged: credentialsChanged, dispose: dispose, ownsView: ownsView };
   }
