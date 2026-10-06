@@ -1802,11 +1802,15 @@
       if (pipelineRunsLoading && !pipelineRunsLoaded && !pipelineRuns.length) content = '<p class="muted">Loading recorded cycles…</p>';
       else if (pipelineRunError && !pipelineRuns.length) content = '<p class="panel-error">' + esc(pipelineRunError) + '</p>';
       else if (!pipelineRuns.length) {
-        var empty = pipelineKind === 'DAILY_SNAPSHOTS' && snapshotScheduleLoaded && snapshotScheduleEnabled === false
-          ? 'Daily snapshots are disabled. No cycles are recorded.' : 'No recorded cycles yet.';
+        var empty = 'No ' + (pipelineKind === 'DAILY_SNAPSHOTS' ? 'daily snapshot' : 'pipeline') + ' cycles' +
+          (pipelineRunStatus ? ' matching ' + pipelineRunStatus : '') + ' in the last ' + (pipelineRange === '7d' ? '7 days.' : '24 hours.');
+        if (pipelineKind === 'DAILY_SNAPSHOTS' && snapshotScheduleLoaded && snapshotScheduleEnabled === false)
+          empty += ' Daily snapshots are currently disabled.';
         if (pipelineKind === 'DAILY_SNAPSHOTS' && !snapshotScheduleLoaded && !snapshotScheduleLoading)
           empty += ' Scheduler state could not be verified; see Settings.';
         content = '<p class="muted">' + esc(empty) + '</p>';
+        if (pipelineRange !== '7d') content += '<p>' + traceLink(pipelineSearch({ range: '7d' }), 'Show the last 7 days') + '</p>';
+        if (pipelineRunStatus) content += '<p>' + traceLink(pipelineSearch({ status: null }), 'Clear the cycle status filter') + '</p>';
       } else {
         content = '<div class="table-scroll"><table class="pipeline-table"><caption>' + pipelineRuns.length +
           ' recorded ' + (pipelineKind === 'PIPELINE' ? 'pipeline cycles' : 'daily snapshot cycles') +
