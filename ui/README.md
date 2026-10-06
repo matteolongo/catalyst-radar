@@ -143,6 +143,15 @@ multiple supporting reports do not multiply the canonical contribution.
 
 A null `traceVersion` means **Detailed trace not recorded**. Run completion
 (`captureComplete`) remains separate from audit coverage. A legacy document can
+open its actual all-date attempt ledger from an empty Timeline. Attempt errors
+preceding the document's later completion are explicitly historical; their saved
+retry messages and timestamps remain visible. Model-call links use stored
+operation/outcome/model labels when those records are already loaded, otherwise
+neutral numbered inspection links. Full IDs remain in call details and link
+titles; labels never infer a call's role from its ordering. Opening **View
+recorded calls for this attempt** uses its explicit run/attempt IDs and the
+existing bounded model tab. Selected-call outcomes and safe errors precede IDs.
+A legacy document can
 have newly recorded attempt steps while its intake remains unavailable. Prior
 score/state, unknown counts and unfinished durations remain **Not recorded** or
 **Unknown**, never a zero baseline. Current reconstructed explanations and
