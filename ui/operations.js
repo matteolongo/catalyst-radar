@@ -104,6 +104,7 @@
     var selectedRunLoaded = false;
     var selectedRunLoading = false;
     var selectedRunError = null;
+    var runMetadataOpen = false;
     var runIngestionItems = [];
     var runIngestionCursor = null;
     var runIngestionLoaded = false;
@@ -1619,6 +1620,7 @@
       selectedRunLoaded = false;
       selectedRunLoading = false;
       selectedRunError = null;
+      runMetadataOpen = false;
       resetRunIngestion();
       runIssues = [];
       runIssueCursor = null;
@@ -1698,6 +1700,7 @@
         selectedRunLoaded = false;
         selectedRunLoading = false;
         selectedRunError = null;
+        runMetadataOpen = false;
         resetRunIngestion();
         runIssues = [];
         runIssueCursor = null;
@@ -1914,6 +1917,8 @@
     }
     function renderSelectedRunDetail(detail) {
       var run = detail.run || {};
+      var restoreMetadataFocus = document.activeElement && document.activeElement.dataset &&
+        document.activeElement.dataset.runMetadataSummary === run.id;
       el('runDetailTitle').textContent = run.kind === 'DAILY_SNAPSHOTS' ? 'Selected daily snapshot cycle' : 'Selected pipeline cycle';
       var records = [
         ['Cycle ID', run.id], ['Trace version', run.traceVersion || 'Not recorded'], ['Trigger', run.trigger], ['Status', runStatusLabel(run)], ['Phase', run.phase],
@@ -1935,10 +1940,25 @@
           esc(phase.durationMs == null ? 'Not recorded' : integer(phase.durationMs) + ' ms') + '</li>'; }).join('') + '</ul></section>' : '';
       var documents = '<a href="?view=documents&amp;runId=' + encodeURIComponent(run.id) + '" data-cycle-documents-id="' +
         esc(run.id) + '">Inspect documents for this cycle</a>';
-      el('runDetailContent').innerHTML = '<dl class="pipeline-detail-grid">' + records.map(function (entry) {
+      var outcome = '<section class="run-outcome-summary" aria-label="Cycle outcome"><span class="pill ' + runStatusClass(run) + '">' +
+        esc(runStatusLabel(run)) + '</span><p>' + (!run.captureComplete ? 'Recorded so far · ' : '') +
+        esc(integer(run.documentsCompleted)) + ' documents completed · ' + esc(integer(run.documentsSkipped)) + ' skipped · ' +
+        esc(integer(run.documentsRetryScheduled)) + ' retry scheduled · ' + esc(integer(run.documentsTerminalFailures)) + ' terminal failures</p><p>' +
+        esc(integer(run.companiesRescored)) + ' companies rescored · ' + esc(integer(run.companiesFailed)) + ' failed · ' +
+        esc(integer(detail.issues)) + ' recorded issues</p>' +
+        (run.errorMessage ? '<p class="panel-error">' + esc(run.errorMessage) + '</p>' : '') + '</section>';
+      el('runDetailContent').innerHTML = outcome + traceCoverage(run.traceVersion, 'run') + '<p>' + documents + '</p>' +
+        '<details class="run-metadata" data-run-metadata-id="' + esc(run.id) + '"' + (runMetadataOpen ? ' open' : '') +
+        '><summary data-run-metadata-summary="' + esc(run.id) + '">Cycle metadata and counters</summary><dl class="pipeline-detail-grid">' + records.map(function (entry) {
         return '<div><dt>' + esc(entry[0]) + '</dt><dd>' + esc(entry[1] == null || entry[1] === '' ? 'Unknown' : entry[1]) + '</dd></div>';
-      }).join('') + '</dl>' + traceCoverage(run.traceVersion, 'run') + phaseHtml + '<p>' + documents + '</p>';
+      }).join('') + '</dl>' + phaseHtml + '</details>';
+      if (restoreMetadataFocus) el('runDetailContent').querySelector('[data-run-metadata-summary]').focus({ preventScroll: true });
       el('runDetailStatus').textContent = selectedRunError || '';
+    }
+    function onRunMetadataToggle(event) {
+      var metadata = event.target.closest('[data-run-metadata-id]');
+      if (metadata && metadata.isConnected && metadata.dataset.runMetadataId === selectedRunId)
+        runMetadataOpen = metadata.open;
     }
     function renderRunIssues() {
       toggleHidden('runIssues', !selectedRunId || !credentials().hasAdmin);
@@ -2784,6 +2804,7 @@
       el('loadDocumentValuations').addEventListener('click', onLoadTraceDocument);
       document.addEventListener('click', onTraceClick);
       document.addEventListener('keydown', onTabKeydown);
+      document.addEventListener('toggle', onRunMetadataToggle, true);
       el('pipelineView').addEventListener('click', onPipelineTabClick);
       el('pipelineRunStatusFilter').addEventListener('change', onPipelineStatusChange);
       el('runNow').addEventListener('click', onRunNowClick);
@@ -2874,6 +2895,7 @@
       el('loadDocumentValuations').removeEventListener('click', onLoadTraceDocument);
       document.removeEventListener('click', onTraceClick);
       document.removeEventListener('keydown', onTabKeydown);
+      document.removeEventListener('toggle', onRunMetadataToggle, true);
       el('pipelineView').removeEventListener('click', onPipelineTabClick);
       el('pipelineRunStatusFilter').removeEventListener('change', onPipelineStatusChange);
       el('runNow').removeEventListener('click', onRunNowClick);
