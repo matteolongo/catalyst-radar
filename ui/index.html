@@ -285,10 +285,141 @@
         <section id="eventsView" class="card view hidden" aria-labelledby="eventsTitle">
           <h2 id="eventsTitle" tabindex="-1">Events</h2>
           <p class="muted">Search captured event reports across companies. Reports sharing a cluster may describe the same catalyst.</p>
+          <p id="eventFilterError" class="panel-error" role="alert"></p>
           <form id="eventFilters" class="filter-grid">
             <label>Ticker <input id="eventTicker" type="text" autocomplete="off"></label>
             <label>Family <select id="eventFamily"><option value="">All families</option><option>EARNINGS</option><option>GUIDANCE</option><option>COMMERCIAL</option><option>PRODUCT_TECH</option><option>CORPORATE_ACTION</option><option>CAPITAL_ALLOCATION</option><option>ANALYST</option><option>REGULATORY</option><option>LEGAL</option><option>MANAGEMENT_OWNERSHIP</option><option>INDUSTRY_EXTERNAL</option></select></label>
-            <label>Type <input id="eventType" type="text" autocomplete="off" placeholder="e.g. GUIDANCE_RAISE"></label>
+            <label>Type <select id="eventType" aria-describedby="eventTypeHelp eventFilterError">
+                <option value="">All types</option>
+                <optgroup label="Earnings">
+                  <option value="EARNINGS_BEAT">Earnings beat</option>
+                  <option value="EARNINGS_MISS">Earnings miss</option>
+                  <option value="REVENUE_BEAT">Revenue beat</option>
+                  <option value="REVENUE_MISS">Revenue miss</option>
+                  <option value="EPS_BEAT">EPS beat</option>
+                  <option value="EPS_MISS">EPS miss</option>
+                  <option value="MARGIN_EXPANSION">Margin expansion</option>
+                  <option value="MARGIN_COMPRESSION">Margin compression</option>
+                  <option value="BOOKINGS_ACCELERATION">Bookings acceleration</option>
+                  <option value="BOOKINGS_DECELERATION">Bookings deceleration</option>
+                  <option value="BACKLOG_GROWTH">Backlog growth</option>
+                  <option value="BACKLOG_DECLINE">Backlog decline</option>
+                </optgroup>
+                <optgroup label="Guidance">
+                  <option value="GUIDANCE_RAISE">Guidance raise</option>
+                  <option value="GUIDANCE_CUT">Guidance cut</option>
+                  <option value="GUIDANCE_INITIATED">Guidance initiated</option>
+                  <option value="GUIDANCE_WITHDRAWN">Guidance withdrawn</option>
+                  <option value="GUIDANCE_ABOVE_CONSENSUS">Guidance above consensus</option>
+                  <option value="GUIDANCE_BELOW_CONSENSUS">Guidance below consensus</option>
+                  <option value="LONG_TERM_TARGET_RAISED">Long term target raised</option>
+                  <option value="LONG_TERM_TARGET_CUT">Long term target cut</option>
+                </optgroup>
+                <optgroup label="Commercial">
+                  <option value="CONTRACT_WIN">Contract win</option>
+                  <option value="CONTRACT_LOSS">Contract loss</option>
+                  <option value="LARGE_ORDER">Large order</option>
+                  <option value="ORDER_CANCELLATION">Order cancellation</option>
+                  <option value="CUSTOMER_WIN">Customer win</option>
+                  <option value="CUSTOMER_LOSS">Customer loss</option>
+                  <option value="PARTNERSHIP_ANNOUNCED">Partnership announced</option>
+                  <option value="PARTNERSHIP_ENDED">Partnership ended</option>
+                  <option value="PRICING_INCREASE">Pricing increase</option>
+                  <option value="PRICING_DECREASE">Pricing decrease</option>
+                  <option value="DEMAND_ACCELERATION">Demand acceleration</option>
+                  <option value="DEMAND_DECELERATION">Demand deceleration</option>
+                </optgroup>
+                <optgroup label="Product tech">
+                  <option value="PRODUCT_LAUNCH">Product launch</option>
+                  <option value="PRODUCT_DELAY">Product delay</option>
+                  <option value="BREAKTHROUGH">Breakthrough</option>
+                  <option value="DEVELOPMENT_MILESTONE">Development milestone</option>
+                  <option value="MAJOR_CUSTOMER_ADOPTION">Major customer adoption</option>
+                  <option value="CAPACITY_EXPANSION">Capacity expansion</option>
+                  <option value="CAPACITY_REDUCTION">Capacity reduction</option>
+                  <option value="PRODUCTION_INCREASE">Production increase</option>
+                  <option value="PRODUCTION_CUT">Production cut</option>
+                </optgroup>
+                <optgroup label="Corporate action">
+                  <option value="ACQUISITION_ANNOUNCED">Acquisition announced</option>
+                  <option value="ACQUISITION_COMPLETED">Acquisition completed</option>
+                  <option value="TAKEOVER_TARGET">Takeover target</option>
+                  <option value="TAKEOVER_BID">Takeover bid</option>
+                  <option value="DIVESTITURE">Divestiture</option>
+                  <option value="SPINOFF">Spinoff</option>
+                  <option value="STRATEGIC_REVIEW">Strategic review</option>
+                  <option value="INDEX_INCLUSION">Index inclusion</option>
+                  <option value="INDEX_EXCLUSION">Index exclusion</option>
+                </optgroup>
+                <optgroup label="Capital allocation">
+                  <option value="BUYBACK_ANNOUNCED">Buyback announced</option>
+                  <option value="BUYBACK_INCREASED">Buyback increased</option>
+                  <option value="BUYBACK_SUSPENDED">Buyback suspended</option>
+                  <option value="DIVIDEND_INITIATED">Dividend initiated</option>
+                  <option value="DIVIDEND_INCREASED">Dividend increased</option>
+                  <option value="DIVIDEND_CUT">Dividend cut</option>
+                  <option value="DIVIDEND_SUSPENDED">Dividend suspended</option>
+                  <option value="CAPEX_INCREASE">Capex increase</option>
+                  <option value="CAPEX_CUT">Capex cut</option>
+                  <option value="DEBT_ISSUANCE">Debt issuance</option>
+                  <option value="DEBT_REPAYMENT">Debt repayment</option>
+                  <option value="EQUITY_OFFERING">Equity offering</option>
+                </optgroup>
+                <optgroup label="Analyst">
+                  <option value="ANALYST_UPGRADE">Analyst upgrade</option>
+                  <option value="ANALYST_DOWNGRADE">Analyst downgrade</option>
+                  <option value="PRICE_TARGET_RAISED">Price target raised</option>
+                  <option value="PRICE_TARGET_CUT">Price target cut</option>
+                  <option value="ESTIMATE_REVISION_UP">Estimate revision up</option>
+                  <option value="ESTIMATE_REVISION_DOWN">Estimate revision down</option>
+                  <option value="COVERAGE_INITIATED">Coverage initiated</option>
+                </optgroup>
+                <optgroup label="Regulatory">
+                  <option value="APPROVAL_GRANTED">Approval granted</option>
+                  <option value="APPROVAL_DENIED">Approval denied</option>
+                  <option value="REGULATORY_CLEARANCE">Regulatory clearance</option>
+                  <option value="REGULATORY_BLOCK">Regulatory block</option>
+                  <option value="LICENSE_GRANTED">License granted</option>
+                  <option value="LICENSE_REVOKED">License revoked</option>
+                  <option value="INVESTIGATION_OPENED">Investigation opened</option>
+                  <option value="INVESTIGATION_CLOSED">Investigation closed</option>
+                  <option value="POLICY_TAILWIND">Policy tailwind</option>
+                  <option value="POLICY_HEADWIND">Policy headwind</option>
+                </optgroup>
+                <optgroup label="Legal">
+                  <option value="LAWSUIT_FILED">Lawsuit filed</option>
+                  <option value="LAWSUIT_DISMISSED">Lawsuit dismissed</option>
+                  <option value="LEGAL_WIN">Legal win</option>
+                  <option value="LEGAL_LOSS">Legal loss</option>
+                  <option value="SETTLEMENT">Settlement</option>
+                  <option value="PATENT_WIN">Patent win</option>
+                  <option value="PATENT_LOSS">Patent loss</option>
+                </optgroup>
+                <optgroup label="Management ownership">
+                  <option value="CEO_APPOINTED">CEO appointed</option>
+                  <option value="CEO_DEPARTURE">CEO departure</option>
+                  <option value="CFO_APPOINTED">CFO appointed</option>
+                  <option value="CFO_DEPARTURE">CFO departure</option>
+                  <option value="FOUNDER_RETURN">Founder return</option>
+                  <option value="INSIDER_BUY">Insider buy</option>
+                  <option value="INSIDER_SELL">Insider sell</option>
+                  <option value="ACTIVIST_POSITION">Activist position</option>
+                  <option value="MAJOR_STAKE_INCREASED">Major stake increased</option>
+                  <option value="MAJOR_STAKE_DECREASED">Major stake decreased</option>
+                </optgroup>
+                <optgroup label="Industry external">
+                  <option value="PEER_POSITIVE_READTHROUGH">Peer positive readthrough</option>
+                  <option value="PEER_NEGATIVE_READTHROUGH">Peer negative readthrough</option>
+                  <option value="CUSTOMER_CONFIRMATION">Customer confirmation</option>
+                  <option value="CUSTOMER_WEAKNESS">Customer weakness</option>
+                  <option value="SUPPLIER_DISRUPTION">Supplier disruption</option>
+                  <option value="SUPPLIER_IMPROVEMENT">Supplier improvement</option>
+                  <option value="SECTOR_DEMAND_UP">Sector demand up</option>
+                  <option value="SECTOR_DEMAND_DOWN">Sector demand down</option>
+                  <option value="COMMODITY_TAILWIND">Commodity tailwind</option>
+                  <option value="COMMODITY_HEADWIND">Commodity headwind</option>
+                </optgroup>
+              </select><span id="eventTypeHelp" class="muted small">Choose a type by name; grouped by event family.</span></label>
             <label>Direction <select id="eventDirection"><option value="">All directions</option><option>POSITIVE</option><option>NEGATIVE</option><option>NEUTRAL</option><option>MIXED</option></select></label>
             <label>First captured from (UTC) <input id="eventFrom" type="date"></label>
             <label>First captured through (UTC) <input id="eventTo" type="date"></label>
