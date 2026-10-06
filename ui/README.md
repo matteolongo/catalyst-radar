@@ -8,7 +8,11 @@ frontend build. See the [operator/API reference](../docs/operations-backoffice.m
 ## Six areas
 
 - **Overview** opens first: ingestion freshness, current queue, recorded activity,
-  estimated model cost, inspection signals and observed dependencies.
+  estimated model cost, inspection signals and observed dependencies. Document
+  coverage has separate counts and inspection links for missing company
+  associations and missing processing state, across all capture dates. These
+  categories are not counted as terminal failures. Dependency labels describe
+  recent recorded observations; they are not live provider health checks.
 - **Pipeline** shows pipeline and daily-snapshot cycles, provider ingestion runs,
   issues, cycle documents, and frozen company valuations with explicit associations. **Run pipeline now** uses the existing POST.
 - **Documents** opens a chronological Timeline by default, with Overview,

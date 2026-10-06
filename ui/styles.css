@@ -88,6 +88,7 @@ footer { padding: 0 24px 24px; }
 .scope-summary p { margin: 6px 0; }
 .scope-summary a { display: inline-flex; align-items: center; min-height: 44px; margin-right: 12px; }
 .metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.coverage-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .metric, .panel, .card {
   min-width: 0;
   background: var(--panel);
@@ -240,6 +241,7 @@ input[type="checkbox"] { accent-color: var(--accent); }
   .banner { margin: 12px 16px 0; }
   footer { padding: 0 16px 16px; }
   .overview-columns { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .coverage-metrics { grid-template-columns: minmax(0, 1fr); }
   .document-filters { grid-template-columns: minmax(0, 1fr); }
   .document-row-meta { align-items: flex-start; }
 }

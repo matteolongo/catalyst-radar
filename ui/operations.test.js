@@ -1271,14 +1271,14 @@ test('Overview exposes inspection links, API severity, and dependency observatio
 
   assert.match(dashboard.html('overviewMetrics'), /Inspect waiting documents/);
   assert.match(dashboard.html('overviewMetrics'), /status=PENDING&amp;status=RETRYABLE_ERROR/);
-  assert.match(dashboard.html('overviewMetrics'), /Unresolved: 4/);
-  assert.match(dashboard.html('overviewMetrics'), /status=UNRESOLVED/);
+  assert.match(dashboard.html('overviewCoverage'), /Documents without a company link[\s\S]*>4</);
+  assert.match(dashboard.html('overviewCoverage'), /status=UNRESOLVED/);
   assert.match(dashboard.html('overviewSignals'), /pill bad[^>]*>ERROR/);
   assert.match(dashboard.html('overviewSignals'), /pill info[^>]*>INFO/);
   assert.match(dashboard.html('overviewDependencies'), /last observed/);
   assert.match(dashboard.html('overviewDependencies'), /10\/3\/2026/);
 
-  dashboard.click('overviewMetrics', {
+  dashboard.click('overviewCoverage', {
     target: { closest: () => ({ dataset: { localRoute: '?view=documents&status=UNRESOLVED' } }) },
   });
   assert.equal(dashboard.window.location.search, '?view=documents&status=UNRESOLVED');
