@@ -29,6 +29,12 @@ current area; auto-refresh runs every 30 seconds while visible. Selection,
 filters and source text survive refresh for the same source/credential revision.
 Back/Forward restores local investigation context.
 
+Cycle and ingestion constraints appear above the document list with explicit
+inspection links and a way to remove each scope while retaining other filters.
+Selected model details appear before the usage summary. A context notice states
+the summary period and flags calls recorded outside it; when applicable, it offers
+the last seven days without changing the selected call or fabricating activity.
+
 ## Keys and execution
 
 Administrative reads require `X-Admin-Key`. The local profile uses

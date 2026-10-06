@@ -134,6 +134,7 @@
         <section id="documentsView" class="view hidden" aria-labelledby="documentsTitle">
           <h2 id="documentsTitle">Documents</h2>
           <p id="documentStatus" class="screen-status" role="status">Loading captured documents…</p>
+          <div id="documentScope" class="scope-summary hidden" role="status"></div>
           <div id="documentsWorkspace" class="documents-layout">
             <section class="panel documents-list-panel" aria-label="Captured documents">
               <form id="documentFilters" class="document-filters">
@@ -185,6 +186,14 @@
         <section id="modelsView" class="view hidden" aria-labelledby="modelsTitle">
           <h2 id="modelsTitle">Models &amp; costs</h2>
           <p id="modelStatus" class="screen-status" role="status">Recorded model usage has not been loaded.</p>
+          <div id="modelSelectionContext" class="scope-summary hidden" role="status"></div>
+          <aside id="modelDetail" class="panel model-detail hidden" aria-labelledby="modelDetailTitle">
+            <div class="panel-heading"><div><h3 id="modelDetailTitle" tabindex="-1">Selected model call</h3>
+              <p id="modelDetailStatus" class="screen-status" role="status"></p></div>
+              <button id="closeModel" type="button" class="ghost">Back to model calls</button>
+            </div>
+            <div id="modelDetailContent"></div>
+          </aside>
           <form id="modelFilters" class="panel model-filters">
             <label>Provider<select id="modelProvider"><option value="">All providers</option><option value="openai">OpenAI</option></select></label>
             <label>Operation<select id="modelOperation"><option value="">All operations</option><option value="extract">Extract</option><option value="embed">Embed</option></select></label>
@@ -210,13 +219,6 @@
             <div id="modelRows" aria-live="polite"><p class="muted">No model calls loaded.</p></div>
             <button id="loadModels" class="ghost" type="button" hidden>Load more</button>
           </section>
-          <aside id="modelDetail" class="panel model-detail hidden" aria-labelledby="modelDetailTitle">
-            <div class="panel-heading"><div><h3 id="modelDetailTitle" tabindex="-1">Selected model call</h3>
-              <p id="modelDetailStatus" class="screen-status" role="status"></p></div>
-              <button id="closeModel" type="button" class="ghost">Back to model calls</button>
-            </div>
-            <div id="modelDetailContent"></div>
-          </aside>
         </section>
 
         <section id="settingsView" class="view hidden" aria-labelledby="settingsTitle">
