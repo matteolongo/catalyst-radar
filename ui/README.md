@@ -64,7 +64,11 @@ and real interrupted finish times can be absent.
 
 Company labels its snapshot **Saved as of ... UTC**. Its explanation is a current
 reconstruction when score/versions match the saved snapshot; raw contributions
-are not normalized score points. History contains stored points only: at most
+are not normalized score points.
+The section links at the top provide direct access to **Recorded valuations**,
+which appears immediately after the current snapshot, before history and the
+reconstructed explanation. These links read existing content and do not rescore.
+History contains stored points only: at most
 200 snapshots and 200 transitions per range. Contextual events do not establish
 original historical scoring drivers or causes. Active artifacts are `taxonomy-v1`,
 `event-extractor-v1` (prompt/extractor), and `score-v1`; Settings reports configured

@@ -689,6 +689,12 @@
     $('backToResults').addEventListener('click', function () {
       navigate(safeReturnSearch(window.history.state && window.history.state.returnSearch) || '?view=discover');
     });
+    $('companySections').addEventListener('click', function (event) {
+      var link = event.target.closest('[data-company-section]');
+      if (!link) return;
+      event.preventDefault();
+      $(link.dataset.companySection).focus();
+    });
     $('historyRange').addEventListener('change', function () {
       if (currentCompany) return loadCompanyHistory(currentCompany, companyRequest);
     });
