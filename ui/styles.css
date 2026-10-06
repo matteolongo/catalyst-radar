@@ -84,6 +84,9 @@ footer { padding: 0 24px 24px; }
 .view { min-width: 0; }
 .hidden { display: none !important; }
 .screen-status { min-height: 24px; margin: 0 0 12px; color: var(--muted); }
+.scope-summary { padding: 12px; margin-block: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-raised); overflow-wrap: anywhere; }
+.scope-summary p { margin: 6px 0; }
+.scope-summary a { display: inline-flex; align-items: center; min-height: 44px; margin-right: 12px; }
 .metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .metric, .panel, .card {
   min-width: 0;
