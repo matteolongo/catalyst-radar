@@ -1027,7 +1027,7 @@
         el('documentStatus').textContent = invalidIdMessage;
         return false;
       }
-      if (nextAttemptId && !route.has('documentTab')) nextTab = 'steps';
+      if (nextAttemptId && !route.has('documentTab')) nextTab = 'attempts';
       if (!DOCUMENT_TABS.includes(nextTab)) {
         documentRouteValid = false;
         el('documentStatus').textContent = 'Choose a valid document detail tab.';
