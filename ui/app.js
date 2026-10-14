@@ -42,6 +42,7 @@
       events: ['Events', 'Inspect classified events and supporting source evidence. Event clusters group reports about the same real-world event; duplicate reports do not multiply its catalyst score. Event, publication and discovery times describe different points in time.'],
     };
     var state = { path: null, completed: [], deferred: false };
+    var disclosure = null;
     try {
       var saved = JSON.parse(window.localStorage.getItem(storageKey));
       if (saved && (saved.path === null || Object.prototype.hasOwnProperty.call(paths, saved.path)) &&
@@ -49,6 +50,7 @@
         state = { path: saved.path, completed: (paths[saved.path] || []).filter(function (view) {
           return saved.completed.includes(view);
         }), deferred: saved.deferred };
+        if (saved.modelDisclosureAcknowledged === true) state.modelDisclosureAcknowledged = true;
       }
     } catch (_) { /* Guide progress remains available in memory when browser storage is unavailable. */ }
 
@@ -58,10 +60,65 @@
     function button(action, label) {
       return '<button type="button" class="ghost" data-onboarding-action="' + action + '">' + label + '</button>';
     }
+    function cancelPipelineCheck() {
+      if (disclosure && disclosure.resolve) disclosure.resolve(false);
+      disclosure = null;
+    }
+    async function beforePipelineRun() {
+      if (state.modelDisclosureAcknowledged) return true;
+      var check = { revision: credentialRevision, status: 'loading' };
+      disclosure = check;
+      show(currentView);
+      try {
+        var config = await api('/internal/operations/config');
+        if (disclosure !== check || check.revision !== credentialRevision || currentView !== 'pipeline') return false;
+        var versions = config && config.versions;
+        var configured = config && Array.isArray(config.providers) && config.providers.some(function (provider) {
+          return provider && provider.name === 'openai' && provider.configured === true;
+        });
+        if (!configured || !versions || typeof versions.extractionModel !== 'string' || !versions.extractionModel.trim() ||
+            typeof versions.embeddingModel !== 'string' || !versions.embeddingModel.trim()) {
+          check.status = 'missing';
+          show(currentView);
+          return false;
+        }
+        check.status = 'ready';
+        check.extractionModel = versions.extractionModel.trim();
+        check.embeddingModel = versions.embeddingModel.trim();
+        return await new Promise(function (resolve) {
+          check.resolve = resolve;
+          show(currentView);
+          $('onboarding').focus();
+        });
+      } catch (_) {
+        if (disclosure === check && check.revision === credentialRevision && currentView === 'pipeline') {
+          check.status = 'error';
+          show(currentView);
+        }
+        return false;
+      }
+    }
     function show(view) {
+      if (view !== 'pipeline' || (disclosure && disclosure.revision !== credentialRevision)) cancelPipelineCheck();
       var panel = $('onboarding');
       panel.classList.remove('hidden');
       var content = '<h2>Backoffice guide</h2>';
+      if (disclosure) {
+        content += '<h3>Before your first pipeline run</h3>';
+        if (disclosure.status === 'loading') content += '<p role="status">Checking configured models…</p>';
+        else if (disclosure.status === 'ready') {
+          content += '<p>Extraction model: <strong>' + esc(disclosure.extractionModel) + '</strong> turns articles into structured catalyst events.</p>' +
+            '<p>Embedding model: <strong>' + esc(disclosure.embeddingModel) + '</strong> groups and deduplicates semantically similar reports.</p>' +
+            button('confirm-pipeline', 'Confirm and run pipeline') + button('cancel-pipeline', 'Cancel');
+        } else {
+          content += '<p role="status">' + (disclosure.status === 'missing' ?
+            'OpenAI and both extraction and embedding models must be configured. Review Settings, then choose Run pipeline now to retry.' :
+            'Unable to read model configuration. Choose Run pipeline now to retry or review Settings.') + '</p>' +
+            button('pipeline-settings', 'Open Settings');
+        }
+        panel.innerHTML = content;
+        return;
+      }
       if (state.deferred) {
         panel.innerHTML = content + '<p>Continue whenever you are ready.</p>' + button('resume', 'Resume guide');
         return;
@@ -87,7 +144,10 @@
       panel.innerHTML = content;
     }
     function restart() {
-      state = { path: null, completed: [], deferred: false };
+      cancelPipelineCheck();
+      state.path = null;
+      state.completed = [];
+      state.deferred = false;
       save();
       show(currentView);
       $('onboarding').focus();
@@ -96,8 +156,28 @@
       var target = event.target.closest('[data-onboarding-action]');
       if (!target) return;
       var action = target.dataset.onboardingAction;
+      if (action === 'confirm-pipeline' || action === 'cancel-pipeline') {
+        if (!disclosure || disclosure.status !== 'ready' || !disclosure.resolve) return;
+        var approved = action === 'confirm-pipeline' && disclosure.revision === credentialRevision && currentView === 'pipeline';
+        if (approved) {
+          state.modelDisclosureAcknowledged = true;
+          save();
+        }
+        disclosure.resolve(approved);
+        disclosure = null;
+        show(currentView);
+        $('onboarding').focus();
+        return;
+      }
+      if (action === 'pipeline-settings' && disclosure) {
+        cancelPipelineCheck();
+        navigate('?view=settings');
+        return;
+      }
       if (action === 'operator' || action === 'analyst') {
-        state = { path: action, completed: [], deferred: false };
+        state.path = action;
+        state.completed = [];
+        state.deferred = false;
         save();
         navigate('?view=' + paths[action][0]);
         return;
@@ -120,7 +200,7 @@
       show(currentView);
       $('onboarding').focus();
     }
-    return { show: show, restart: restart, click: click };
+    return { show: show, restart: restart, click: click, beforePipelineRun: beforePipelineRun, cancelPipelineCheck: cancelPipelineCheck };
   }
 
   function $(id) { return document.getElementById(id); }
@@ -742,6 +822,8 @@
     var savedApiKey = window.sessionStorage.getItem(API_KEY_NAME);
     if (savedApiKey) $('apiKey').value = savedApiKey;
     $('saveKey').addEventListener('click', function () {
+      onboarding.cancelPipelineCheck();
+      onboarding.show(currentView);
       credentialRevision++;
       invalidatePublicCredentials();
       var adminKey = $('adminKey').value.trim();
@@ -756,6 +838,8 @@
       if (adminKey && returnSearch && currentView === 'settings') navigate(returnSearch);
     });
     $('clearKey').addEventListener('click', function () {
+      onboarding.cancelPipelineCheck();
+      onboarding.show(currentView);
       credentialRevision++;
       invalidatePublicCredentials();
       window.sessionStorage.removeItem(ADMIN_KEY_NAME);
@@ -856,6 +940,7 @@
     });
     window.addEventListener('popstate', function () { showView(true, true); });
     operations = window.CatalystOperations.create({ api: api, navigate: navigate, credentials: currentCredentials,
+      beforePipelineRun: onboarding.beforePipelineRun,
       format: { escape: esc, time: fmtTime, integer: fmtInt, cost: fmtCost } });
     operations.init();
     showView();

@@ -128,6 +128,7 @@
     var snapshotScheduleLoaded = false;
     var snapshotScheduleLoading = false;
     var pendingPost = false;
+    var pendingPipelineApproval = false;
     var tracePages = {};
     var traceContext = '';
     var valuationId = null;
@@ -2096,7 +2097,7 @@
       el('ingestionDetailStatus').textContent = selectedIngestionError || '';
     }
     function updateRunNowButton() {
-      el('runNow').disabled = !credentials().hasAdmin || pendingPost || knownActivePipelineIds.size > 0;
+      el('runNow').disabled = !credentials().hasAdmin || pendingPost || pendingPipelineApproval || knownActivePipelineIds.size > 0;
       el('runNow').setAttribute('aria-describedby', 'runNowCaption');
     }
     function observePipelineRuns(runs) {
@@ -2491,7 +2492,23 @@
     }
     function onCloseRun() { options.navigate(pipelineSearch({ runId: null })); }
     function onCloseIngestion() { options.navigate(pipelineSearch({ ingestionRunId: null })); }
-    function onRunNowClick() { triggerPipeline(); }
+    async function onRunNowClick() {
+      if (!options.beforePipelineRun) return triggerPipeline();
+      if (pendingPipelineApproval || pendingPost || !credentials().hasAdmin || el('runNow').disabled) return;
+      var revision = credentials().revision;
+      pendingPipelineApproval = true;
+      updateRunNowButton();
+      var approved = false;
+      try {
+        approved = await options.beforePipelineRun();
+      } catch (_) {
+        if (!disposed && revision === credentials().revision && screen === 'pipeline') pipelineStatus('Unable to check pipeline configuration. Try again.');
+      } finally {
+        pendingPipelineApproval = false;
+        if (screen === 'pipeline') updateRunNowButton();
+      }
+      if (approved && !disposed && revision === credentials().revision && screen === 'pipeline') triggerPipeline();
+    }
     function onLoadRunsClick() { loadPipelineRunPage(!!pipelineRunCursor); }
     function onLoadRunIssuesClick() { loadRunIssues(!!runIssueCursor); }
     function onLoadRunIngestionClick() { loadRunIngestion(!!runIngestionCursor); }

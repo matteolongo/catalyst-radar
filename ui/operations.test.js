@@ -13,6 +13,38 @@ const DOC_NEW = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const DOC_OLD = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const MODEL_CALL = '55555555-5555-4555-8555-555555555555';
 
+test('pipeline approval seam waits and blocks duplicate clicks while ordinary runs need no callback', async () => {
+  for (const guarded of [false, true]) {
+    const dashboard = startDashboard();
+    const requests = [];
+    let approve;
+    const operations = dashboard.window.CatalystOperations.create({
+      api: async (path, options = {}) => {
+        requests.push({ path, method: options.method || 'GET' });
+        if (options.method === 'POST') return pipelineResultFixture;
+        if (path.startsWith('/internal/operations/ingestion-runs')) return ingestionRunsPageFixture(0);
+        return operationRunsPageFixture(0);
+      },
+      credentials: () => ({ hasAdmin: true, revision: 0 }), navigate() {},
+      ...(guarded ? { beforePipelineRun: () => new Promise((resolve) => { approve = resolve; }) } : {}),
+    });
+    operations.init();
+    operations.show({ view: 'pipeline', params: new URLSearchParams() });
+    await dashboard.flush();
+    const run = dashboard.element('runNow')._handlers.click.at(-1);
+    run();
+    run();
+    if (guarded) {
+      assert.equal(requests.filter(({ method }) => method === 'POST').length, 0);
+      assert.equal(dashboard.element('runNow').disabled, true);
+      approve(true);
+    }
+    await dashboard.flush();
+    assert.equal(requests.filter(({ method }) => method === 'POST').length, 1);
+    operations.dispose();
+  }
+});
+
 test('missing call provenance and legacy null origins never imply a provider was not invoked', async () => {
   const support = require('./test-support');
   const attempts = { ...support.documentAttemptsPageFixture, items: [{
@@ -240,7 +272,9 @@ function startOperations(options = {}) {
   const stored = { ...(options.stored || {}) };
   if (options.storedAdmin) stored['catalyst-admin-key'] = options.storedAdmin;
   if (options.storedApiKey) stored['catalyst-api-key'] = options.storedApiKey;
-  const dashboard = startDashboard({ ...options, stored });
+  const dashboard = startDashboard({ localStored: { 'catalyst-onboarding-v1': JSON.stringify({
+    path: null, completed: [], deferred: false, modelDisclosureAcknowledged: true,
+  }) }, ...options, stored });
   dashboard.openDocuments = async (search = '?view=documents') => {
     dashboard.popstate(search);
     await dashboard.flush();
@@ -1110,6 +1144,7 @@ test('a credential change prevents a pending pipeline result from repainting or 
   const dashboard = startOperations({ storedAdmin: 'admin-secret', deferPipeline: true });
   await dashboard.openPipeline();
   dashboard.click('runNow');
+  await dashboard.flush();
   const post = dashboard.requests.find((request) => request.method === 'POST');
   assert.equal(post.headers['X-Admin-Key'], 'admin-secret');
   assert.equal(post.body, undefined);

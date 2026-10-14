@@ -4,6 +4,138 @@ const { startDashboard: startDashboardWithRoute, waitForRequests, companyFixture
 
 function startDashboard(options = {}) { return startDashboardWithRoute({ search: '?view=discover', ...options }); }
 
+test('first manual run shows only configured models before posting and persists only acknowledgement', async () => {
+  const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' },
+    config: { providers: [{ name: 'openai', configured: true }], versions: {
+      extractionModel: 'extract-dynamic<&>', embeddingModel: 'embed-dynamic', otherModel: 'not-for-display',
+    } } });
+  await dashboard.flush();
+  const configReads = () => dashboard.requests.filter(({ url }) => new URL(url).pathname === '/internal/operations/config');
+  const posts = () => dashboard.requests.filter(({ method }) => method === 'POST');
+  assert.equal(configReads().length, 0);
+  dashboard.click('runNow');
+  dashboard.click('runNow');
+  await dashboard.flush();
+  assert.equal(configReads().length, 1);
+  assert.equal(configReads()[0].headers['X-Admin-Key'], 'admin-secret');
+  assert.match(dashboard.html('onboarding'), /extract-dynamic&lt;&amp;&gt;.*structured catalyst events.*embed-dynamic.*groups.*deduplicates.*semantically similar reports/s);
+  assert.doesNotMatch(dashboard.html('onboarding'), /not-for-display|tokens|cost/i);
+  assert.equal(posts().length, 0);
+  assert.equal(dashboard.element('runNow').disabled, true);
+  dashboard.clickOnboarding('confirm-pipeline');
+  await dashboard.flush();
+  assert.equal(posts().length, 1);
+  assert.deepEqual(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')),
+    { path: null, completed: [], deferred: false, modelDisclosureAcknowledged: true });
+  dashboard.completePipeline({ status: 'SUCCESS' });
+  await dashboard.flush();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  assert.equal(posts().length, 2);
+  assert.equal(configReads().length, 1);
+  const reopened = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' },
+    localStored: Object.fromEntries(dashboard.localValues) });
+  await reopened.flush();
+  reopened.click('runNow');
+  await reopened.flush();
+  assert.equal(reopened.requests.filter(({ method }) => method === 'POST').length, 1);
+  assert.equal(reopened.requests.some(({ url }) => new URL(url).pathname === '/internal/operations/config'), false);
+});
+
+test('missing configured models block manual execution and offer Settings', async () => {
+  for (const config of [ {}, { providers: 'invalid', versions: {} },
+    { providers: [{ name: 'openai', configured: false }], versions: { extractionModel: 'hidden-extract', embeddingModel: 'hidden-embed' } },
+    { providers: [{ name: 'openai', configured: true }], versions: { extractionModel: ' ', embeddingModel: 'hidden-embed' } },
+    { providers: [{ name: 'openai', configured: true }], versions: { extractionModel: 'hidden-extract', embeddingModel: null } } ]) {
+    const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' }, config });
+    await dashboard.flush();
+    dashboard.click('runNow');
+    await dashboard.flush();
+    assert.equal(dashboard.requests.some(({ method }) => method === 'POST'), false);
+    assert.match(dashboard.html('onboarding'), /Settings/);
+    assert.doesNotMatch(dashboard.html('onboarding'), /hidden-extract|hidden-embed|confirm-pipeline/);
+    dashboard.clickOnboarding('pipeline-settings');
+    assert.equal(dashboard.window.location.search, '?view=settings');
+    assert.equal(dashboard.localValues.has('catalyst-onboarding-v1'), false);
+  }
+});
+
+test('failed config and cancellation allow retry without acknowledging disclosure', async () => {
+  let config = 'error';
+  const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' },
+    config: () => config });
+  await dashboard.flush();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  assert.match(dashboard.html('onboarding'), /Unable.*configuration.*Run pipeline now.*retry/s);
+  assert.match(dashboard.html('onboarding'), /Settings/);
+  assert.equal(dashboard.element('runNow').disabled, false);
+  assert.equal(dashboard.requests.some(({ method }) => method === 'POST'), false);
+  config = require('./test-support').configFixture;
+  dashboard.click('runNow');
+  await dashboard.flush();
+  dashboard.clickOnboarding('cancel-pipeline');
+  await dashboard.flush();
+  assert.equal(dashboard.document.activeElement.id, 'onboarding');
+  assert.equal(dashboard.localValues.has('catalyst-onboarding-v1'), false);
+  assert.equal(dashboard.requests.some(({ method }) => method === 'POST'), false);
+  dashboard.click('runNow');
+  await dashboard.flush();
+  dashboard.clickOnboarding('confirm-pipeline');
+  await dashboard.flush();
+  assert.equal(dashboard.requests.filter(({ method }) => method === 'POST').length, 1);
+});
+
+test('leaving Pipeline during the config read cancels disclosure and never posts', async () => {
+  const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' }, deferConfig: true });
+  await dashboard.flush();
+  dashboard.click('runNow');
+  dashboard.click('navDocuments');
+  dashboard.resolveConfig(0);
+  await dashboard.flush();
+  assert.doesNotMatch(dashboard.html('onboarding'), /confirm-pipeline/);
+  assert.equal(dashboard.requests.some(({ method }) => method === 'POST'), false);
+  assert.equal(dashboard.localValues.has('catalyst-onboarding-v1'), false);
+});
+
+test('changing credentials cancels a displayed disclosure and clears the configured model names', async () => {
+  const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' } });
+  await dashboard.flush();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  assert.match(dashboard.html('onboarding'), /embed-model/);
+  dashboard.click('clearKey');
+  await dashboard.flush();
+  assert.doesNotMatch(dashboard.html('onboarding'), /embed-model|confirm-pipeline/);
+  assert.equal(dashboard.requests.some(({ method }) => method === 'POST'), false);
+  assert.equal(dashboard.localValues.has('catalyst-onboarding-v1'), false);
+});
+
+test('polling and guide restart retain acknowledged disclosure without repeating the notice', async () => {
+  const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' } });
+  await dashboard.flush();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  dashboard.setHidden(true);
+  dashboard.setHidden(false);
+  dashboard.tick();
+  await dashboard.flush();
+  dashboard.clickOnboarding('confirm-pipeline');
+  await dashboard.flush();
+  assert.equal(dashboard.requests.filter(({ method }) => method === 'POST').length, 1);
+  dashboard.completePipeline({ status: 'SUCCESS' });
+  await dashboard.flush();
+  dashboard.click('navSettings');
+  dashboard.click('restartOnboarding');
+  dashboard.clickOnboarding('operator');
+  dashboard.clickOnboarding('pipeline');
+  await dashboard.flush();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  assert.equal(dashboard.requests.filter(({ method }) => method === 'POST').length, 2);
+  assert.equal(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')).modelDisclosureAcknowledged, true);
+});
+
 test('first visit offers an operator path and records only local guide progress', async () => {
   const dashboard = startDashboard({ search: '?view=overview', stored: { 'catalyst-admin-key': 'admin-secret' } });
   await dashboard.flush();
