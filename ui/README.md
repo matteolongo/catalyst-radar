@@ -75,8 +75,10 @@ HIGH 80–100. A threshold enters the higher band.
 ## Recorded pipeline and valuation investigation
 
 The shared dark shell remains dark independently of the operating-system theme.
-Document and pipeline lists use full width until a detail is selected, then split
-on wide screens and stack on narrow screens. Labels stay with filter controls.
+Document lists use full width until a detail is selected, then split on wide
+screens and stack on narrow screens. Pipeline detail opens above the full-width
+cycle table, keeping outcomes readable at desktop sizes. Its outcome summary
+precedes expandable metadata and counters. Labels stay with filter controls.
 
 1. Open **Pipeline**, select an actual pipeline or daily snapshot cycle, and
    inspect its recorded phases and counters. **Documents** and **Company
