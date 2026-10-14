@@ -589,7 +589,13 @@
       var html = traceHistoryNotice(state, 'steps') + traceCoverage(item.traceVersion, 'document intake') + '<p class="muted small">Only executed, persisted stages appear. Times are operational UTC times; scoring as-of and source publication/discovery remain separate. Showing ' + state.items.length + ' loaded stages.</p>';
       if (documentFilters.runId) html += '<p>Selected cycle: ' + traceLink('?view=pipeline&runId=' + encodeURIComponent(documentFilters.runId), documentFilters.runId) + '</p>';
       if (selectedAttemptId) html += '<p>Selected attempt: ' + esc(selectedAttemptId) + '</p>';
-      if (!state.items.length) html += '<p class="muted">' + (state.loading ? 'Loading recorded steps…' : 'No stages recorded for this document and selected run/attempt context. Later stages are not assumed to have run.') + '</p>';
+      if (!state.items.length) {
+        html += '<p class="muted">' + (state.loading ? 'Loading recorded steps…' : 'No stages recorded for this document and selected run/attempt context. Later stages are not assumed to have run.') + '</p>';
+        if (!state.loading && Number(selectedDocumentDetail && selectedDocumentDetail.capturedAttemptCount || 0) > 0)
+          html += '<p>The all-date attempt ledger contains ' + esc(integer(selectedDocumentDetail.capturedAttemptCount)) + ' recorded attempts. ' +
+            traceLink(documentSearch(documentFilters, { id: selectedDocumentId, tab: 'attempts' }), 'View the recorded attempts') +
+            '. These are actual records, not reconstructed timeline stages.</p>';
+      }
       var groups = new Map();
       state.items.slice().sort(function (a, b) { return new Date(a.startedAt) - new Date(b.startedAt) || a.sequence - b.sequence || a.id.localeCompare(b.id); }).forEach(function (step) {
         var key = step.operationRunId + ':' + (step.processingAttemptId || 'intake');
@@ -698,9 +704,11 @@
       if (!documentTabCache[tab]) documentTabCache[tab] = { loaded: false, loading: false, items: [], cursor: null, error: null, body: null };
       return documentTabCache[tab];
     }
-    function modelCallLink(id) {
+    function modelCallLink(id, call, ordinal) {
       var route = '?view=models&modelRunId=' + encodeURIComponent(id);
-      return '<a href="' + esc(route) + '" data-model-run-id="' + esc(id) + '">' + esc(id) + '</a>';
+      var label = call ? ({ extract: 'Event extraction', embed: 'Embedding' }[call.operation] || readable(call.operation)) +
+        ' · ' + (call.success ? 'Succeeded' : 'Failed') + ' · ' + call.model : 'Inspect recorded call ' + (ordinal + 1);
+      return '<a href="' + esc(route) + '" data-model-run-id="' + esc(id) + '" title="Recorded call ID: ' + esc(id) + '">' + esc(label) + '</a>';
     }
     function attemptStatusLabel(status) {
       return ({ RUNNING: 'Running', COMPLETED: 'Completed', SKIPPED: 'Skipped', RETRYABLE_ERROR: 'Retryable error',
@@ -723,14 +731,23 @@
       }
       html += state.items.map(function (item) {
         var selected = selectedAttemptId === item.id;
+        var historicalError = ['RETRYABLE_ERROR', 'TERMINAL_ERROR', 'INTERRUPTED'].includes(item.status) &&
+          detail.document && detail.document.state === 'COMPLETED' && Number(item.number) < Number(attemptCount);
+        var callRoute = documentSearch(Object.assign({}, documentFilters, { runId: item.runId || '' }),
+          { id: selectedDocumentId, tab: 'models', attemptId: item.id });
         return '<article class="document-record" data-attempt-id="' + esc(item.id) + '" tabindex="-1"' + (selected ? ' aria-current="true"' : '') + '>' +
           '<strong>Attempt ' + esc(item.number) + ' · ' + esc(attemptStatusLabel(item.status)) + '</strong>' +
+          (historicalError ? '<p class="muted">Historical error: a later attempt completed. The retry instruction below describes this earlier attempt.</p>' : '') +
           '<p>Started ' + esc(time(item.startedAt)) + ' UTC · duration ' + esc(item.durationMs == null ? 'Unknown' : integer(item.durationMs) + ' ms') +
-          (item.nextAttemptAt ? ' · next retry ' + esc(time(item.nextAttemptAt)) + ' UTC' : '') + '</p>' +
+          (item.nextAttemptAt ? (historicalError ? ' · retry planned at the time ' : ' · next retry ') + esc(time(item.nextAttemptAt)) + ' UTC' : '') + '</p>' +
           '<p>Events inserted/reused: ' + esc(integer(item.eventsInserted)) + ' / ' + esc(integer(item.eventsReused)) +
           ' · <a href="?view=pipeline&runId=' + encodeURIComponent(item.runId) + '" data-operation-run-id="' + esc(item.runId) + '">Open operation run</a></p>' +
-          (item.errorMessage ? '<p class="panel-error">' + esc(item.errorMessage) + '</p>' : '') +
-          (item.modelCallIds && item.modelCallIds.length ? '<p>Recorded model calls: ' + item.modelCallIds.map(modelCallLink).join(', ') +
+          (item.errorMessage ? '<p class="' + (historicalError ? 'muted' : 'panel-error') + '">' + esc(item.errorMessage) + '</p>' : '') +
+          '<p>' + traceLink(callRoute, 'View recorded calls for this attempt') + '</p>' +
+          (item.modelCallIds && item.modelCallIds.length ? '<p>Recorded model calls: ' + item.modelCallIds.map(function (id, index) {
+            var calls = documentTabCache.models && documentTabCache.models.items || [];
+            return modelCallLink(id, calls.find(function (call) { return sameId(call.id, id); }), index);
+          }).join(' · ') +
             (item.modelCallsTruncated ? ' · more calls recorded' : '') + '</p>' : '<p>No model call IDs recorded. This is missing provenance; it does not establish whether the provider was invoked.</p>') + '</article>';
       }).join('');
       if (selectedAttemptId && !state.items.some(function (item) { return item.id === selectedAttemptId; })) {
@@ -752,7 +769,7 @@
         var usage = (item.inputTokens == null ? 'Unknown' : integer(item.inputTokens)) + ' input · ' +
           (item.outputTokens == null ? 'Unknown' : integer(item.outputTokens)) + ' output tokens';
         var price = item.estimatedCost == null ? 'Unknown cost' : cost(item.estimatedCost, 1, 1);
-        return '<article class="document-record"><strong>' + modelCallLink(item.id) + ' · ' + esc(item.provider) + ' ' + esc(item.operation) + '</strong>' +
+        return '<article class="document-record"><strong>' + modelCallLink(item.id, item) + ' · ' + esc(item.provider) + '</strong>' +
           '<p>' + esc(item.model) + ' · ' + esc(time(item.createdAt)) + ' UTC · ' + esc(usage) + ' · ' + esc(price) + '</p>' +
           '<p>' + (item.success ? '<span class="pill ok">Recorded call succeeded</span>' : '<span class="pill bad">Recorded call failed</span>') +
           (item.errorMessage ? ' · ' + esc(item.errorMessage) : '') + '</p></article>';
@@ -1351,7 +1368,12 @@
     function renderSelectedModelCall(call) {
       renderModelSelectionContext();
       el('modelDetailTitle').textContent = 'Selected model call';
-      el('modelDetailContent').innerHTML = '<dl class="model-detail-grid">' +
+      el('modelDetailContent').innerHTML = '<section class="run-outcome-summary" aria-label="Recorded call outcome"><strong>' +
+        esc(({ extract: 'Event extraction', embed: 'Embedding' })[call.operation] || readable(call.operation)) + ' · ' + esc(call.model) +
+        '</strong><p><span class="pill ' + (call.success ? 'ok' : 'bad') + '">' + (call.success ? 'Succeeded' : 'Failed') + '</span> · Recorded ' +
+        esc(call.createdAt ? time(call.createdAt) + ' UTC' : 'at an unknown time') + '</p>' +
+        (call.errorCode || call.errorMessage ? '<p class="panel-error">' + esc(call.errorCode || 'Error category not recorded') + ' · ' + esc(call.errorMessage || 'Error message not recorded') + '</p>' : '') +
+        '</section>' + renderModelLinks(call) + '<dl class="model-detail-grid">' +
         [['Call ID', call.id], ['Provider', call.provider], ['Operation', call.operation], ['Model', call.model],
           ['Prompt version', call.promptVersion], ['Extractor version', call.extractorVersion], ['Recorded at (UTC)', time(call.createdAt)],
           ['Outcome', call.success ? 'Success' : 'Failed'], ['Input tokens', integer(call.inputTokens)],
@@ -1359,7 +1381,7 @@
           ['Latency', call.latencyMs == null ? 'Unknown' : integer(call.latencyMs) + ' ms'],
           ['Error category', call.errorCode], ['Safe error message', call.errorMessage]].map(function (entry) {
           return '<div><dt>' + esc(entry[0]) + '</dt><dd>' + esc(entry[1] == null || entry[1] === '' ? 'Unknown' : entry[1]) + '</dd></div>';
-        }).join('') + '</dl>' + renderModelLinks(call);
+        }).join('') + '</dl>';
     }
     function renderModelSelectionContext() {
       var call = selectedModelCall;
@@ -1978,7 +2000,7 @@
         ['Cycle ID', run.id], ['Trace version', run.traceVersion || 'Not recorded'], ['Trigger', run.trigger], ['Status', runStatusLabel(run)], ['Phase', run.phase],
         ['Started at (UTC)', run.startedAt ? time(run.startedAt) : 'Unknown'],
         ['Finished at (UTC)', run.finishedAt ? time(run.finishedAt) : 'Not finished'],
-        ['Duration', runDuration(run)], ['Capture', run.captureComplete ? 'Complete' : 'Recorded so far'],
+        ['Duration', runDuration(run)], ['Cycle record', run.captureComplete ? 'Finalized' : 'Not finalized'],
         ['Documents considered', integer(run.documentsConsidered)], ['Documents completed', integer(run.documentsCompleted)],
         ['Documents skipped', integer(run.documentsSkipped)], ['Documents retry scheduled', integer(run.documentsRetryScheduled)],
         ['Terminal document failures', integer(run.documentsTerminalFailures)], ['Events inserted / reused', integer(run.eventsInserted) + ' / ' + integer(run.eventsReused)],
@@ -1995,7 +2017,9 @@
       var documents = '<a href="?view=documents&amp;runId=' + encodeURIComponent(run.id) + '" data-cycle-documents-id="' +
         esc(run.id) + '">Inspect documents for this cycle</a>';
       var outcome = '<section class="run-outcome-summary" aria-label="Cycle outcome"><span class="pill ' + runStatusClass(run) + '">' +
-        esc(runStatusLabel(run)) + '</span><p>' + (!run.captureComplete ? 'Recorded so far · ' : '') +
+        esc(runStatusLabel(run)) + '</span><p>' + (run.finishedAt ? 'Cycle ended. ' : run.active ? 'Cycle in progress. ' : 'No final completion time recorded. ') +
+        (run.traceVersion ? 'Detailed audit format recorded; only executed stages are shown.' : 'Historical audit coverage is partial.') +
+        '</p><p>' + (!run.captureComplete ? 'Recorded so far · ' : '') +
         esc(integer(run.documentsCompleted)) + ' documents completed · ' + esc(integer(run.documentsSkipped)) + ' skipped · ' +
         esc(integer(run.documentsRetryScheduled)) + ' retry scheduled · ' + esc(integer(run.documentsTerminalFailures)) + ' terminal failures</p><p>' +
         esc(integer(run.companiesRescored)) + ' companies rescored · ' + esc(integer(run.companiesFailed)) + ' failed · ' +

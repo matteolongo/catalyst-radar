@@ -803,7 +803,7 @@ test('terminal cycle outcome remains distinct from incomplete captured counts', 
   assert.match(dashboard.html('runRows'), /CANCELLED/);
   assert.match(dashboard.html('runRows'), /Recorded so far/);
   assert.match(dashboard.html('runDetailContent'), /Status<\/dt><dd>CANCELLED/);
-  assert.match(dashboard.html('runDetailContent'), /Capture<\/dt><dd>Recorded so far/);
+  assert.match(dashboard.html('runDetailContent'), /Cycle record<\/dt><dd>Not finalized/);
 });
 
 test('attempt ledger presents running and interrupted outcomes explicitly', async () => {
