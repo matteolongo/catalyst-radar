@@ -98,6 +98,42 @@ test('leaving Pipeline during the config read cancels disclosure and never posts
   assert.equal(dashboard.localValues.has('catalyst-onboarding-v1'), false);
 });
 
+for (const cancellation of ['navigation', 'credentials']) {
+  test(cancellation + ' cancellation releases a stalled config check before its response arrives', async () => {
+    const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' }, deferConfig: true });
+    await dashboard.flush();
+    dashboard.click('runNow');
+    assert.equal(dashboard.element('runNow').disabled, true);
+    if (cancellation === 'navigation') {
+      dashboard.click('navDocuments');
+      dashboard.click('navPipeline');
+    } else {
+      dashboard.element('adminKey').value = 'replacement-admin';
+      dashboard.click('saveKey');
+    }
+    await dashboard.flush();
+    assert.equal(dashboard.element('runNow').disabled, false);
+    assert.doesNotMatch(dashboard.html('onboarding'), /Checking configured models|confirm-pipeline/);
+    assert.equal(dashboard.localValues.has('catalyst-onboarding-v1'), false);
+    assert.equal(dashboard.requests.some(({ method }) => method === 'POST'), false);
+
+    dashboard.click('runNow');
+    await dashboard.flush();
+    dashboard.resolveConfig(0);
+    await dashboard.flush();
+    assert.match(dashboard.html('onboarding'), /Checking configured models/);
+    assert.doesNotMatch(dashboard.html('onboarding'), /confirm-pipeline/);
+    assert.equal(dashboard.requests.some(({ method }) => method === 'POST'), false);
+    dashboard.resolveConfig(1);
+    await dashboard.flush();
+    dashboard.clickOnboarding('confirm-pipeline');
+    await dashboard.flush();
+    assert.equal(dashboard.requests.filter(({ method }) => method === 'POST').length, 1);
+    assert.equal(dashboard.requests.filter(({ method }) => method === 'POST')[0].headers['X-Admin-Key'],
+      cancellation === 'credentials' ? 'replacement-admin' : 'admin-secret');
+  });
+}
+
 test('changing credentials cancels a displayed disclosure and clears the configured model names', async () => {
   const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' } });
   await dashboard.flush();

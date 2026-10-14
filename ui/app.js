@@ -64,14 +64,14 @@
       if (disclosure && disclosure.resolve) disclosure.resolve(false);
       disclosure = null;
     }
-    async function beforePipelineRun() {
-      if (state.modelDisclosureAcknowledged) return true;
+    function beforePipelineRun() {
+      if (state.modelDisclosureAcknowledged) return Promise.resolve(true);
       var check = { revision: credentialRevision, status: 'loading' };
+      var approval = new Promise(function (resolve) { check.resolve = resolve; });
       disclosure = check;
       show(currentView);
-      try {
-        var config = await api('/internal/operations/config');
-        if (disclosure !== check || check.revision !== credentialRevision || currentView !== 'pipeline') return false;
+      api('/internal/operations/config').then(function (config) {
+        if (disclosure !== check || check.revision !== credentialRevision || currentView !== 'pipeline') return check.resolve(false);
         var versions = config && config.versions;
         var configured = config && Array.isArray(config.providers) && config.providers.some(function (provider) {
           return provider && provider.name === 'openai' && provider.configured === true;
@@ -80,23 +80,21 @@
             typeof versions.embeddingModel !== 'string' || !versions.embeddingModel.trim()) {
           check.status = 'missing';
           show(currentView);
-          return false;
+          return check.resolve(false);
         }
         check.status = 'ready';
         check.extractionModel = versions.extractionModel.trim();
         check.embeddingModel = versions.embeddingModel.trim();
-        return await new Promise(function (resolve) {
-          check.resolve = resolve;
-          show(currentView);
-          $('onboarding').focus();
-        });
-      } catch (_) {
+        show(currentView);
+        $('onboarding').focus();
+      }).catch(function () {
         if (disclosure === check && check.revision === credentialRevision && currentView === 'pipeline') {
           check.status = 'error';
           show(currentView);
         }
-        return false;
-      }
+        check.resolve(false);
+      });
+      return approval;
     }
     function show(view) {
       if (view !== 'pipeline' || (disclosure && disclosure.revision !== credentialRevision)) cancelPipelineCheck();
