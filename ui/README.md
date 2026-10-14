@@ -17,7 +17,9 @@ frontend build. See the [operator/API reference](../docs/operations-backoffice.m
   Detail shows safe errors and recorded source/attempt/run IDs.
 - **Intelligence** contains Discover/Events tabs and Company analysis. Original
   Discover/Events/Company URLs still work. Events has an inclusive UTC through
-  date; Documents uses next-day exclusive `to`.
+  date; Documents uses next-day exclusive `to`. Event types are selected by a
+  readable name, grouped by their taxonomy-v1 family; invalid filters show an
+  inline correction message rather than an internal conversion error.
 - **Settings** stores access keys and shows safe read-only configuration,
   versions, provider-configured booleans and scheduler settings.
 

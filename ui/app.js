@@ -129,7 +129,7 @@
     eventItems = [];
     eventNextCursor = null;
     ['discoveryResults', 'discoveryAsOf', 'pageSummary', 'companyOverview', 'companyScore', 'companyHistory',
-      'companyExplanation', 'companyEvents', 'companyEventsStatus', 'eventResults'].forEach(function (id) {
+      'companyExplanation', 'companyEvents', 'companyEventsStatus', 'eventResults', 'eventFilterError'].forEach(function (id) {
       $(id).innerHTML = '';
       $(id).textContent = '';
     });
@@ -357,6 +357,8 @@
     if (!reset && !eventNextCursor) return;
     if (reset) {
       appliedEventFilters = readEventFilters();
+      $('eventFilterError').textContent = '';
+      $('eventType').removeAttribute('aria-invalid');
       eventItems = [];
       eventNextCursor = null;
       $('eventResults').textContent = '';
@@ -378,10 +380,19 @@
       renderEvents();
     } catch (err) {
       if (revision !== credentialRevision || request !== eventRequest || currentView !== 'events') return;
-      $('eventStatus').textContent = reset ? 'Unable to load events. Try searching again.' : 'Unable to load more events. Try again.';
+      var invalidFilter = err.status === 400 || err.code === 'INVALID_REQUEST';
+      $('eventStatus').textContent = invalidFilter ? 'Correct the filters and search again.' :
+        (reset ? 'Unable to load events. Try searching again.' : 'Unable to load more events. Try again.');
       if (reset) $('eventResults').textContent = '';
       else renderEvents();
-      showError('Events: ' + err.message);
+      if (invalidFilter) {
+        $('eventFilterError').textContent = 'Check the event filters. Choose supported values and valid dates.';
+        if (/parameter 'type'/.test(err.message)) {
+          $('eventType').setAttribute('aria-invalid', 'true');
+          $('eventFilterError').textContent = 'Choose a supported event type from the list, or select All types.';
+          $('eventType').focus();
+        }
+      } else showError('Events: ' + err.message);
     } finally {
       if (revision === credentialRevision && request === eventRequest && currentView === 'events') {
         eventLoading = false;

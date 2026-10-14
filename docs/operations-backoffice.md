@@ -46,6 +46,11 @@ or `MODEL_RUN_NOT_FOUND`. Bad filters/cursors return 400 `INVALID_REQUEST`;
 missing/wrong admin keys return 403 `FORBIDDEN`. Exact ingestion lookup for a
 missing ID returns an empty feed.
 
+Parameter conversion failures return `INVALID_REQUEST` with the parameter name
+and a correction prompt, without enum class names or internal conversion errors.
+The Events UI offers the existing taxonomy-v1 types as a family-grouped selector;
+invalid filters remain in the form with an inline correction message.
+
 ## Filters, windows and cursors
 
 Overview/runs/ingestion/models accept `range=24h|7d`, or a complete ISO-8601 UTC
