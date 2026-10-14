@@ -33,13 +33,13 @@
     var storageKey = 'catalyst-onboarding-v1';
     var paths = { operator: ['overview', 'pipeline', 'documents', 'models'], analyst: ['discover', 'company', 'events'] };
     var steps = {
-      overview: ['Overview', 'Check freshness, waiting documents and provider observations. Empty data can mean nothing has been captured yet; it does not confirm provider health.'],
-      pipeline: ['Pipeline', 'Inspect recorded runs and their outcomes. Running the pipeline fetches news and may use paid model calls; this guide never starts a run.'],
-      documents: ['Documents', 'Follow a document through source text, processing attempts, extracted events and recorded model calls. Repeated articles can describe the same event.'],
-      models: ['Models & costs', 'Review recorded model calls, tokens and estimated costs. Missing cost data is unknown, not zero.'],
+      overview: ['Overview', 'Check freshness, waiting documents and provider observations. Pending means a captured document is waiting for processing. Empty data can mean nothing has been captured yet; it does not confirm provider health.'],
+      pipeline: ['Pipeline', 'Follow ingestion (fetching and storing news), processing (extracting and grouping events), and scoring (recalculating company catalysts). RUNNING means work is active; SUCCESS means the run finished successfully; PARTIAL means some work had issues; FAILED means the run failed; CANCELLED means it was cancelled; INTERRUPTED means it stopped before finishing. Inspect the recorded run for details. Running the pipeline fetches news and may use paid model calls; this guide never starts a run.'],
+      documents: ['Documents', 'Follow source text, processing attempts, extracted events and recorded model calls. PENDING means waiting; PROCESSING means an attempt is active; COMPLETED means processing finished; SKIPPED means processing was not needed; RETRYABLE_ERROR means processing can retry; TERMINAL_ERROR means automatic retries have stopped. Inspect the error and attempt history to understand what happened. UNRESOLVED means company links are missing; NOT_TRACKED means processing state is not recorded.'],
+      models: ['Models & costs', 'Inspect recorded model status to find successful and failed calls, latency to see how long calls took, and activity to see which operations ran and when. Open a call to inspect its recorded context.'],
       discover: ['Discover', 'Filter stored company snapshots by catalyst state, score and velocity. These are intelligence signals, not buy or sell recommendations.'],
       company: ['Company', 'Open a company using its ticker or a Discover result. Compare the saved score, explanation, history and recorded valuations; an explanation reconstructed today is distinct from captured historical inputs.'],
-      events: ['Events', 'Inspect classified events and supporting source evidence. Event, publication and discovery times describe different points in time.'],
+      events: ['Events', 'Inspect classified events and supporting source evidence. Event clusters group reports about the same real-world event; duplicate reports do not multiply its catalyst score. Event, publication and discovery times describe different points in time.'],
     };
     var state = { path: null, completed: [], deferred: false };
     try {
@@ -113,6 +113,10 @@
         return;
       } else return;
       save();
+      if (action === 'acknowledge' && state.completed.length === paths[state.path].length) {
+        navigate('?view=' + paths[state.path][0]);
+        return;
+      }
       show(currentView);
       $('onboarding').focus();
     }

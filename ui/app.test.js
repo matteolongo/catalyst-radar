@@ -21,6 +21,7 @@ test('first visit offers an operator path and records only local guide progress'
     dashboard.clickOnboarding('acknowledge');
   }
   assert.match(dashboard.html('onboarding'), /Guide complete/);
+  assert.equal(dashboard.window.location.search, '?view=overview');
   assert.equal(dashboard.requests.some((request) => request.method === 'POST'), false);
   assert.equal(dashboard.localValues.size, 1);
   assert.equal(dashboard.values.get('catalyst-admin-key'), 'admin-secret');
@@ -47,6 +48,7 @@ test('analyst guide acknowledges displayed views and defers resumes and restarts
   await resumed.flush();
   resumed.clickOnboarding('acknowledge');
   assert.match(resumed.html('onboarding'), /Guide complete/);
+  assert.equal(resumed.window.location.search, '?view=discover');
   resumed.click('navSettings');
   resumed.click('restartOnboarding');
   assert.match(resumed.html('onboarding'), /Manage the pipeline/);
@@ -70,6 +72,27 @@ test('guide accepts defer before choosing a path and safely handles invalid or u
     assert.equal(dashboard.requests.some((request) => request.method === 'POST'), false);
   }
 });
+
+for (const [view, path, explanation] of [
+  ['overview', 'operator', /Pending means.*waiting.*processing/i],
+  ['pipeline', 'operator', /ingestion.*processing.*scoring.*SUCCESS.*PARTIAL.*FAILED.*CANCELLED.*INTERRUPTED/s],
+  ['documents', 'operator', /PENDING.*PROCESSING.*COMPLETED.*SKIPPED.*RETRYABLE_ERROR.*TERMINAL_ERROR.*error.*attempt/s],
+  ['models', 'operator', /status.*latency.*activity/s],
+  ['events', 'analyst', /clusters.*same.*event.*duplicate reports.*score/s],
+]) {
+  test('guide explains ' + view + ' before allowing acknowledgement', async () => {
+    const dashboard = startDashboard({ search: '?view=' + view, localStored: {
+      'catalyst-onboarding-v1': JSON.stringify({ path, completed: [], deferred: false }),
+    } });
+    await dashboard.flush();
+    assert.match(dashboard.html('onboarding'), explanation);
+    if (view === 'models') assert.doesNotMatch(dashboard.html('onboarding'), /tokens|estimated costs/i);
+    assert.deepEqual(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')).completed, []);
+    dashboard.clickOnboarding('acknowledge');
+    assert.deepEqual(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')).completed, [view]);
+    assert.equal(dashboard.requests.some((request) => request.method === 'POST'), false);
+  });
+}
 
 function sourceClick(dashboard, container, id) {
   dashboard.click(container, { target: { closest: (selector) => selector === '[data-source-document-id]'
