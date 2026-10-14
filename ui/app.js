@@ -129,7 +129,7 @@
     eventItems = [];
     eventNextCursor = null;
     ['discoveryResults', 'discoveryAsOf', 'pageSummary', 'companyOverview', 'companyScore', 'companyHistory',
-      'companyExplanation', 'companyEvents', 'companyEventsStatus', 'eventResults', 'eventFilterError'].forEach(function (id) {
+      'companyExplanation', 'companyEvents', 'companyEventsStatus', 'eventResults', 'eventFilterError', 'companyLookupStatus'].forEach(function (id) {
       $(id).innerHTML = '';
       $(id).textContent = '';
     });
@@ -457,7 +457,11 @@
     $('loadCompanyEvents').classList.add('hidden');
     api(companyPath(ticker, '')).then(function (company) {
       if (revision === credentialRevision && request === companyRequest && currentView === 'company') renderCompanyOverview(company);
-    }).catch(function () { if (revision === credentialRevision && request === companyRequest && currentView === 'company') companyPanelError('companyOverview', 'company'); });
+    }).catch(function (error) {
+      if (revision !== credentialRevision || request !== companyRequest || currentView !== 'company') return;
+      if (error.code === 'COMPANY_NOT_FOUND') $('companyOverview').textContent = 'No company is stored for ticker ' + ticker + '. Return to Discover and try another ticker.';
+      else companyPanelError('companyOverview', 'company');
+    });
     api(companyPath(ticker, '/catalyst')).then(function (data) {
       if (revision === credentialRevision && request === companyRequest && currentView === 'company') renderCatalyst(data);
     }).catch(function () {
@@ -672,6 +676,21 @@
       route.set('view', currentView);
       route.set('range', event.target.value === '7d' ? '7d' : '24h');
       navigate('?' + route.toString());
+    });
+    $('companyLookup').addEventListener('submit', function (event) {
+      event.preventDefault();
+      var ticker = $('companyLookupTicker').value.trim().toUpperCase();
+      $('companyLookupTicker').value = ticker;
+      if (!validTicker(ticker)) {
+        $('companyLookupTicker').setAttribute('aria-invalid', 'true');
+        $('companyLookupStatus').textContent = 'Enter a ticker such as ABNB or BRK.B, up to 15 letters, numbers, dots or hyphens.';
+        $('companyLookupTicker').focus();
+        return;
+      }
+      $('companyLookupTicker').removeAttribute('aria-invalid');
+      $('companyLookupStatus').textContent = '';
+      clearError();
+      navigate('?view=company&ticker=' + encodeURIComponent(ticker), { returnSearch: window.location.search || '?view=discover' });
     });
     $('discoveryFilters').addEventListener('submit', function (event) {
       event.preventDefault();
