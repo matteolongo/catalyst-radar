@@ -91,6 +91,9 @@ Document lists use full width until a detail is selected, then split on wide
 screens and stack on narrow screens. Pipeline detail opens above the full-width
 cycle table, keeping outcomes readable at desktop sizes. Its outcome summary
 precedes expandable metadata and counters. Labels stay with filter controls.
+An empty cycle list describes the selected period and status filter. The 24-hour
+view offers the last seven days; an active status filter can be cleared directly.
+Disabled daily scheduling is shown separately from absence of historical rows.
 
 1. Open **Pipeline**, select an actual pipeline or daily snapshot cycle, and
    inspect its recorded phases and counters. **Documents** and **Company

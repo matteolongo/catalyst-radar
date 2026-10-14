@@ -211,7 +211,7 @@ test('an empty captured dataset stays empty across screens and explains disabled
   assert.equal(dashboard.loadedModelRows(), 0);
   assert.match(dashboard.html('modelRows'), /No recorded model calls/);
   await dashboard.openPipeline('?view=pipeline&kind=DAILY_SNAPSHOTS');
-  assert.match(dashboard.html('runRows'), /Daily snapshots are disabled\. No cycles are recorded/);
+  assert.match(dashboard.html('runRows'), /No daily snapshot cycles in the last 24 hours\. Daily snapshots are currently disabled/);
   assert.match(dashboard.html('ingestionRows'), /No provider ingestion runs recorded/);
   assert.doesNotMatch(dashboard.html('runRows'), /data-run-id=/);
   assert.equal(dashboard.requests.some(r => r.method === 'POST'), false);
@@ -1049,9 +1049,9 @@ test('empty daily history distinguishes a disabled scheduler from an enabled one
     await dashboard.openPipeline('?view=pipeline&kind=DAILY_SNAPSHOTS');
     outcomes.push(dashboard.html('runRows'));
   }
-  assert.match(outcomes[0], /Daily snapshots are disabled\. No cycles are recorded\./);
-  assert.match(outcomes[1], /No recorded cycles yet\./);
-  assert.doesNotMatch(outcomes[1], /Daily snapshots are disabled/);
+  assert.match(outcomes[0], /No daily snapshot cycles in the last 24 hours\. Daily snapshots are currently disabled\./);
+  assert.match(outcomes[1], /No daily snapshot cycles in the last 24 hours\./);
+  assert.doesNotMatch(outcomes[1], /Daily snapshots are currently disabled/);
 });
 
 test('daily history labels unavailable scheduler state after its configuration read fails', async () => {
@@ -1074,7 +1074,7 @@ test('busy pipeline response refreshes reads without inventing a history row', a
   await dashboard.flush();
   assert.equal(dashboard.requests.filter((request) => request.method === 'POST').length, 1);
   assert.equal(dashboard.text('pipelineStatus'), 'A pipeline cycle is already running');
-  assert.match(dashboard.html('runRows'), /No recorded cycles yet/);
+  assert.match(dashboard.html('runRows'), /No pipeline cycles in the last 24 hours/);
 });
 
 test('unfinished inactive pipeline rows stay inspectable without blocking a new trigger', async () => {
