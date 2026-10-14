@@ -59,6 +59,23 @@ a busy response creates no extra history row. There is no document retry,
 scheduler editing, cancel control or automatic replay. GET reads never trigger
 paid work. Use HTTPS and restricted remote access; do not expose the local profile.
 
+## Backoffice guide
+
+The optional, non-modal guide offers two paths: **Manage the pipeline** for
+operators covers Overview, Pipeline, Documents and Models & costs;
+**Explore company intelligence** for analysts covers Discover, Company and Events.
+You can keep using the backoffice while following it. Progress stays only in
+this browser. Choose **Later** or **Continue later** to defer, **Resume guide**
+to continue, or restart the guide from **Settings**. The guide never starts
+pipeline work.
+
+On the first manual **Run pipeline now**, the backoffice reads the existing safe
+configuration view and explains the configured models: extraction turns articles
+into structured catalyst events; embeddings group and deduplicate semantically
+similar reports. Starting the pipeline requires **Confirm and run pipeline**.
+Missing configuration offers **Open Settings**; after correcting it, or if the
+configuration check fails, choose **Run pipeline now** again to retry the check.
+
 ## Investigation walkthrough
 
 1. Follow an **Overview** queue/failure signal into filtered Documents.
