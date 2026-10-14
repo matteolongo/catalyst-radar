@@ -4,6 +4,73 @@ const { startDashboard: startDashboardWithRoute, waitForRequests, companyFixture
 
 function startDashboard(options = {}) { return startDashboardWithRoute({ search: '?view=discover', ...options }); }
 
+test('first visit offers an operator path and records only local guide progress', async () => {
+  const dashboard = startDashboard({ search: '?view=overview', stored: { 'catalyst-admin-key': 'admin-secret' } });
+  await dashboard.flush();
+  assert.match(dashboard.html('onboarding'), /Manage the pipeline/);
+  dashboard.clickOnboarding('operator');
+  assert.equal(dashboard.window.location.search, '?view=overview');
+  assert.deepEqual(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')),
+    { path: 'operator', completed: [], deferred: false });
+  dashboard.clickOnboarding('acknowledge');
+  assert.deepEqual(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')).completed, ['overview']);
+  for (const view of ['pipeline', 'documents', 'models']) {
+    dashboard.clickOnboarding(view);
+    await dashboard.flush();
+    assert.equal(dashboard.window.location.search, '?view=' + view);
+    dashboard.clickOnboarding('acknowledge');
+  }
+  assert.match(dashboard.html('onboarding'), /Guide complete/);
+  assert.equal(dashboard.requests.some((request) => request.method === 'POST'), false);
+  assert.equal(dashboard.localValues.size, 1);
+  assert.equal(dashboard.values.get('catalyst-admin-key'), 'admin-secret');
+});
+
+test('analyst guide acknowledges displayed views and defers resumes and restarts locally', async () => {
+  const dashboard = startDashboard();
+  await dashboard.flush();
+  dashboard.clickOnboarding('analyst');
+  dashboard.clickOnboarding('acknowledge');
+  dashboard.clickOnboarding('company');
+  assert.equal(dashboard.document.activeElement.id, 'companyLookupTicker');
+  assert.deepEqual(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')).completed, ['discover']);
+  dashboard.element('companyLookupTicker').value = 'DELL';
+  dashboard.element('companyLookup').trigger('submit');
+  await dashboard.flush();
+  dashboard.clickOnboarding('acknowledge');
+  dashboard.clickOnboarding('defer');
+  assert.match(dashboard.html('onboarding'), /Resume guide/);
+  const resumed = startDashboard({ localStored: Object.fromEntries(dashboard.localValues) });
+  await resumed.flush();
+  resumed.clickOnboarding('resume');
+  resumed.clickOnboarding('events');
+  await resumed.flush();
+  resumed.clickOnboarding('acknowledge');
+  assert.match(resumed.html('onboarding'), /Guide complete/);
+  resumed.click('navSettings');
+  resumed.click('restartOnboarding');
+  assert.match(resumed.html('onboarding'), /Manage the pipeline/);
+  assert.deepEqual(JSON.parse(resumed.localValues.get('catalyst-onboarding-v1')),
+    { path: null, completed: [], deferred: false });
+  assert.equal(resumed.requests.some((request) => request.method === 'POST'), false);
+});
+
+test('guide accepts defer before choosing a path and safely handles invalid or unavailable storage', async () => {
+  for (const options of [{ localStored: { 'catalyst-onboarding-v1': '{bad' } },
+    { localStored: { 'catalyst-onboarding-v1': JSON.stringify({ path: 'https://evil.example', completed: ['models'], deferred: false }) } },
+    { localStorageFailure: true }]) {
+    const dashboard = startDashboard(options);
+    await dashboard.flush();
+    dashboard.clickOnboarding('defer');
+    dashboard.clickOnboarding('resume');
+    assert.match(dashboard.html('onboarding'), /Manage the pipeline/);
+    dashboard.clickOnboarding('analyst');
+    dashboard.clickOnboarding('acknowledge');
+    assert.match(dashboard.html('onboarding'), /1 of 3/);
+    assert.equal(dashboard.requests.some((request) => request.method === 'POST'), false);
+  }
+});
+
 function sourceClick(dashboard, container, id) {
   dashboard.click(container, { target: { closest: (selector) => selector === '[data-source-document-id]'
     ? { dataset: { sourceDocumentId: id } } : null } });

@@ -379,3 +379,13 @@ button { color: #081118; font-weight: 600; }
   td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); }
   .trace-row, .step-timeline > li { padding: 10px; }
 }
+/* Optional guide stays in the normal page flow. */
+.onboarding { border-inline-start: 4px solid #5274d5; margin-bottom: 1rem; }
+.onboarding-actions, .onboarding-steps { display: flex; flex-wrap: wrap; gap: .75rem; }
+.onboarding-steps { padding-left: 1.5rem; gap: .75rem 2rem; }
+.onboarding > button { margin: 0 .5rem .5rem 0; }
+.onboarding :focus-visible, .onboarding:focus-visible, #restartOnboarding:focus-visible { outline: 3px solid #5274d5; outline-offset: 3px; }
+@media (max-width: 600px) {
+  .onboarding-actions, .onboarding-steps { flex-direction: column; align-items: flex-start; }
+  .onboarding button { white-space: normal; text-align: left; }
+}

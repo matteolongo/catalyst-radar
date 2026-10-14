@@ -27,6 +27,97 @@
   var eventItems = [];
   var eventNextCursor = null;
   var appliedEventFilters;
+  var onboarding = createOnboarding();
+
+  function createOnboarding() {
+    var storageKey = 'catalyst-onboarding-v1';
+    var paths = { operator: ['overview', 'pipeline', 'documents', 'models'], analyst: ['discover', 'company', 'events'] };
+    var steps = {
+      overview: ['Overview', 'Check freshness, waiting documents and provider observations. Empty data can mean nothing has been captured yet; it does not confirm provider health.'],
+      pipeline: ['Pipeline', 'Inspect recorded runs and their outcomes. Running the pipeline fetches news and may use paid model calls; this guide never starts a run.'],
+      documents: ['Documents', 'Follow a document through source text, processing attempts, extracted events and recorded model calls. Repeated articles can describe the same event.'],
+      models: ['Models & costs', 'Review recorded model calls, tokens and estimated costs. Missing cost data is unknown, not zero.'],
+      discover: ['Discover', 'Filter stored company snapshots by catalyst state, score and velocity. These are intelligence signals, not buy or sell recommendations.'],
+      company: ['Company', 'Open a company using its ticker or a Discover result. Compare the saved score, explanation, history and recorded valuations; an explanation reconstructed today is distinct from captured historical inputs.'],
+      events: ['Events', 'Inspect classified events and supporting source evidence. Event, publication and discovery times describe different points in time.'],
+    };
+    var state = { path: null, completed: [], deferred: false };
+    try {
+      var saved = JSON.parse(window.localStorage.getItem(storageKey));
+      if (saved && (saved.path === null || Object.prototype.hasOwnProperty.call(paths, saved.path)) &&
+          Array.isArray(saved.completed) && typeof saved.deferred === 'boolean') {
+        state = { path: saved.path, completed: (paths[saved.path] || []).filter(function (view) {
+          return saved.completed.includes(view);
+        }), deferred: saved.deferred };
+      }
+    } catch (_) { /* Guide progress remains available in memory when browser storage is unavailable. */ }
+
+    function save() {
+      try { window.localStorage.setItem(storageKey, JSON.stringify(state)); } catch (_) { /* Keep the current in-memory progress. */ }
+    }
+    function button(action, label) {
+      return '<button type="button" class="ghost" data-onboarding-action="' + action + '">' + label + '</button>';
+    }
+    function show(view) {
+      var panel = $('onboarding');
+      panel.classList.remove('hidden');
+      var content = '<h2>Backoffice guide</h2>';
+      if (state.deferred) {
+        panel.innerHTML = content + '<p>Continue whenever you are ready.</p>' + button('resume', 'Resume guide');
+        return;
+      }
+      if (!state.path) {
+        panel.innerHTML = content + '<p>What would you like to do? This optional guide saves only your progress in this browser.</p>' +
+          '<div class="onboarding-actions">' + button('operator', 'Manage the pipeline') + button('analyst', 'Explore company intelligence') +
+          button('defer', 'Later') + '</div>';
+        return;
+      }
+      var path = paths[state.path];
+      var complete = state.completed.length === path.length;
+      content += '<p>' + (complete ? 'Guide complete. Restart from Settings to explore another path.' :
+        state.completed.length + ' of ' + path.length + ' steps complete. Open each view and acknowledge its explanation.') + '</p>';
+      content += '<ol class="onboarding-steps">' + path.map(function (step) {
+        return '<li>' + button(step, steps[step][0]) + ' <span>' + (state.completed.includes(step) ? 'Complete' : 'To explore') + '</span></li>';
+      }).join('') + '</ol>';
+      if (path.includes(view)) {
+        content += '<h3>' + steps[view][0] + '</h3><p>' + steps[view][1] + '</p>';
+        if (!state.completed.includes(view)) content += button('acknowledge', 'I understand this view');
+      } else content += '<p>Choose a step above to continue your guide.</p>';
+      if (!complete) content += button('defer', 'Continue later');
+      panel.innerHTML = content;
+    }
+    function restart() {
+      state = { path: null, completed: [], deferred: false };
+      save();
+      show(currentView);
+      $('onboarding').focus();
+    }
+    function click(event) {
+      var target = event.target.closest('[data-onboarding-action]');
+      if (!target) return;
+      var action = target.dataset.onboardingAction;
+      if (action === 'operator' || action === 'analyst') {
+        state = { path: action, completed: [], deferred: false };
+        save();
+        navigate('?view=' + paths[action][0]);
+        return;
+      }
+      if (action === 'defer' || action === 'resume') state.deferred = action === 'defer';
+      else if (action === 'acknowledge' && state.path && paths[state.path].includes(currentView)) {
+        if (!state.completed.includes(currentView)) state.completed.push(currentView);
+      } else if (state.path && paths[state.path].includes(action)) {
+        if (action === 'company' && currentView !== 'company') {
+          navigate('?view=discover');
+          $('companyLookupTicker').focus();
+        } else if (action !== currentView) navigate('?view=' + action);
+        return;
+      } else return;
+      save();
+      show(currentView);
+      $('onboarding').focus();
+    }
+    return { show: show, restart: restart, click: click };
+  }
 
   function $(id) { return document.getElementById(id); }
 
@@ -628,6 +719,7 @@
     }
     if (view === 'events' && !eventLoaded) loadEvents(true);
     if (operations) operations.show({ view: view, params: route, fromHistory: !!fromHistory });
+    onboarding.show(view);
 
     if (moveFocus) {
       if (view === 'company') $('companyTitle').focus();
@@ -637,6 +729,8 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
+    $('onboarding').addEventListener('click', onboarding.click);
+    $('restartOnboarding').addEventListener('click', onboarding.restart);
     appliedDiscoveryFilters = readDiscoveryFilters();
     discoveryLimit = Number(appliedDiscoveryFilters.get('limit'));
     var saved = window.sessionStorage.getItem(ADMIN_KEY_NAME);
