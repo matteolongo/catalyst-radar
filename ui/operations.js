@@ -225,7 +225,9 @@
       clearModelData();
       clearPipelineData();
       el('documentsWorkspace').classList.remove('has-selection');
-      ['documentFilters', 'documentRows', 'loadDocuments', 'documentDetail', 'loadSteps', 'loadDocumentValuations',
+      el('documentScope').innerHTML = '';
+      el('modelSelectionContext').innerHTML = '';
+      ['documentScope', 'modelSelectionContext', 'documentFilters', 'documentRows', 'loadDocuments', 'documentDetail', 'loadSteps', 'loadDocumentValuations',
         'loadAttempts', 'loadDocumentModels', 'loadDocumentEvents', 'modelFilters', 'modelRows', 'loadModels', 'modelDetail'].forEach(function (id) {
         toggleHidden(id, true);
       });
@@ -407,6 +409,18 @@
       Array.from(el('documentStates').options || []).forEach(function (option) {
         option.selected = documentFilters.statuses.includes(option.value);
       });
+      renderDocumentScope();
+    }
+    function renderDocumentScope() {
+      var scopes = [];
+      if (documentFilters.runId) scopes.push('<p><strong>Documents from the selected cycle</strong> · ' +
+        traceLink('?view=pipeline&runId=' + encodeURIComponent(documentFilters.runId), 'Inspect cycle') +
+        traceLink(documentSearch(Object.assign({}, documentFilters, { runId: '' }), null), 'Remove cycle scope') + '</p>');
+      if (documentFilters.ingestionRunId) scopes.push('<p><strong>Documents first captured by the selected ingestion run</strong> · ' +
+        traceLink('?view=pipeline&ingestionRunId=' + encodeURIComponent(documentFilters.ingestionRunId), 'Inspect ingestion run') +
+        traceLink(documentSearch(Object.assign({}, documentFilters, { ingestionRunId: '' }), null), 'Remove ingestion scope') + '</p>');
+      el('documentScope').innerHTML = scopes.join('');
+      toggleHidden('documentScope', !scopes.length || !credentials().hasAdmin);
     }
     function documentSearch(filters, selection) {
       var route = new URLSearchParams();
@@ -1013,6 +1027,7 @@
       }
       toggleHidden('documentFilters', false);
       toggleHidden('documentRows', false);
+      renderDocumentScope();
       if (force) {
         documentPageLoaded = false;
         documentPageError = null;
@@ -1246,6 +1261,7 @@
       return value == null || !Number.isFinite(Number(value)) ? 'Unknown' : String(value) + ' ms';
     }
     function renderModelSummary(summary) {
+      renderModelSelectionContext();
       if (!summary || !summary.totals) {
         el('modelCallsTotal').textContent = 'Unknown';
         el('modelFailedTotal').textContent = 'Unknown';
@@ -1323,6 +1339,7 @@
       return '<p class="model-associations">' + links.join(' · ') + '</p>';
     }
     function renderSelectedModelCall(call) {
+      renderModelSelectionContext();
       el('modelDetailTitle').textContent = 'Selected model call';
       el('modelDetailContent').innerHTML = '<dl class="model-detail-grid">' +
         [['Call ID', call.id], ['Provider', call.provider], ['Operation', call.operation], ['Model', call.model],
@@ -1334,11 +1351,32 @@
           return '<div><dt>' + esc(entry[0]) + '</dt><dd>' + esc(entry[1] == null || entry[1] === '' ? 'Unknown' : entry[1]) + '</dd></div>';
         }).join('') + '</dl>' + renderModelLinks(call);
     }
+    function renderModelSelectionContext() {
+      var call = selectedModelCall;
+      if (!call || !modelWindow || !modelSummaryLoaded || !credentials().hasAdmin) {
+        el('modelSelectionContext').innerHTML = '';
+        toggleHidden('modelSelectionContext', true);
+        return;
+      }
+      var at = call.createdAt ? new Date(call.createdAt).getTime() : NaN;
+      var from = new Date(modelWindow.from).getTime();
+      var to = new Date(modelWindow.to).getTime();
+      var outside = Number.isFinite(at) && Number.isFinite(from) && Number.isFinite(to) && (at < from || at >= to);
+      el('modelSelectionContext').classList.toggle('trace-notice', outside);
+      el('modelSelectionContext').innerHTML = '<p><strong>' + (outside ? 'Selected call is outside the activity window.' : 'Selected recorded call.') +
+        '</strong> Recorded ' + esc(call.createdAt ? time(call.createdAt) + ' UTC' : 'at an unknown time') + '.</p><p>Totals and the call list cover ' +
+        esc(time(modelWindow.from)) + ' to ' + esc(time(modelWindow.to)) + ' UTC. The exact call detail is read independently of this period.</p>' +
+        (outside && modelRange !== '7d' && at >= to - 7 * 86400000 && at < to
+          ? '<p>' + traceLink(modelSearch(modelFilters, '7d', selectedModelCallId), 'Show the last 7 days') + '</p>' : '');
+      toggleHidden('modelSelectionContext', false);
+    }
     function setModelPane() {
       toggleHidden('modelDetail', !selectedModelCallId || !credentials().hasAdmin);
       if (!selectedModelCallId) {
         el('modelDetailStatus').textContent = '';
         el('modelDetailContent').innerHTML = '';
+        el('modelSelectionContext').innerHTML = '';
+        toggleHidden('modelSelectionContext', true);
         return;
       }
       var returnSearch = window.history && window.history.state ? window.history.state.returnSearch : null;
@@ -1366,6 +1404,8 @@
       renderModelRows();
       el('modelDetailStatus').textContent = '';
       el('modelDetailContent').innerHTML = '';
+      el('modelSelectionContext').innerHTML = '';
+      toggleHidden('modelSelectionContext', true);
     }
     function modelSummaryPath() {
       var query = window.CatalystOperationsModel.modelSummaryQuery(modelFilters, modelRange);
@@ -2686,7 +2726,11 @@
       if (link) {
         if (event.button > 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
-        options.navigate(link.dataset.traceRoute, { returnSearch: currentLocalSearch() });
+        var targetView = new URLSearchParams(link.dataset.traceRoute.slice(1)).get('view') || 'overview';
+        var returnSearch = window.history && window.history.state ? window.history.state.returnSearch : null;
+        options.navigate(link.dataset.traceRoute, {
+          returnSearch: targetView === screen ? (validLocalReturnSearch(returnSearch) ? returnSearch : null) : currentLocalSearch()
+        });
         return;
       }
       var reload = event.target.closest('[data-reload-trace]');
