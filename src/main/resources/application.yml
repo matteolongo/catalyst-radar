@@ -20,6 +20,18 @@ management:
       show-details: never
       probes:
         enabled: true
+  tracing:
+    export:
+      otlp:
+        enabled: ${LANGSMITH_TRACING:false}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${LANGSMITH_OTEL_ENDPOINT:https://api.smith.langchain.com/otel/v1/traces}
+          headers:
+            x-api-key: ${LANGSMITH_API_KEY:}
+            Langsmith-Project: ${LANGSMITH_PROJECT:catalyst-radar}
 
 info:
   app:
@@ -27,6 +39,11 @@ info:
     version: 0.0.1-SNAPSHOT
 
 catalyst:
+  langsmith:
+    # Opt in to trace LLM calls to LangSmith over OTLP. Requires LANGSMITH_API_KEY.
+    enabled: ${LANGSMITH_TRACING:false}
+    project: ${LANGSMITH_PROJECT:catalyst-radar}
+    capture-content: ${LANGSMITH_CAPTURE_CONTENT:false}
   api:
     # Local development needs no keys; enable explicitly to test auth.
     auth-enabled: false

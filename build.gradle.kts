@@ -31,6 +31,11 @@ dependencies {
 	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("tools.jackson.module:jackson-module-kotlin")
+	// OTLP trace export to LangSmith: Micrometer tracing bridge satisfies
+	// Spring Boot's OtlpTracingAutoConfiguration without the OTLP metrics
+	// registry or log appender, so only traces leave the process.
+	implementation("io.micrometer:micrometer-tracing-bridge-otel")
+	implementation("io.opentelemetry:opentelemetry-exporter-otlp")
 	testImplementation("org.springframework.boot:spring-boot-starter-actuator-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
@@ -40,6 +45,7 @@ dependencies {
 	testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
 	testImplementation("org.mockito.kotlin:mockito-kotlin:6.3.0")
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+	testImplementation("io.opentelemetry:opentelemetry-sdk-testing")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

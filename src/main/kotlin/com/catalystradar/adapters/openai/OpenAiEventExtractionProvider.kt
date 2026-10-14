@@ -4,6 +4,7 @@ import com.catalystradar.adapters.http.mapHttpClientError
 import com.catalystradar.application.operations.OperationalErrors
 import com.catalystradar.common.Versions
 import com.catalystradar.observability.CatalystMetrics
+import com.catalystradar.observability.LlmTracing
 import com.catalystradar.persistence.extraction.ModelRunInput
 import com.catalystradar.persistence.extraction.ModelRunStore
 import com.catalystradar.ports.EventExtractionProvider
@@ -41,6 +42,7 @@ class OpenAiEventExtractionProvider(
     private val modelRuns: ModelRunStore,
     private val resources: ResourceLoader,
     private val metrics: CatalystMetrics,
+    private val tracing: LlmTracing,
 ) : EventExtractionProvider {
 
     private val client = builder.baseUrl(properties.baseUrl)
@@ -64,46 +66,58 @@ class OpenAiEventExtractionProvider(
     override suspend fun extract(request: ExtractionRequest): ExtractionResult =
         withContext(Dispatchers.IO) {
             val started = System.nanoTime()
+            val trace = tracing.beginExtraction(properties.extractionModel, request)
             var response: OpenAiChatResponse? = null
             try {
-                response = post(request)
+                val userMessage = userMessage(request)
+                trace.prompt(userMessage)
+                response = post(userMessage)
                 val result = parseContent(response)
+                trace.completion(response.choices?.firstOrNull()?.message?.content.orEmpty())
+                trace.succeed(response.model, response.usage?.promptTokens, response.usage?.completionTokens)
                 record(request, response.model, response.usage, elapsedMs(started), success = true, error = null)
                 result
             } catch (e: CancellationException) {
+                trace.fail(e)
                 recordFailure(request, response, started, e)
                 throw e
             } catch (e: HttpClientErrorException) {
                 val mapped = mapHttpClientError("openai", e)
+                trace.fail(mapped)
                 recordFailure(request, response, started, mapped)
                 throw mapped
             } catch (e: HttpServerErrorException) {
                 val failure = ProviderException.TemporaryUnavailable("openai: ${e.statusCode}", provider = "openai")
+                trace.fail(failure)
                 recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: ProviderException) {
+                trace.fail(e)
                 recordFailure(request, response, started, e)
                 throw e
             } catch (e: JacksonException) {
                 val failure = ProviderException.InvalidResponse("openai: unusable JSON (${e.message})", provider = "openai")
+                trace.fail(failure)
                 recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: RestClientException) {
                 val failure = ProviderException.InvalidResponse("openai: ${e.message}", provider = "openai")
+                trace.fail(failure)
                 recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: RuntimeException) {
+                trace.fail(e)
                 recordFailure(request, response, started, e)
                 throw e
             }
         }
 
-    private fun post(request: ExtractionRequest): OpenAiChatResponse {
+    private fun post(userMessage: String): OpenAiChatResponse {
         val body = mapOf(
             "model" to properties.extractionModel,
             "messages" to listOf(
                 mapOf("role" to "system", "content" to systemPrompt),
-                mapOf("role" to "user", "content" to userMessage(request)),
+                mapOf("role" to "user", "content" to userMessage),
             ),
             "response_format" to mapOf(
                 "type" to "json_schema",
