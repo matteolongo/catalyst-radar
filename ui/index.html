@@ -262,18 +262,25 @@
         <section id="companyView" class="card view hidden" aria-labelledby="companyTitle">
           <button id="backToResults" type="button" class="ghost">← Return to results</button>
           <h2 id="companyTitle" tabindex="-1">Company analysis</h2>
+          <nav id="companySections" class="company-sections" aria-label="Company analysis sections">
+            <a href="#companySummaryTitle" data-company-section="companySummaryTitle">Current snapshot</a>
+            <a href="#companyValuationsTitle" data-company-section="companyValuationsTitle">Recorded valuations</a>
+            <a href="#historyTitle" data-company-section="historyTitle">Score history</a>
+            <a href="#explanationTitle" data-company-section="explanationTitle">Current explanation</a>
+            <a href="#companyEventsTitle" data-company-section="companyEventsTitle">Events</a>
+          </nav>
           <div id="companyOverview" role="status">Loading company…</div>
-          <section class="company-panel" aria-label="Current catalyst"><h3>Current catalyst</h3><div id="companyScore" role="status">Loading current score…</div></section>
+          <section class="company-panel" aria-label="Current catalyst"><h3 id="companySummaryTitle" tabindex="-1">Current catalyst</h3><div id="companyScore" role="status">Loading current score…</div></section>
+          <section class="company-panel" aria-labelledby="companyValuationsTitle"><h3 id="companyValuationsTitle" tabindex="-1">Recorded valuations</h3><p class="muted small">Exact calculations saved with pipeline and daily snapshot cycles, across all dates. Earlier snapshots may have no recorded valuation. The current snapshot and reconstructed explanation are separate from these saved calculations.</p><div id="companyValuations" aria-live="polite"></div><button id="loadCompanyValuations" class="ghost hidden" type="button">Load more company valuations</button></section>
           <section class="company-panel" aria-labelledby="historyTitle">
-            <div class="card-head"><h3 id="historyTitle">Score history</h3>
+            <div class="card-head"><h3 id="historyTitle" tabindex="-1">Score history</h3>
               <label>History range <select id="historyRange"><option value="30">30 days</option><option value="90">90 days</option><option value="max">Maximum returned</option></select></label>
             </div>
             <p id="historyRangeNote" class="muted small">Showing up to 200 stored snapshots and transitions from the last 30 days.</p>
             <div id="companyHistory" role="status">Loading score history…</div>
           </section>
-          <section class="company-panel" aria-labelledby="explanationTitle"><h3 id="explanationTitle">Why this state?</h3><div id="companyExplanation" role="status">Loading explanation…</div></section>
-          <section class="company-panel" aria-labelledby="companyValuationsTitle"><h3 id="companyValuationsTitle">Recorded valuations</h3><p class="muted small">Exact calculations saved with pipeline and daily snapshot cycles, across all dates. Earlier snapshots may have no recorded valuation.</p><div id="companyValuations" aria-live="polite"></div><button id="loadCompanyValuations" class="ghost hidden" type="button">Load more company valuations</button></section>
-          <section class="company-panel" aria-labelledby="companyEventsTitle"><h3 id="companyEventsTitle">Contextual company events</h3><p class="muted small">Loaded reports are grouped by event cluster. These events do not establish causes of past scores; scoring remains server determined.</p><div id="companyEvents" role="status">Loading events…</div><p id="companyEventsStatus" class="panel-error" role="status"></p><button id="loadCompanyEvents" type="button" class="ghost hidden">Load more</button></section>
+          <section class="company-panel" aria-labelledby="explanationTitle"><h3 id="explanationTitle" tabindex="-1">Why this state?</h3><div id="companyExplanation" role="status">Loading explanation…</div></section>
+          <section class="company-panel" aria-labelledby="companyEventsTitle"><h3 id="companyEventsTitle" tabindex="-1">Contextual company events</h3><p class="muted small">Loaded reports are grouped by event cluster. These events do not establish causes of past scores; scoring remains server determined.</p><div id="companyEvents" role="status">Loading events…</div><p id="companyEventsStatus" class="panel-error" role="status"></p><button id="loadCompanyEvents" type="button" class="ghost hidden">Load more</button></section>
         </section>
         <section id="eventsView" class="card view hidden" aria-labelledby="eventsTitle">
           <h2 id="eventsTitle" tabindex="-1">Events</h2>
