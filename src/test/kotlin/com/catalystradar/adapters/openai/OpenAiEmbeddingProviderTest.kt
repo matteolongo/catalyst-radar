@@ -12,9 +12,14 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.RegisterExtension
+import com.catalystradar.observability.LangSmithProperties
+import com.catalystradar.observability.LlmCallTrace
+import com.catalystradar.observability.LlmTracing
+import org.mockito.kotlin.any
 import org.mockito.kotlin.check
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.springframework.web.client.RestClient
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -33,6 +38,7 @@ class OpenAiEmbeddingProviderTest {
         OpenAiProperties(baseUrl = wireMock.baseUrl(), apiKey = "test-key"),
         runs,
         com.catalystradar.observability.CatalystMetrics(meterRegistry),
+        LlmTracing(mock(), LangSmithProperties(enabled = false)),
     )
 
     @Test
@@ -68,6 +74,7 @@ class OpenAiEmbeddingProviderTest {
             OpenAiProperties(baseUrl = wireMock.baseUrl(), apiKey = "test-key", embeddingModel = "unknown"),
             runs,
             com.catalystradar.observability.CatalystMetrics(meterRegistry),
+            LlmTracing(mock(), LangSmithProperties(enabled = false)),
         )
         wireMock.stubFor(post(urlPathEqualTo("/v1/embeddings")).willReturn(okJson(EMBEDDING_RESPONSE)))
         unknownProvider.embed("hello")
@@ -153,6 +160,45 @@ class OpenAiEmbeddingProviderTest {
             assertEquals("Provider rate limit; wait for the scheduled retry.", it.error)
             assertNull(it.estimatedCost)
         })
+    }
+
+    @Test
+    fun `successful embedding prompts and succeeds its trace`() = runTest {
+        wireMock.stubFor(post(urlPathEqualTo("/v1/embeddings")).willReturn(okJson(EMBEDDING_RESPONSE)))
+        val trace: LlmCallTrace = mock()
+        val tracing: LlmTracing = mock()
+        whenever(tracing.beginEmbedding(any(), any())).thenReturn(trace)
+        val traced = OpenAiEmbeddingProvider(
+            RestClient.builder(),
+            OpenAiProperties(baseUrl = wireMock.baseUrl(), apiKey = "test-key"),
+            runs,
+            com.catalystradar.observability.CatalystMetrics(meterRegistry),
+            tracing,
+        )
+
+        traced.embed("hello")
+
+        verify(trace).prompt("hello")
+        verify(trace).succeed("text-embedding-3-small", 8, null)
+    }
+
+    @Test
+    fun `failed embedding fails its trace`() = runTest {
+        wireMock.stubFor(post(urlPathEqualTo("/v1/embeddings")).willReturn(aResponse().withStatus(429)))
+        val trace: LlmCallTrace = mock()
+        val tracing: LlmTracing = mock()
+        whenever(tracing.beginEmbedding(any(), any())).thenReturn(trace)
+        val traced = OpenAiEmbeddingProvider(
+            RestClient.builder(),
+            OpenAiProperties(baseUrl = wireMock.baseUrl(), apiKey = "test-key"),
+            runs,
+            com.catalystradar.observability.CatalystMetrics(meterRegistry),
+            tracing,
+        )
+
+        assertThrows<com.catalystradar.ports.ProviderException.RateLimited> { traced.embed("hello") }
+
+        verify(trace).fail(any())
     }
 
     companion object {

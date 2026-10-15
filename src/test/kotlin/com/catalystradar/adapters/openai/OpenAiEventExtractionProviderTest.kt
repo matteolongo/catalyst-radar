@@ -30,6 +30,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import com.catalystradar.operations.OperationsFixtures
+import com.catalystradar.observability.LangSmithProperties
+import com.catalystradar.observability.LlmCallTrace
+import com.catalystradar.observability.LlmTracing
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import org.springframework.jdbc.core.simple.JdbcClient
 
 class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
@@ -44,12 +51,15 @@ class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
 
     private val meterRegistry = io.micrometer.core.instrument.simple.SimpleMeterRegistry()
 
-    private fun provider() = OpenAiEventExtractionProvider(
+    private fun provider(
+        tracing: LlmTracing = LlmTracing(mock(), LangSmithProperties(enabled = false)),
+    ) = OpenAiEventExtractionProvider(
         RestClient.builder(),
         OpenAiProperties(baseUrl = wireMock.baseUrl(), apiKey = "test-key"),
         modelRuns,
         DefaultResourceLoader(),
         com.catalystradar.observability.CatalystMetrics(meterRegistry),
+        tracing,
     )
 
     private fun request() = ExtractionRequest(
@@ -216,6 +226,31 @@ class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
         assertEquals(BigDecimal("0.000005"), recorded.estimatedCost)
         assertEquals("INVALID_RESPONSE", recorded.errorCode)
         assertEquals("Provider output did not pass extraction/response validation.", recorded.error)
+    }
+
+    @Test
+    fun `successful extraction prompts and succeeds its trace`() = runTest {
+        wireMock.stubFor(post(urlPathEqualTo("/v1/chat/completions")).willReturn(okJson(CHAT_RESPONSE)))
+        val trace: LlmCallTrace = mock()
+        val tracing: LlmTracing = mock()
+        whenever(tracing.beginExtraction(any(), any())).thenReturn(trace)
+
+        provider(tracing).extract(request())
+
+        verify(trace).prompt(any())
+        verify(trace).succeed("gpt-4o-mini", 100, 50)
+    }
+
+    @Test
+    fun `failed extraction fails its trace`() = runTest {
+        wireMock.stubFor(post(urlPathEqualTo("/v1/chat/completions")).willReturn(aResponse().withStatus(429)))
+        val trace: LlmCallTrace = mock()
+        val tracing: LlmTracing = mock()
+        whenever(tracing.beginExtraction(any(), any())).thenReturn(trace)
+
+        assertThrows<ProviderException.RateLimited> { provider(tracing).extract(request()) }
+
+        verify(trace).fail(any())
     }
 
     companion object {

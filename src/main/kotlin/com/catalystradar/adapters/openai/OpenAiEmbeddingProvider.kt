@@ -3,6 +3,7 @@ package com.catalystradar.adapters.openai
 import com.catalystradar.adapters.http.mapHttpClientError
 import com.catalystradar.application.operations.OperationalErrors
 import com.catalystradar.observability.CatalystMetrics
+import com.catalystradar.observability.LlmTracing
 import com.catalystradar.persistence.extraction.ModelRunInput
 import com.catalystradar.persistence.extraction.ModelRunStore
 import com.catalystradar.ports.Embedding
@@ -36,6 +37,7 @@ class OpenAiEmbeddingProvider(
     private val properties: OpenAiProperties,
     private val modelRuns: ModelRunStore,
     private val metrics: CatalystMetrics,
+    private val tracing: LlmTracing,
 ) : EmbeddingProvider {
 
     override val model: String get() = properties.embeddingModel
@@ -57,36 +59,46 @@ class OpenAiEmbeddingProvider(
     override suspend fun embed(request: EmbeddingRequest): Embedding =
         withContext(Dispatchers.IO) {
             val started = System.nanoTime()
+            val trace = tracing.beginEmbedding(properties.embeddingModel, request)
+            trace.prompt(request.text)
             var response: OpenAiEmbeddingResponse? = null
             try {
                 response = post(request.text)
                 val values = response.data?.firstOrNull()?.embedding
                     ?: throw ProviderException.InvalidResponse("openai: no embedding data", provider = "openai")
+                trace.succeed(response.model, response.usage?.promptTokens, null)
                 record(request, response, elapsedMs(started), success = true, error = null)
                 Embedding(values = values, model = properties.embeddingModel)
             } catch (e: CancellationException) {
+                trace.fail(e)
                 recordFailure(request, response, started, e)
                 throw e
             } catch (e: HttpClientErrorException) {
                 val mapped = mapHttpClientError("openai", e)
+                trace.fail(mapped)
                 recordFailure(request, response, started, mapped)
                 throw mapped
             } catch (e: HttpServerErrorException) {
                 val failure = ProviderException.TemporaryUnavailable("openai: ${e.statusCode}", provider = "openai")
+                trace.fail(failure)
                 recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: ProviderException) {
+                trace.fail(e)
                 recordFailure(request, response, started, e)
                 throw e
             } catch (e: JacksonException) {
                 val failure = ProviderException.InvalidResponse("openai: unusable JSON (${e.message})", provider = "openai")
+                trace.fail(failure)
                 recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: RestClientException) {
                 val failure = ProviderException.InvalidResponse("openai: ${e.message}", provider = "openai")
+                trace.fail(failure)
                 recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: RuntimeException) {
+                trace.fail(e)
                 recordFailure(request, response, started, e)
                 throw e
             }
@@ -169,6 +181,7 @@ class OpenAiEmbeddingProvider(
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 internal data class OpenAiEmbeddingResponse(
+    @JsonProperty("model") val model: String?,
     @JsonProperty("data") val data: List<OpenAiEmbeddingData>?,
     @JsonProperty("usage") val usage: OpenAiEmbeddingUsage?,
 )
