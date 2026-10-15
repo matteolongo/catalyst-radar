@@ -27,6 +27,179 @@
   var eventItems = [];
   var eventNextCursor = null;
   var appliedEventFilters;
+  var onboarding = createOnboarding();
+
+  function createOnboarding() {
+    var storageKey = 'catalyst-onboarding-v1';
+    var paths = { operator: ['overview', 'pipeline', 'documents', 'models'], analyst: ['discover', 'company', 'events'] };
+    var steps = {
+      overview: ['Overview', 'Check freshness, waiting documents and provider observations. Pending means a captured document is waiting for processing. Empty data can mean nothing has been captured yet; it does not confirm provider health.'],
+      pipeline: ['Pipeline', 'Follow ingestion (fetching and storing news), processing (extracting and grouping events), and scoring (recalculating company catalysts). RUNNING means work is active; SUCCESS means the run finished successfully; PARTIAL means some work had issues; FAILED means the run failed; CANCELLED means it was cancelled; INTERRUPTED means it stopped before finishing. Inspect the recorded run for details. Running the pipeline fetches news and may use paid model calls; this guide never starts a run.'],
+      documents: ['Documents', 'Follow source text, processing attempts, extracted events and recorded model calls. PENDING means waiting; PROCESSING means an attempt is active; COMPLETED means processing finished; SKIPPED means processing was not needed; RETRYABLE_ERROR means processing can retry; TERMINAL_ERROR means automatic retries have stopped. Inspect the error and attempt history to understand what happened. UNRESOLVED means company links are missing; NOT_TRACKED means processing state is not recorded.'],
+      models: ['Models & costs', 'Inspect recorded model status to find successful and failed calls, latency to see how long calls took, and activity to see which operations ran and when. Open a call to inspect its recorded context.'],
+      discover: ['Discover', 'Filter stored company snapshots by catalyst state, score and velocity. These are intelligence signals, not buy or sell recommendations.'],
+      company: ['Company', 'Open a company using its ticker or a Discover result. Compare the saved score, explanation, history and recorded valuations; an explanation reconstructed today is distinct from captured historical inputs.'],
+      events: ['Events', 'Inspect classified events and supporting source evidence. Event clusters group reports about the same real-world event; duplicate reports do not multiply its catalyst score. Event, publication and discovery times describe different points in time.'],
+    };
+    var state = { path: null, completed: [], deferred: false };
+    var disclosure = null;
+    try {
+      var saved = JSON.parse(window.localStorage.getItem(storageKey));
+      if (saved && (saved.path === null || Object.prototype.hasOwnProperty.call(paths, saved.path)) &&
+          Array.isArray(saved.completed) && typeof saved.deferred === 'boolean') {
+        state = { path: saved.path, completed: (paths[saved.path] || []).filter(function (view) {
+          return saved.completed.includes(view);
+        }), deferred: saved.deferred };
+        if (saved.modelDisclosureAcknowledged === true) state.modelDisclosureAcknowledged = true;
+      }
+    } catch (_) { /* Guide progress remains available in memory when browser storage is unavailable. */ }
+
+    function save() {
+      try { window.localStorage.setItem(storageKey, JSON.stringify(state)); } catch (_) { /* Keep the current in-memory progress. */ }
+    }
+    function button(action, label) {
+      return '<button type="button" class="ghost" data-onboarding-action="' + action + '">' + label + '</button>';
+    }
+    function cancelPipelineCheck() {
+      if (disclosure && disclosure.resolve) disclosure.resolve(false);
+      disclosure = null;
+    }
+    function beforePipelineRun() {
+      if (state.modelDisclosureAcknowledged) return Promise.resolve(true);
+      var check = { revision: credentialRevision, status: 'loading' };
+      var approval = new Promise(function (resolve) { check.resolve = resolve; });
+      disclosure = check;
+      show(currentView);
+      api('/internal/operations/config').then(function (config) {
+        if (disclosure !== check || check.revision !== credentialRevision || currentView !== 'pipeline') return check.resolve(false);
+        var versions = config && config.versions;
+        var configured = config && Array.isArray(config.providers) && config.providers.some(function (provider) {
+          return provider && provider.name === 'openai' && provider.configured === true;
+        });
+        if (!configured || !versions || typeof versions.extractionModel !== 'string' || !versions.extractionModel.trim() ||
+            typeof versions.embeddingModel !== 'string' || !versions.embeddingModel.trim()) {
+          check.status = 'missing';
+          show(currentView);
+          return check.resolve(false);
+        }
+        check.status = 'ready';
+        check.extractionModel = versions.extractionModel.trim();
+        check.embeddingModel = versions.embeddingModel.trim();
+        show(currentView);
+        $('onboarding').focus();
+      }).catch(function () {
+        if (disclosure === check && check.revision === credentialRevision && currentView === 'pipeline') {
+          check.status = 'error';
+          show(currentView);
+        }
+        check.resolve(false);
+      });
+      return approval;
+    }
+    function show(view) {
+      if (view !== 'pipeline' || (disclosure && disclosure.revision !== credentialRevision)) cancelPipelineCheck();
+      var panel = $('onboarding');
+      panel.classList.remove('hidden');
+      var content = '<h2>Backoffice guide</h2>';
+      if (disclosure) {
+        content += '<h3>Before your first pipeline run</h3>';
+        if (disclosure.status === 'loading') content += '<p role="status">Checking configured models…</p>';
+        else if (disclosure.status === 'ready') {
+          content += '<p>Extraction model: <strong>' + esc(disclosure.extractionModel) + '</strong> turns articles into structured catalyst events.</p>' +
+            '<p>Embedding model: <strong>' + esc(disclosure.embeddingModel) + '</strong> groups and deduplicates semantically similar reports.</p>' +
+            button('confirm-pipeline', 'Confirm and run pipeline') + button('cancel-pipeline', 'Cancel');
+        } else {
+          content += '<p role="status">' + (disclosure.status === 'missing' ?
+            'OpenAI and both extraction and embedding models must be configured. Review Settings, then choose Run pipeline now to retry.' :
+            'Unable to read model configuration. Choose Run pipeline now to retry or review Settings.') + '</p>' +
+            button('pipeline-settings', 'Open Settings');
+        }
+        panel.innerHTML = content;
+        return;
+      }
+      if (state.deferred) {
+        panel.innerHTML = content + '<p>Continue whenever you are ready.</p>' + button('resume', 'Resume guide');
+        return;
+      }
+      if (!state.path) {
+        panel.innerHTML = content + '<p>What would you like to do? This optional guide saves only your progress in this browser.</p>' +
+          '<div class="onboarding-actions">' + button('operator', 'Manage the pipeline') + button('analyst', 'Explore company intelligence') +
+          button('defer', 'Later') + '</div>';
+        return;
+      }
+      var path = paths[state.path];
+      var complete = state.completed.length === path.length;
+      content += '<p>' + (complete ? 'Guide complete. Restart from Settings to explore another path.' :
+        state.completed.length + ' of ' + path.length + ' steps complete. Open each view and acknowledge its explanation.') + '</p>';
+      content += '<ol class="onboarding-steps">' + path.map(function (step) {
+        return '<li>' + button(step, steps[step][0]) + ' <span>' + (state.completed.includes(step) ? 'Complete' : 'To explore') + '</span></li>';
+      }).join('') + '</ol>';
+      if (path.includes(view)) {
+        content += '<h3>' + steps[view][0] + '</h3><p>' + steps[view][1] + '</p>';
+        if (!state.completed.includes(view)) content += button('acknowledge', 'I understand this view');
+      } else content += '<p>Choose a step above to continue your guide.</p>';
+      if (!complete) content += button('defer', 'Continue later');
+      panel.innerHTML = content;
+    }
+    function restart() {
+      cancelPipelineCheck();
+      state.path = null;
+      state.completed = [];
+      state.deferred = false;
+      save();
+      show(currentView);
+      $('onboarding').focus();
+    }
+    function click(event) {
+      var target = event.target.closest('[data-onboarding-action]');
+      if (!target) return;
+      var action = target.dataset.onboardingAction;
+      if (action === 'confirm-pipeline' || action === 'cancel-pipeline') {
+        if (!disclosure || disclosure.status !== 'ready' || !disclosure.resolve) return;
+        var approved = action === 'confirm-pipeline' && disclosure.revision === credentialRevision && currentView === 'pipeline';
+        if (approved) {
+          state.modelDisclosureAcknowledged = true;
+          save();
+        }
+        disclosure.resolve(approved);
+        disclosure = null;
+        show(currentView);
+        $('onboarding').focus();
+        return;
+      }
+      if (action === 'pipeline-settings' && disclosure) {
+        cancelPipelineCheck();
+        navigate('?view=settings');
+        return;
+      }
+      if (action === 'operator' || action === 'analyst') {
+        state.path = action;
+        state.completed = [];
+        state.deferred = false;
+        save();
+        navigate('?view=' + paths[action][0]);
+        return;
+      }
+      if (action === 'defer' || action === 'resume') state.deferred = action === 'defer';
+      else if (action === 'acknowledge' && state.path && paths[state.path].includes(currentView)) {
+        if (!state.completed.includes(currentView)) state.completed.push(currentView);
+      } else if (state.path && paths[state.path].includes(action)) {
+        if (action === 'company' && currentView !== 'company') {
+          navigate('?view=discover');
+          $('companyLookupTicker').focus();
+        } else if (action !== currentView) navigate('?view=' + action);
+        return;
+      } else return;
+      save();
+      if (action === 'acknowledge' && state.completed.length === paths[state.path].length) {
+        navigate('?view=' + paths[state.path][0]);
+        return;
+      }
+      show(currentView);
+      $('onboarding').focus();
+    }
+    return { show: show, restart: restart, click: click, beforePipelineRun: beforePipelineRun, cancelPipelineCheck: cancelPipelineCheck };
+  }
 
   function $(id) { return document.getElementById(id); }
 
@@ -628,6 +801,7 @@
     }
     if (view === 'events' && !eventLoaded) loadEvents(true);
     if (operations) operations.show({ view: view, params: route, fromHistory: !!fromHistory });
+    onboarding.show(view);
 
     if (moveFocus) {
       if (view === 'company') $('companyTitle').focus();
@@ -637,6 +811,8 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
+    $('onboarding').addEventListener('click', onboarding.click);
+    $('restartOnboarding').addEventListener('click', onboarding.restart);
     appliedDiscoveryFilters = readDiscoveryFilters();
     discoveryLimit = Number(appliedDiscoveryFilters.get('limit'));
     var saved = window.sessionStorage.getItem(ADMIN_KEY_NAME);
@@ -644,6 +820,8 @@
     var savedApiKey = window.sessionStorage.getItem(API_KEY_NAME);
     if (savedApiKey) $('apiKey').value = savedApiKey;
     $('saveKey').addEventListener('click', function () {
+      onboarding.cancelPipelineCheck();
+      onboarding.show(currentView);
       credentialRevision++;
       invalidatePublicCredentials();
       var adminKey = $('adminKey').value.trim();
@@ -658,6 +836,8 @@
       if (adminKey && returnSearch && currentView === 'settings') navigate(returnSearch);
     });
     $('clearKey').addEventListener('click', function () {
+      onboarding.cancelPipelineCheck();
+      onboarding.show(currentView);
       credentialRevision++;
       invalidatePublicCredentials();
       window.sessionStorage.removeItem(ADMIN_KEY_NAME);
@@ -758,6 +938,7 @@
     });
     window.addEventListener('popstate', function () { showView(true, true); });
     operations = window.CatalystOperations.create({ api: api, navigate: navigate, credentials: currentCredentials,
+      beforePipelineRun: onboarding.beforePipelineRun,
       format: { escape: esc, time: fmtTime, integer: fmtInt, cost: fmtCost } });
     operations.init();
     showView();

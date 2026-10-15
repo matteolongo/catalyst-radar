@@ -13,9 +13,10 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   deferDocuments = false, deferDocumentList = false, modelSummary, modelCalls, modelDetail,
   modelPageSize = 25, deferModelSummary = false, deferModelCalls = false, deferModelDetails = false,
   operationRuns, operationRunDetail, operationIssues, ingestionRuns, pipelineResult, deferPipeline = true,
-  deferPublicPaths = [] } = {}) {
+  deferPublicPaths = [], localStored = {}, localStorageFailure = false } = {}) {
   const requests = [];
   const values = new Map(Object.entries(stored));
+  const localValues = new Map(Object.entries(localStored));
   const elements = new Map();
   const ids = new Set(Array.from(html.matchAll(/\bid="([^"]+)"/g), (match) => match[1]));
   let reloads = 0;
@@ -98,6 +99,10 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
       getItem(key) { return values.get(key) || null; },
       setItem(key, value) { values.set(key, value); },
       removeItem(key) { values.delete(key); },
+    },
+    localStorage: {
+      getItem(key) { if (localStorageFailure) throw new Error('Storage unavailable'); return localValues.get(key) || null; },
+      setItem(key, value) { if (localStorageFailure) throw new Error('Storage unavailable'); localValues.set(key, value); },
     },
     setInterval(callback, delay) { const id = nextInterval++; intervals.set(id, { callback, delay }); return id; },
     clearInterval(id) { intervals.delete(id); },
@@ -283,7 +288,16 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   }
   ready();
   return {
-    requests, elements, values, window, document, html, context,
+    requests, elements, values, localValues, window, document, html, context,
+    clickOnboarding(action) {
+      const markup = elementFor('onboarding').innerHTML;
+      assert.ok(Array.from(markup.matchAll(/<button\b[^>]*data-onboarding-action="([^"]+)"[^>]*>/g))
+        .some((match) => match[1] === action), 'Rendered guide button missing: ' + action);
+      const button = { dataset: { onboardingAction: action }, closest(selector) {
+        return selector === '[data-onboarding-action]' ? this : null;
+      } };
+      return elementFor('onboarding').trigger('click', { target: button });
+    },
     resolveDiscovery(index, body) { discoveryResolvers[index](body); },
     resolvePublic(route, index, body) { publicResolvers.get(route)[index](body); },
     resolveTimeline(index, body) { timelineResolvers[index](body); },

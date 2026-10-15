@@ -46,6 +46,7 @@
       <div id="banner" class="banner hidden" role="alert"></div>
 
       <main>
+        <section id="onboarding" class="panel onboarding hidden" aria-label="Backoffice guide" tabindex="-1"></section>
         <section id="overviewView" class="view" aria-labelledby="pageTitle">
           <p id="overviewStatus" class="screen-status" role="status">Loading operational summary…</p>
           <div id="overviewMetrics" class="metrics-grid" aria-label="Current operational metrics">
@@ -228,6 +229,11 @@
         </section>
 
         <section id="settingsView" class="view hidden" aria-labelledby="settingsTitle">
+          <section class="panel" aria-label="Guide settings">
+            <h2>Backoffice guide</h2>
+            <p>Guide progress is saved only in this browser. Restart to choose another path.</p>
+            <button id="restartOnboarding" type="button" class="ghost">Restart guide</button>
+          </section>
           <h2 id="settingsTitle">Settings</h2>
           <section class="panel" aria-labelledby="settingsAccessTitle">
             <h3 id="settingsAccessTitle">Access for this tab</h3>
