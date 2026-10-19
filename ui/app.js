@@ -67,7 +67,7 @@
     function beforePipelineRun() {
       if (state.modelDisclosureAcknowledged) return Promise.resolve(true);
       var check = { revision: credentialRevision, status: 'loading' };
-      var approval = new Promise(function (resolve) { check.resolve = resolve; });
+      var approval = new Promise(function (resolve, reject) { check.resolve = resolve; check.reject = reject; });
       disclosure = check;
       show(currentView);
       api('/internal/operations/config').then(function (config) {
@@ -87,8 +87,9 @@
         check.embeddingModel = versions.embeddingModel.trim();
         show(currentView);
         $('onboarding').focus();
-      }).catch(function () {
+      }).catch(function (error) {
         if (disclosure === check && check.revision === credentialRevision && currentView === 'pipeline') {
+          if (error.status === 403 || error.code === 'FORBIDDEN') return check.reject(error);
           check.status = 'error';
           show(currentView);
         }
@@ -820,8 +821,6 @@
     var savedApiKey = window.sessionStorage.getItem(API_KEY_NAME);
     if (savedApiKey) $('apiKey').value = savedApiKey;
     $('saveKey').addEventListener('click', function () {
-      onboarding.cancelPipelineCheck();
-      onboarding.show(currentView);
       credentialRevision++;
       invalidatePublicCredentials();
       var adminKey = $('adminKey').value.trim();
@@ -836,8 +835,6 @@
       if (adminKey && returnSearch && currentView === 'settings') navigate(returnSearch);
     });
     $('clearKey').addEventListener('click', function () {
-      onboarding.cancelPipelineCheck();
-      onboarding.show(currentView);
       credentialRevision++;
       invalidatePublicCredentials();
       window.sessionStorage.removeItem(ADMIN_KEY_NAME);
@@ -939,6 +936,7 @@
     window.addEventListener('popstate', function () { showView(true, true); });
     operations = window.CatalystOperations.create({ api: api, navigate: navigate, credentials: currentCredentials,
       beforePipelineRun: onboarding.beforePipelineRun,
+      onProtectedDataCleared: function () { onboarding.cancelPipelineCheck(); onboarding.show(currentView); },
       format: { escape: esc, time: fmtTime, integer: fmtInt, cost: fmtCost } });
     operations.init();
     showView();

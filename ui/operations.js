@@ -237,6 +237,8 @@
       el('accessStatus').textContent = 'Admin access required. Keys stay in this tab’s session storage.';
       el('runNow').disabled = true;
       el('lastRefresh').textContent = 'No successful refresh yet';
+      pendingPipelineApproval = false;
+      if (options.onProtectedDataCleared) options.onProtectedDataCleared();
     }
     function accessRequired() {
       if (credentials().hasAdmin) invalidate();
@@ -2501,11 +2503,16 @@
       var approved = false;
       try {
         approved = await options.beforePipelineRun();
-      } catch (_) {
-        if (!disposed && revision === credentials().revision && screen === 'pipeline') pipelineStatus('Unable to check pipeline configuration. Try again.');
+      } catch (error) {
+        if (!disposed && revision === credentials().revision && screen === 'pipeline') {
+          if (error.status === 403 || error.code === 'FORBIDDEN') return accessRequired();
+          pipelineStatus('Unable to check pipeline configuration. Try again.');
+        }
       } finally {
-        pendingPipelineApproval = false;
-        if (screen === 'pipeline') updateRunNowButton();
+        if (pendingPipelineApproval) {
+          pendingPipelineApproval = false;
+          if (screen === 'pipeline') updateRunNowButton();
+        }
       }
       if (approved && !disposed && revision === credentials().revision && screen === 'pipeline') triggerPipeline();
     }
