@@ -105,7 +105,7 @@
               <option>FAILED</option><option>CANCELLED</option><option>INTERRUPTED</option>
             </select></label>
             <button id="runNow" type="button">Run pipeline now</button>
-            <p id="runNowCaption" class="muted small">Fetches news and can use paid model calls.</p>
+            <p id="runNowCaption" class="muted small">Runs configured news ingestion and processing. Provider and model charges may apply.</p>
           </div>
           <div id="pipelineWorkspace" class="pipeline-layout">
             <section class="panel pipeline-history-panel" aria-label="Pipeline history">
@@ -119,7 +119,7 @@
               </div>
               <div id="runDetailContent"></div>
               <section class="trace-collection" aria-label="Documents for selected cycle"><h4>Documents</h4><div id="runDocuments" aria-live="polite"></div><button id="loadRunDocuments" class="ghost hidden" type="button">Load more cycle documents</button></section>
-              <section class="trace-collection" aria-label="Company valuations for selected cycle"><h4>Company valuations</h4><div id="runValuations" aria-live="polite"></div><button id="loadRunValuations" class="ghost hidden" type="button">Load more cycle valuations</button></section>
+              <section class="trace-collection" aria-label="Recorded calculations for selected cycle"><h4>Recorded calculations</h4><div id="runValuations" aria-live="polite"></div><button id="loadRunValuations" class="ghost hidden" type="button">Load more cycle calculations</button></section>
               <section aria-label="Ingestion runs for selected cycle">
                 <h4>Ingestion runs for this cycle</h4><div id="runIngestionRows" aria-live="polite"></div>
                 <button id="loadRunIngestion" class="ghost hidden" type="button">Load more cycle ingestion runs</button>
@@ -181,9 +181,9 @@
               <div class="document-tabs" role="tablist" aria-label="Document details">
                 <button id="documentTabSteps" type="button" role="tab" data-document-tab="steps">Timeline</button>
                 <button id="documentTabOverview" type="button" role="tab" data-document-tab="overview">Overview</button>
-                <button id="documentTabValuations" type="button" role="tab" data-document-tab="valuations">Valuations</button>
+                <button id="documentTabValuations" type="button" role="tab" data-document-tab="valuations">Recorded calculations</button>
                 <button id="documentTabAttempts" type="button" role="tab" data-document-tab="attempts">Attempts</button>
-                <button id="documentTabModels" type="button" role="tab" data-document-tab="models">Models</button>
+                <button id="documentTabModels" type="button" role="tab" data-document-tab="models">Model calls</button>
                 <button id="documentTabEvents" type="button" role="tab" data-document-tab="events">Events</button>
                 <button id="documentTabSource" type="button" role="tab" data-document-tab="source">Source</button>
               </div>

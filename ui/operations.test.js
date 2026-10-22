@@ -1584,6 +1584,21 @@ test('document list escapes titles, shows derived states, and never includes sou
   assert.match(dashboard.html('documentRows'), /Skipped/);
   assert.doesNotMatch(dashboard.html('documentsView'), /Quoted source:/);
   assert.match(dashboard.text('documentStatus'), /3 loaded/);
+  assert.match(dashboard.html('documentRows'), /<table/);
+  assert.match(dashboard.html('documentRows'), /href="\?view=documents/);
+});
+
+test('desktop document title preserves native modified-link navigation', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret' });
+  await dashboard.openDocuments();
+  let prevented = false;
+  dashboard.click('documentRows', { ctrlKey: true,
+    preventDefault() { prevented = true; },
+    target: { closest: () => ({ dataset: { documentId: DOC_A } }) },
+  });
+  await dashboard.flush();
+  assert.equal(prevented, false);
+  assert.equal(new URLSearchParams(dashboard.window.location.search).has('documentId'), false);
 });
 
 test('load more retains rows after failure and retries with ID deduplication', async () => {

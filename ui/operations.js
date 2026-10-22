@@ -490,19 +490,22 @@
     }
     function renderDocumentRows() {
       var initialLoading = documentPageLoading && !documentPageLoaded && !documentItems.length;
-      el('documentRows').innerHTML = initialLoading ? '<p class="muted">Loading captured documents…</p>' : (documentItems.length ? documentItems.map(function (item) {
+      el('documentRows').innerHTML = initialLoading ? '<p class="muted">Loading captured documents…</p>' : (documentItems.length ?
+        '<div class="table-scroll" tabindex="0" role="region" aria-label="Captured documents"><table class="documents-table"><caption class="sr-only">Captured documents and current processing state</caption><thead><tr><th scope="col">Title / provider</th><th scope="col">Companies</th><th scope="col">Current processing state</th><th scope="col">Captured at (UTC)</th>' +
+        (documentFilters.runId ? '<th scope="col">Selected cycle outcome</th>' : '') + '</tr></thead><tbody>' + documentItems.map(function (item) {
         var id = esc(item.id);
         var tickers = Array.isArray(item.tickers) && item.tickers.length ? item.tickers.join(', ') : 'No supported company linked';
         if (item.tickersTruncated) tickers += ' · first 100 tickers shown';
         var attempts = item.attemptCount == null ? 'Attempt count unknown' : 'Attempt ' + item.attemptCount;
-        return '<button type="button" class="document-row" data-document-id="' + id + '"' +
-          (selectedDocumentId === item.id ? ' aria-current="true"' : '') + '>' +
-          '<span class="document-row-title">' + esc(item.title || 'Untitled document') + '</span>' +
-          '<span class="document-row-meta"><span>' + esc(item.provider) + '</span><span>' + esc(tickers) + '</span>' +
-          '<span>' + esc(time(item.discoveredAt)) + ' UTC</span><span class="pill ' + documentStateClass(item.state) + '">' + esc(documentStateLabel(item.state)) + '</span>' +
-          '<span>' + esc(attempts) + '</span>' + (documentFilters.runId ? '<span>Cycle attempt: ' + esc(readable(item.runAttemptStatus)) + ' #' + esc(recorded(item.runAttemptNumber)) + ' · Last cycle stage: ' + esc(readable(item.runLastStage)) + ' / ' + esc(readable(item.runLastStepStatus)) + '</span><span>Queue state above is current globally.</span>' : '') + (item.nextAttemptAt ? '<span>Next retry ' + esc(time(item.nextAttemptAt)) + ' UTC</span>' : '') +
-          '</span></button>';
-      }).join('') : '<p class="muted">No captured documents match these filters.</p>');
+        return '<tr' + (selectedDocumentId === item.id ? ' class="document-selected"' : '') + '><td><a class="document-title-link" href="' +
+          esc(documentSearch(documentFilters, { id: item.id, tab: 'steps' })) + '" data-document-id="' + id + '"' +
+          (selectedDocumentId === item.id ? ' aria-current="true"' : '') + '>' + esc(item.title || 'Untitled document') + '</a>' +
+          '<span class="cell-secondary">' + esc(item.provider) + '</span></td><td>' + esc(tickers) + '</td>' +
+          '<td><span class="pill ' + documentStateClass(item.state) + '">' + esc(documentStateLabel(item.state)) + '</span><span class="cell-secondary">' + esc(attempts) + '</span>' +
+          (item.nextAttemptAt ? '<span class="cell-secondary">Next retry ' + esc(time(item.nextAttemptAt)) + ' UTC</span>' : '') + '</td>' +
+          '<td>' + esc(time(item.discoveredAt)) + ' UTC</td>' + (documentFilters.runId ? '<td>Cycle attempt: ' + esc(readable(item.runAttemptStatus)) + ' #' + esc(recorded(item.runAttemptNumber)) +
+            '<span class="cell-secondary">Last cycle stage: ' + esc(readable(item.runLastStage)) + ' / ' + esc(readable(item.runLastStepStatus)) + '</span><span class="cell-secondary">Queue state is current globally.</span></td>' : '') + '</tr>';
+      }).join('') + '</tbody></table></div>' : '<p class="muted">No captured documents match these filters.</p>');
       var loaded = documentItems.length + ' loaded document' + (documentItems.length === 1 ? '' : 's');
       var status = documentPageError
         ? (documentItems.length ? loaded + ' · ' + documentPageError : documentPageError)
@@ -1140,6 +1143,7 @@
       options.navigate(documentSearch(documentFilters, { id: selectedDocumentId, tab: tab, attemptId: attemptId }));
     }
     function onDocumentRowsClick(event) {
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || (event.button !== undefined && event.button !== 0)) return;
       var row = event.target.closest('[data-document-id]');
       if (!row) return;
       if (event.preventDefault) event.preventDefault();

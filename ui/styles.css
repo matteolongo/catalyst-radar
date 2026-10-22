@@ -119,10 +119,11 @@ footer { padding: 0 24px 24px; }
 .document-due input { width: auto; min-height: auto; }
 .document-filters .document-due, .document-filters > button { align-self: end; }
 .document-rows { display: grid; gap: 8px; }
-.document-row { display: grid; gap: 5px; width: 100%; padding: 10px 12px; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; text-align: left; }
-.document-row:hover, .document-row[aria-current="true"] { border-color: var(--accent); }
-.document-row-title { overflow-wrap: anywhere; font-weight: 500; }
-.document-row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; color: var(--muted); font-size: 12px; }
+.documents-table { min-width: 560px !important; font-size: 13px; }
+.documents-table td { overflow-wrap: anywhere; }
+.documents-table td:first-child { min-width: 180px; }
+.document-title-link { display: inline-flex; align-items: center; min-height: 44px; font-weight: 500; }
+.document-selected { background: var(--accent-soft); }
 .document-detail { overflow-wrap: anywhere; }
 .document-detail-heading { align-items: flex-start; }
 .document-detail-heading h3 { overflow-wrap: anywhere; }
@@ -351,7 +352,7 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .topbar { background: var(--canvas); }
 .title-block h1 { font-size: 23px; font-weight: 600; }
 .documents-layout, .pipeline-layout { grid-template-columns: minmax(0, 1fr); }
-.documents-layout.has-selection { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
+.documents-layout.has-selection { grid-template-columns: minmax(360px, .8fr) minmax(560px, 1.2fr); }
 .pipeline-layout.has-selection { grid-template-columns: minmax(0, 1fr); }
 .pipeline-layout.has-selection .pipeline-detail { grid-row: 1; }
 .pipeline-table .pill { white-space: nowrap; }
@@ -387,8 +388,10 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .trace-equation { padding: 12px; background: var(--panel-raised); border-radius: 8px; }
 .trace-equation code { white-space: normal; overflow-wrap: anywhere; }
 button { color: #081118; font-weight: 600; }
-.document-row { color: var(--text); font-weight: 400; }
-@media (max-width: 1150px) { .documents-layout.has-selection, .pipeline-layout.has-selection { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1439px) {
+  .documents-layout.has-selection { grid-template-columns: minmax(0, 1fr); }
+  .documents-layout.has-selection .document-detail { grid-row: 1; }
+}
 @media (max-width: 700px) {
   .table-scroll, .history-table { overflow: visible; }
   .table-scroll table, .history-table table { min-width: 0; }
