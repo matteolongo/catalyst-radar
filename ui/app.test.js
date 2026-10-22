@@ -641,6 +641,20 @@ test('desktop companies rejects invalid route filters and can reset to a valid f
   assert.equal(new URL(reads()[0].url).searchParams.get('offset'), '0');
 });
 
+test('desktop companies rejects incomplete native number input instead of removing the filter', async () => {
+  const dashboard = startDashboard();
+  await dashboard.flush();
+  const reads = () => dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').length;
+  const before = reads();
+  dashboard.element('minScore').value = '';
+  dashboard.element('minScore').validity = { badInput: true };
+  dashboard.element('discoveryFilters').trigger('submit');
+  await dashboard.flush();
+  assert.equal(reads(), before);
+  assert.equal(dashboard.element('minScore').getAttribute('aria-invalid'), 'true');
+  assert.match(dashboard.text('discoveryFilterError'), /complete number/);
+});
+
 test('desktop companies applies signed change without sorting the returned page locally', async () => {
   const dashboard = startDashboard({ discovery: url => discoveryPage(url.searchParams.get('sort') === 'VELOCITY' ? 'FAST' : 'HIGH') });
   await dashboard.flush();

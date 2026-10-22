@@ -327,6 +327,11 @@
   }
 
   function readDiscoveryFilters() {
+    ['minScore', 'minVelocity7d'].forEach(function (id) {
+      if ($(id).validity && $(id).validity.badInput) {
+        var error = new Error('Enter a complete number or clear the field.'); error.field = id; throw error;
+      }
+    });
     return window.CatalystLeaderboard.query({
       states: Array.from($('discoveryStates').selectedOptions || []).map(function (option) { return option.value; }),
       minScore: $('minScore').value, minVelocity7d: $('minVelocity7d').value, sector: $('sector').value,
