@@ -542,20 +542,35 @@
       '</tbody></table></div>' + transitionList;
   }
 
-  function renderCompanyEvents() {
+  function eventTable(items, container, showCompany) {
+    if (!items.length) return '<p>No events match these filters.</p>';
+    var expanded = new Set(Array.from(document.querySelectorAll('#' + container + ' details[open]')).map(function (detail) { return detail.dataset.eventGroup; }));
     var groups = new Map();
-    companyEvents.forEach(function (event) {
-      var id = event.clusterId || event.id;
+    items.forEach(function (event) {
+      var id = (event.ticker || '') + ':' + (event.clusterId || event.id);
       if (!groups.has(id)) groups.set(id, []);
       groups.get(id).push(event);
     });
-    $('companyEvents').innerHTML = companyEvents.length ? Array.from(groups.values()).map(function (group) {
-      return '<article class="event-cluster"><h4>' + (group.length > 1 ? 'Reports about one catalyst' : 'Event report') + '</h4>' + group.map(function (event) {
+    var rows = Array.from(groups.entries()).map(function (entry) {
+      var key = entry[0], group = entry[1], first = group[0];
+      var company = first.ticker ? '<a href="?view=company&amp;ticker=' + encodeURIComponent(first.ticker) + '" data-ticker="' + esc(first.ticker) + '">' + esc(first.ticker) + '</a>' : 'Ticker unavailable';
+      return '<tr class="event-cluster">' + (showCompany ? '<td>' + company + '<span class="cell-secondary">' + esc(first.companyName || 'Company name unavailable') + '</span></td>' : '') +
+        '<td>' + esc(first.type) + '<span class="cell-secondary">' + esc(first.family) + '</span></td><td>' + esc(first.direction) + '</td>' +
+        '<td>' + timeLabel(first.eventTimestamp) + '</td><td>' + timeLabel(first.discoveredAt) + '</td>' +
+        '<td>' + esc(first.source && first.source.provider || 'Unavailable') + '</td><td class="record-id">' + esc(first.clusterId || 'Unclustered') + '</td></tr>' +
+        '<tr class="event-evidence-row"><td colspan="' + (showCompany ? 7 : 6) + '"><details data-event-group="' + esc(key) + '"' + (expanded.has(key) ? ' open' : '') + '><summary>Evidence and sources · Loaded reports: ' + group.length + '</summary>' +
+        '<p class="muted small">Reports about one underlying event. Only loaded reports are shown; additional coverage does not multiply its catalyst contribution.</p>' + group.map(function (event) {
         return '<div class="event-report"><strong>' + esc(event.direction) + ' · ' + esc(event.family) + ' / ' + esc(event.type) + '</strong>' +
           '<p>Event date: ' + timeLabel(event.eventTimestamp) + ' · First captured: ' + timeLabel(event.discoveredAt) + '</p>' +
           evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p><p>' + sourceInspection(event) + '</p></div>';
-      }).join('') + '</article>';
-    }).join('') : '<p>No company events found.</p>';
+      }).join('') + '</details></td></tr>';
+    }).join('');
+    return '<div class="table-scroll" tabindex="0" role="region" aria-label="Event reports and evidence"><table class="events-table"><caption class="sr-only">Loaded event reports grouped by stored cluster</caption><thead><tr>' +
+      (showCompany ? '<th scope="col">Company</th>' : '') + '<th scope="col">Family / type</th><th scope="col">Direction</th><th scope="col">Event time</th><th scope="col">Discovered at</th><th scope="col">Source</th><th scope="col">Cluster reference</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  function renderCompanyEvents() {
+    $('companyEvents').innerHTML = eventTable(companyEvents, 'companyEvents', false);
     $('loadCompanyEvents').classList[companyNextCursor ? 'remove' : 'add']('hidden');
     $('loadCompanyEvents').disabled = !companyNextCursor || companyEventsLoading;
   }
@@ -573,16 +588,7 @@
   }
 
   function renderEvents() {
-    $('eventResults').innerHTML = eventItems.length ? eventItems.map(function (event) {
-      var company = event.ticker
-        ? '<a href="?view=company&ticker=' + encodeURIComponent(event.ticker) + '" data-ticker="' + esc(event.ticker) + '">' + esc(event.ticker) + '</a>'
-        : '<span class="muted">Ticker unavailable</span>';
-      return '<article class="event-cluster"><h3>' + company + ' · ' + esc(event.companyName || 'Company name unavailable') + '</h3>' +
-        '<strong>' + esc(event.direction) + ' · ' + esc(event.family) + ' / ' + esc(event.type) + '</strong>' +
-        '<p>Event date: ' + timeLabel(event.eventTimestamp) + ' · First captured: ' + timeLabel(event.discoveredAt) + '</p>' +
-        '<p class="muted small">Cluster: ' + esc(event.clusterId || 'unclustered') + '</p>' +
-        evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p><p>' + sourceInspection(event) + '</p></article>';
-    }).join('') : '<p>No events match these filters.</p>';
+    $('eventResults').innerHTML = eventTable(eventItems, 'eventResults', true);
     $('loadEvents').classList[eventNextCursor ? 'remove' : 'add']('hidden');
     $('loadEvents').disabled = !eventNextCursor || eventLoading;
   }
@@ -1039,6 +1045,7 @@
     });
     $('loadEvents').addEventListener('click', function () { return loadEvents(false); });
     $('eventResults').addEventListener('click', function (event) {
+      if (!ordinaryClick(event)) return;
       if (inspectSource(event)) return;
       var link = event.target.closest('[data-ticker]');
       if (!link) return;

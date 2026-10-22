@@ -1064,6 +1064,9 @@ test('event cursor appends reports and preserves source evidence when returning 
   assert.equal(new URL(dashboard.requests.at(-1).url).searchParams.get('cursor'), 'opaque-page-2');
   assert.match(dashboard.elements.get('eventResults').innerHTML, /Raised guidance.*Second report/s);
   assert.match(dashboard.elements.get('eventResults').innerHTML, /cluster-1/);
+  assert.match(dashboard.html('eventResults'), /<table/);
+  assert.match(dashboard.html('eventResults'), /Loaded reports: 2/);
+  assert.equal((dashboard.html('eventResults').match(/class="event-cluster"/g) || []).length, 1);
   dashboard.elements.get('eventResults').trigger('click', { target: { closest: () => ({ dataset: { ticker: 'DELL' } }) }, preventDefault() {} });
   assert.equal(dashboard.window.location.search, '?view=company&ticker=DELL');
   dashboard.popstate('?view=events');
