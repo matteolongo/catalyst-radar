@@ -319,16 +319,57 @@
   }
 
   function readDiscoveryFilters() {
-    var query = new URLSearchParams();
-    Array.from($('discoveryStates').selectedOptions || []).forEach(function (option) {
-      query.append('state', option.value);
+    return window.CatalystLeaderboard.query({
+      states: Array.from($('discoveryStates').selectedOptions || []).map(function (option) { return option.value; }),
+      minScore: $('minScore').value, minVelocity7d: $('minVelocity7d').value, sector: $('sector').value,
+      sort: $('discoverySort').value || 'SCORE', limit: Number($('pageSize').value) || 20
     });
-    if ($('minScore').value !== '') query.set('minScore', $('minScore').value);
-    if ($('minVelocity7d').value !== '') query.set('minVelocity7d', $('minVelocity7d').value);
-    if ($('sector').value.trim()) query.set('sector', $('sector').value.trim());
-    query.set('sort', $('discoverySort').value || 'SCORE');
-    query.set('limit', String(Math.min(100, Math.max(1, Number($('pageSize').value) || 20))));
-    return query;
+  }
+
+  function clearDiscoveryValidation() {
+    $('discoveryFilterError').textContent = '';
+    ['discoveryStates', 'minScore', 'minVelocity7d', 'discoverySort', 'pageSize'].forEach(function (id) { $(id).removeAttribute('aria-invalid'); });
+  }
+
+  function discoveryValidation(error) {
+    discoveryRequest++;
+    discoveryLoading = false;
+    $('discoveryFilterError').textContent = error.message;
+    if (error.field) $(error.field).setAttribute('aria-invalid', 'true');
+    $('discoveryResults').innerHTML = '';
+    $('discoveryAsOf').textContent = '';
+    $('pageSummary').textContent = '';
+    $('discoveryStatus').textContent = 'Correct the filters or reset to the first page.';
+    $('previousPage').disabled = true;
+    $('nextPage').disabled = true;
+    $('firstPage').classList.add('hidden');
+  }
+
+  function restoreDiscovery(route) {
+    clearDiscoveryValidation();
+    var states = route.getAll('state');
+    Array.from($('discoveryStates').options).forEach(function (option) { option.selected = states.includes(option.value); });
+    ['minScore', 'minVelocity7d', 'sector'].forEach(function (id) { $(id).value = route.get(id) || ''; });
+    $('discoverySort').value = route.get('sort') || 'SCORE';
+    $('pageSize').value = route.get('limit') || '20';
+    try {
+      appliedDiscoveryFilters = window.CatalystLeaderboard.query({ states: states, minScore: route.get('minScore'),
+        minVelocity7d: route.get('minVelocity7d'), sector: route.get('sector'), sort: route.get('sort') || 'SCORE',
+        limit: route.get('limit') || 20, offset: route.get('offset') || 0 });
+      if (![20, 50, 100].includes(Number(appliedDiscoveryFilters.get('limit')))) {
+        var error = new Error('Choose 20, 50, or 100 results per page.'); error.field = 'pageSize'; throw error;
+      }
+      discoveryLimit = Number(appliedDiscoveryFilters.get('limit'));
+      discoveryOffset = Number(appliedDiscoveryFilters.get('offset'));
+      return true;
+    } catch (error) { discoveryValidation(error); return false; }
+  }
+
+  function updateDiscoveryRoute() {
+    var query = new URLSearchParams(appliedDiscoveryFilters);
+    query.set('offset', String(discoveryOffset));
+    window.history.pushState({}, '', '?view=discover&' + query.toString());
+    return refreshDiscovery();
   }
 
   function fmtScore(value) {
@@ -659,7 +700,9 @@
     var requestOffset = discoveryOffset;
     var requestLimit = discoveryLimit;
     discoveryLoading = true;
-    $('discoveryStatus').textContent = 'Loading results…';
+    $('discoveryResults').innerHTML = '';
+    $('pageSummary').textContent = '';
+    $('discoveryStatus').textContent = 'Loading companies…';
     $('previousPage').disabled = true;
     $('nextPage').disabled = true;
     try {
@@ -684,22 +727,14 @@
       'Results ' + (requestOffset + 1) + '–' + (requestOffset + page.results.length) + ' of ' + page.total : '0 results';
     $('previousPage').disabled = requestOffset === 0;
     $('nextPage').disabled = requestOffset + requestLimit >= discoveryTotal;
+    $('firstPage').classList.toggle('hidden', requestOffset === 0 || page.results.length > 0);
     if (!page.results.length) {
       $('discoveryStatus').textContent = 'No companies match these filters.';
       $('discoveryResults').innerHTML = '';
       return;
     }
     $('discoveryStatus').textContent = page.total + ' matching companies';
-    $('discoveryResults').innerHTML = page.results.map(function (entry) {
-      return '<article class="discovery-card"><h3><a href="?view=company&ticker=' + encodeURIComponent(entry.ticker) + '" data-ticker="' + esc(entry.ticker) + '">' + esc(entry.ticker) + '</a> <span class="muted">' + esc(entry.name) + '</span></h3>' +
-        '<dl><div><dt>Sector</dt><dd>' + esc(entry.sector || '–') + '</dd></div>' +
-        '<div><dt>Score</dt><dd>' + esc(Number(entry.score).toFixed(1)) + '</dd></div>' +
-        '<div><dt>State</dt><dd>' + statusPill(entry.state) + '</dd></div>' +
-        '<div><dt>7-day velocity</dt><dd>' + esc(Number(entry.velocity7d).toFixed(1)) + '</dd></div>' +
-        '<div><dt>Events 7d</dt><dd>' + fmtInt(entry.events7d) + '</dd></div>' +
-        '<div><dt>Score version</dt><dd>' + esc(entry.scoreVersion) + '</dd></div>' +
-        '<div><dt>Company as of</dt><dd>' + timeLabel(entry.asOf) + '</dd></div></dl></article>';
-    }).join('');
+    $('discoveryResults').innerHTML = window.CatalystLeaderboard.render(page, { sort: appliedDiscoveryFilters.get('sort') });
   }
 
   function routeView(route) {
@@ -790,7 +825,7 @@
       historyRequest++;
       currentCompany = '';
     }
-    if (view === 'discover') {
+    if (view === 'discover' && restoreDiscovery(route)) {
       var discoverRead = refreshDiscovery();
       var validationRequest = discoveryRequest;
       var validationRevision = credentialRevision;
@@ -871,23 +906,28 @@
     });
     $('discoveryFilters').addEventListener('submit', function (event) {
       event.preventDefault();
-      appliedDiscoveryFilters = readDiscoveryFilters();
+      clearDiscoveryValidation();
+      try { appliedDiscoveryFilters = readDiscoveryFilters(); }
+      catch (error) { discoveryValidation(error); if (error.field) $(error.field).focus(); return; }
       discoveryLimit = Number(appliedDiscoveryFilters.get('limit'));
       discoveryOffset = 0;
       clearError();
-      return refreshDiscovery();
+      return updateDiscoveryRoute();
     });
+    $('resetDiscovery').addEventListener('click', function () { navigate('?view=discover'); });
+    $('firstPage').addEventListener('click', function () { discoveryOffset = 0; return updateDiscoveryRoute(); });
     $('previousPage').addEventListener('click', function () {
       if (discoveryLoading || discoveryOffset === 0) return;
       discoveryOffset = Math.max(0, discoveryOffset - discoveryLimit);
-      return refreshDiscovery();
+      return updateDiscoveryRoute();
     });
     $('nextPage').addEventListener('click', function () {
       if (discoveryLoading || discoveryOffset + discoveryLimit >= discoveryTotal) return;
       discoveryOffset += discoveryLimit;
-      return refreshDiscovery();
+      return updateDiscoveryRoute();
     });
     $('discoveryResults').addEventListener('click', function (event) {
+      if (!ordinaryClick(event)) return;
       var link = event.target.closest('[data-ticker]');
       if (!link) return;
       if (event.preventDefault) event.preventDefault();

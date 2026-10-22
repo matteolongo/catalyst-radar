@@ -615,6 +615,59 @@ test('discovery filters serialize repeated states and zero velocity', async () =
     '/v1/discovery/catalyzed?state=CATALYZED&state=HIGH&minScore=65&minVelocity7d=0&sector=Technology&sort=VELOCITY&limit=20&offset=0');
 });
 
+test('desktop companies restores applied filters and server sorting from its route', async () => {
+  const dashboard = startDashboard({ search: '?view=discover&state=HIGH&sector=Technology&sort=VELOCITY&limit=50&offset=50' });
+  await dashboard.flush();
+  const reads = dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed');
+  const query = new URL(reads.at(-1).url).searchParams;
+  assert.equal(query.get('sort'), 'VELOCITY');
+  assert.equal(query.get('offset'), '50');
+  assert.equal(query.get('limit'), '50');
+  assert.deepEqual(query.getAll('state'), ['HIGH']);
+  assert.equal(dashboard.element('sector').value, 'Technology');
+  assert.match(dashboard.html('discoveryResults'), /<table/);
+});
+
+test('desktop companies rejects invalid route filters and can reset to a valid first page', async () => {
+  const dashboard = startDashboard({ search: '?view=discover&minScore=101&offset=40' });
+  await dashboard.flush();
+  const reads = () => dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed');
+  assert.equal(reads().length, 0);
+  assert.match(dashboard.text('discoveryFilterError'), /between 0 and 100/);
+  assert.equal(dashboard.element('minScore').value, '101');
+  dashboard.click('resetDiscovery');
+  await dashboard.flush();
+  assert.equal(reads().length, 1);
+  assert.equal(new URL(reads()[0].url).searchParams.get('offset'), '0');
+});
+
+test('desktop companies applies signed change without sorting the returned page locally', async () => {
+  const dashboard = startDashboard({ discovery: url => discoveryPage(url.searchParams.get('sort') === 'VELOCITY' ? 'FAST' : 'HIGH') });
+  await dashboard.flush();
+  dashboard.element('discoverySort').value = 'VELOCITY';
+  dashboard.element('minVelocity7d').value = '-2';
+  dashboard.element('discoveryFilters').trigger('submit');
+  await dashboard.flush();
+  assert.match(dashboard.html('discoveryResults'), /FAST/);
+  assert.equal(new URLSearchParams(dashboard.window.location.search).get('minVelocity7d'), '-2');
+  const sourceRoute = dashboard.window.location.search;
+  dashboard.element('discoveryResults').trigger('click', { target: { closest: () => ({ dataset: { ticker: 'DELL' } }) } });
+  dashboard.click('backToResults');
+  await dashboard.flush();
+  assert.equal(dashboard.window.location.search, sourceRoute);
+});
+
+test('desktop companies empty later page retains a way back to the first page', async () => {
+  const dashboard = startDashboard({ search: '?view=discover&offset=20',
+    discovery: { asOf: '2026-10-22T10:00:00Z', total: 0, limit: 20, offset: 20, results: [] } });
+  await dashboard.flush();
+  assert.equal(dashboard.element('previousPage').disabled, false);
+  assert.equal(dashboard.element('firstPage').hidden, false);
+  dashboard.click('firstPage');
+  await dashboard.flush();
+  assert.equal(new URLSearchParams(dashboard.window.location.search).get('offset'), '0');
+});
+
 test('next page preserves filters and advances offset', async () => {
   const dashboard = startDashboard({ discovery: { asOf: '2026-10-02T12:02:00Z', total: 44, limit: 20, offset: 0, results: [{ ticker: 'DELL', name: 'Dell', sector: 'Technology', score: 30, state: 'WATCH', velocity7d: 1, events7d: 1, scoreVersion: 'score-v1', asOf: '2026-10-02T12:00:00Z' }] } });
   await waitForRequests(dashboard.requests, 2);

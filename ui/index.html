@@ -260,23 +260,27 @@
             <button type="submit">Open company</button>
             <p id="companyLookupStatus" class="panel-error" role="alert"></p>
           </form>
-          <form id="discoveryFilters" class="filter-grid">
+          <p id="discoveryFilterError" class="panel-error" role="alert"></p>
+          <form id="discoveryFilters" class="filter-grid" novalidate>
             <label>States
               <select id="discoveryStates" multiple size="5" aria-describedby="stateHelp">
                 <option value="NORMAL">Normal</option><option value="WATCH">Watch</option><option value="BUILDING">Building</option><option value="CATALYZED">Catalyzed</option><option value="HIGH">High</option>
               </select><span id="stateHelp" class="muted small">Select one or more states.</span>
             </label>
-            <label>Minimum score <input id="minScore" type="number" step="any" inputmode="decimal"></label>
-            <label>Minimum 7-day velocity <input id="minVelocity7d" type="number" step="any" inputmode="decimal"></label>
+            <label>Minimum score <input id="minScore" type="number" min="0" max="100" step="any" inputmode="decimal" aria-describedby="discoveryFilterError"></label>
+            <label>Minimum 7-day change <input id="minVelocity7d" type="number" step="any" inputmode="decimal" aria-describedby="discoveryFilterError"></label>
             <label>Sector (exact match) <input id="sector" type="text"></label>
-            <label>Sort by <select id="discoverySort"><option value="SCORE">Score</option><option value="VELOCITY">7-day velocity</option></select></label>
+            <label>Sort by <select id="discoverySort"><option value="SCORE">Highest score</option><option value="VELOCITY">Highest 7-day change</option></select></label>
             <label>Results per page <select id="pageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label>
             <button type="submit">Apply filters</button>
+            <button id="resetDiscovery" type="button" class="ghost">Reset filters</button>
           </form>
           <p id="discoveryStatus" class="muted" role="status">Loading…</p>
           <p id="discoveryAsOf" class="muted small"></p>
           <div id="discoveryResults" class="discovery-results"></div>
-          <div class="pager"><button id="previousPage" type="button" class="ghost" disabled>Previous</button><span id="pageSummary" aria-live="polite"></span><button id="nextPage" type="button" class="ghost" disabled>Next</button></div>
+          <p class="muted small">Score changes are returned by the server; this view does not establish complete lookback coverage. Events discovered counts underlying clusters or unclustered events, not articles or current scoring membership.</p>
+          <div class="pager"><button id="previousPage" type="button" class="ghost" disabled>Previous</button><span id="pageSummary" aria-live="polite"></span><button id="nextPage" type="button" class="ghost" disabled>Next</button><button id="firstPage" type="button" class="ghost hidden">Return to first page</button></div>
+          <p class="muted small">Rankings can change between page reads.</p>
         </section>
         <section id="companyView" class="card view hidden" aria-labelledby="companyTitle">
           <button id="backToResults" type="button" class="ghost">← Return to results</button>

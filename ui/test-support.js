@@ -65,6 +65,16 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
         closest(selector) { return selector.startsWith('[data-') && this.dataset[selector.slice(6, -1).replace(/^data-/, '').replace(/-([a-z])/g, (_, ch) => ch.toUpperCase())] ? this : null; },
         _handlers: handlers,
       };
+      const select = html.match(new RegExp('<select\\b[^>]*id="' + id + '"[^>]*>([\\s\\S]*?)</select>'));
+      if (select) {
+        element.options = Array.from(select[1].matchAll(/<option\b([^>]*)>([^<]*)<\/option>/g), match => ({
+          value: match[1].match(/value="([^"]*)"/)?.[1] ?? match[2], selected: false,
+        }));
+        Object.defineProperty(element, 'selectedOptions', {
+          get() { return this.options.filter(option => option.selected); },
+          set(values) { this.options.forEach(option => { option.selected = values.some(value => value.value === option.value); }); },
+        });
+      }
       elements.set(id, element);
     }
     return elements.get(id);
