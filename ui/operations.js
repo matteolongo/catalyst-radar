@@ -282,10 +282,12 @@
           ' retrying · ' + integer(q.due) + ' due across the current queue', {
           label: 'Inspect waiting documents', route: '?view=documents&status=PENDING&status=RETRYABLE_ERROR'
         }),
+        metric('Processing documents', integer(q.processing), 'Active processing is separate from waiting and due work.', {
+          label: 'Inspect processing documents', route: '?view=documents&status=PROCESSING'
+        }),
         metric('Terminal documents', integer(q.terminal), 'Current queue scope', {
           label: 'Inspect terminal failures', route: '?view=documents&status=TERMINAL_ERROR'
-        }),
-        metric('Estimated recorded model cost', cost(m.estimatedCostUsd, m.costKnownCalls, m.calls), costCoverage)
+        })
       ].join('');
       el('overviewCoverage').innerHTML = [
         metric('Documents without a company link', integer(q.unresolved), 'No company association is stored. This is not necessarily a processing failure.', {
@@ -302,7 +304,8 @@
         '<div><dt>New source documents</dt><dd>' + esc(integer(a.documentsNew)) + ' documents</dd></div>' +
         '<div><dt>Inserted event reports</dt><dd>' + esc(integer(a.eventsInserted)) + ' reports</dd></div>' +
         '<div><dt>New canonical clusters</dt><dd>' + esc(integer(a.clustersCreated)) + ' clusters</dd></div>' +
-        '<div><dt>Recalculations</dt><dd>' + esc(recalculation) + '</dd></div></dl>' +
+        '<div><dt>Recalculations</dt><dd>' + esc(recalculation) + '</dd></div>' +
+        '<div><dt>Estimated recorded model cost</dt><dd>' + esc(cost(m.estimatedCostUsd, m.costKnownCalls, m.calls)) + ' · ' + esc(costCoverage) + '</dd></div></dl>' +
         '<p class="muted small">Recorded complete cycles only · captured since ' + esc(captured) + '.</p>' +
         '<p class="muted small">Daily snapshot freshness: ' + esc(freshness(s)) + '.</p>';
       var signals = Array.isArray(data.signals) ? data.signals : [];
@@ -315,7 +318,7 @@
         return '<li><span class="pill ' + severityClass + '">' +
           esc(signal.severity || 'INFO') + '</span> ' + link +
           (signal.provider ? ' · ' + esc(signal.provider) : '') + '</li>';
-      }).join('') + '</ul>' : '<p class="muted">No active operational signals. Review document coverage separately.</p>';
+      }).join('') + '</ul>' : '<p class="muted">No recorded attention signals. Review document coverage separately.</p>';
       var dependencies = Array.isArray(data.dependencies) ? data.dependencies : [];
       el('overviewDependencies').innerHTML = dependencies.length
         ? '<ul class="dependency-list">' + dependencies.map(function (item) {

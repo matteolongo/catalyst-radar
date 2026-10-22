@@ -668,6 +668,54 @@ test('desktop companies empty later page retains a way back to the first page', 
   assert.equal(new URLSearchParams(dashboard.window.location.search).get('offset'), '0');
 });
 
+test('desktop overview leaderboard reads one bounded page without starting work', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=overview' });
+  await dashboard.flush();
+  const reads = dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed');
+  assert.equal(reads.length, 1);
+  assert.equal(new URL(reads[0].url).searchParams.get('limit'), '5');
+  assert.equal(new URL(reads[0].url).searchParams.get('offset'), '0');
+  assert.equal(dashboard.requests.filter(r => r.method === 'POST').length, 0);
+  assert.match(dashboard.html('overviewLeaderboardResults'), /<table/);
+});
+
+test('desktop overview leaderboard does not wait for administrative reads or poll with operations', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=overview',
+    stored: { 'catalyst-admin-key': 'admin-secret' }, deferOverview: true });
+  await dashboard.flush();
+  assert.match(dashboard.html('overviewLeaderboardResults'), /DELL/);
+  dashboard.tick();
+  await dashboard.flush();
+  assert.equal(dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').length, 1);
+});
+
+test('desktop overview leaderboard ignores stale sort responses and carries the sort into Companies', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=overview&range=7d', deferDiscovery: true });
+  await dashboard.flush();
+  assert.equal(dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').length, 1);
+  dashboard.element('overviewLeaderboardSort').value = 'VELOCITY';
+  dashboard.element('overviewLeaderboardSort').trigger('change');
+  await dashboard.flush();
+  dashboard.resolveDiscovery(1, discoveryPage('LATEST'));
+  dashboard.resolveDiscovery(0, discoveryPage('OLD'));
+  await dashboard.flush();
+  assert.match(dashboard.html('overviewLeaderboardResults'), /LATEST/);
+  assert.doesNotMatch(dashboard.html('overviewLeaderboardResults'), /OLD/);
+  assert.equal(new URLSearchParams(dashboard.window.location.search).get('range'), '7d');
+  assert.equal(dashboard.element('overviewLeaderboardAll').href, '?view=discover&sort=VELOCITY');
+});
+
+test('desktop overview key clearing prevents an obsolete leaderboard response from returning', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=overview', deferDiscovery: true,
+    stored: { 'catalyst-api-key': 'old-key' } });
+  await dashboard.flush();
+  assert.equal(dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').length, 1);
+  dashboard.click('clearKey');
+  dashboard.resolveDiscovery(0, discoveryPage('SECRET'));
+  await dashboard.flush();
+  assert.doesNotMatch(dashboard.html('overviewLeaderboardResults'), /SECRET/);
+});
+
 test('next page preserves filters and advances offset', async () => {
   const dashboard = startDashboard({ discovery: { asOf: '2026-10-02T12:02:00Z', total: 44, limit: 20, offset: 0, results: [{ ticker: 'DELL', name: 'Dell', sector: 'Technology', score: 30, state: 'WATCH', velocity7d: 1, events7d: 1, scoreVersion: 'score-v1', asOf: '2026-10-02T12:00:00Z' }] } });
   await waitForRequests(dashboard.requests, 2);

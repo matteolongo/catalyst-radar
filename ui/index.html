@@ -39,7 +39,7 @@
           <span class="utc-label">Times shown in UTC</span>
           <span id="health" class="pill unknown" title="API health" role="status">Checking API…</span>
           <button id="refresh" type="button" class="ghost">Refresh</button>
-          <label class="poll"><input id="autoRefresh" type="checkbox" checked> Auto-refresh every 30 seconds</label>
+          <label class="poll"><input id="autoRefresh" type="checkbox" checked> Auto-refresh operations · 30 seconds</label>
         </div>
       </header>
 
@@ -52,22 +52,35 @@
           <div id="overviewMetrics" class="metrics-grid" aria-label="Current operational metrics">
             <article class="metric"><h2>Last successful ingestion</h2><p class="metric-value">—</p></article>
             <article class="metric"><h2>Waiting documents</h2><p class="metric-value">—</p></article>
-            <article class="metric"><h2>Terminal documents</h2><p class="metric-value">—</p></article>
-            <article class="metric"><h2>Estimated recorded model cost</h2><p class="metric-value">—</p></article>
+            <article class="metric"><h2>Processing documents</h2><p class="metric-value">—</p></article>
+            <article class="metric"><h2>Terminal failures</h2><p class="metric-value">—</p></article>
           </div>
-          <section class="panel" aria-labelledby="overviewCoverageTitle">
-            <h2 id="overviewCoverageTitle">Document coverage</h2>
-            <p class="muted small">Current stored coverage across all capture dates. Missing company links or processing state are separate from terminal failures.</p>
-            <div id="overviewCoverage" class="coverage-metrics" role="status">Waiting for an authorized operational read.</div>
-          </section>
-          <section class="panel" aria-labelledby="overviewActivityTitle">
-            <h2 id="overviewActivityTitle">Activity</h2>
-            <div id="overviewActivity" role="status">Waiting for an authorized operational read.</div>
-          </section>
-          <div class="overview-columns">
+          <div class="overview-columns overview-priorities">
             <section class="panel" aria-labelledby="overviewSignalsTitle">
               <h2 id="overviewSignalsTitle">Needs attention</h2>
               <div id="overviewSignals" role="status">Waiting for an authorized operational read.</div>
+            </section>
+            <section class="panel" aria-labelledby="overviewLeadersTitle">
+              <div class="panel-heading"><h2 id="overviewLeadersTitle">Latest catalyst leaders</h2>
+                <label class="range-control">Sort<select id="overviewLeaderboardSort"><option value="SCORE">Highest score</option><option value="VELOCITY">Highest 7-day change</option></select></label>
+              </div>
+              <p class="muted small">Latest stored snapshots; independent of the activity period. Refresh to update this ranking.</p>
+              <p id="overviewLeaderboardStatus" role="status">Loading companies…</p>
+              <p id="overviewLeaderboardAsOf" class="muted small"></p>
+              <div id="overviewLeaderboardResults"></div>
+              <button id="overviewLeaderboardRetry" type="button" class="ghost hidden">Retry</button>
+              <a id="overviewLeaderboardAll" href="?view=discover">Open Companies</a>
+            </section>
+          </div>
+          <section class="panel" aria-labelledby="overviewActivityTitle">
+            <h2 id="overviewActivityTitle">Recorded activity in selected period</h2>
+            <div id="overviewActivity" role="status">Waiting for an authorized operational read.</div>
+          </section>
+          <div class="overview-columns">
+            <section class="panel" aria-labelledby="overviewCoverageTitle">
+              <h2 id="overviewCoverageTitle">Document coverage</h2>
+              <p class="muted small">Current stored coverage across all capture dates. Missing company links or processing state are separate from terminal failures.</p>
+              <div id="overviewCoverage" class="coverage-metrics" role="status">Waiting for an authorized operational read.</div>
             </section>
             <section class="panel" aria-labelledby="overviewDependenciesTitle">
               <h2 id="overviewDependenciesTitle">Dependencies</h2>

@@ -15,6 +15,8 @@
   var appliedDiscoveryFilters;
   var discoveryRequest = 0;
   var discoveryLoading = false;
+  var overviewLeaderboardRequest = 0;
+  var overviewLeaderboardQuery = null;
   var companyRequest = 0;
   var historyRequest = 0;
   var currentCompany = '';
@@ -290,6 +292,9 @@
   function invalidatePublicCredentials() {
     abortPublicReads();
     discoveryRequest++;
+    overviewLeaderboardRequest++;
+    overviewLeaderboardQuery = null;
+    ['overviewLeaderboardResults', 'overviewLeaderboardAsOf', 'overviewLeaderboardStatus'].forEach(function (id) { $(id).innerHTML = ''; $(id).textContent = ''; });
     companyRequest++;
     historyRequest++;
     eventRequest++;
@@ -692,6 +697,37 @@
     return '/v1/discovery/catalyzed?' + query.toString();
   }
 
+  async function refreshOverviewLeaderboard() {
+    var sort = $('overviewLeaderboardSort').value || 'SCORE';
+    var request = ++overviewLeaderboardRequest;
+    var revision = credentialRevision;
+    if (overviewLeaderboardQuery !== sort) {
+      $('overviewLeaderboardResults').innerHTML = '';
+      $('overviewLeaderboardAsOf').textContent = '';
+    }
+    overviewLeaderboardQuery = sort;
+    $('overviewLeaderboardStatus').textContent = 'Loading companies…';
+    $('overviewLeaderboardRetry').classList.add('hidden');
+    $('overviewLeaderboardAll').href = '?view=discover&sort=' + sort;
+    try {
+      var page = await api('/v1/discovery/catalyzed?' + window.CatalystLeaderboard.query({ sort: sort, limit: 5, offset: 0 }));
+      if (request !== overviewLeaderboardRequest || revision !== credentialRevision || currentView !== 'overview') return;
+      $('overviewLeaderboardResults').innerHTML = page.results.length ? window.CatalystLeaderboard.render(page, { compact: true, sort: sort }) : '';
+      $('overviewLeaderboardAsOf').textContent = 'Query as of ' + fmtTime(page.asOf) + ' UTC';
+      $('overviewLeaderboardStatus').textContent = page.results.length ? 'Latest stored company snapshots' : 'No company snapshots are available.';
+    } catch (error) {
+      if (request !== overviewLeaderboardRequest || revision !== credentialRevision || currentView !== 'overview') return;
+      if (error.status === 401 || error.status === 403) {
+        $('overviewLeaderboardResults').innerHTML = '';
+        $('overviewLeaderboardAsOf').textContent = '';
+        $('overviewLeaderboardStatus').innerHTML = 'Company access denied. <a href="?view=settings">Open Settings to update the public API key.</a>';
+      } else {
+        $('overviewLeaderboardStatus').textContent = 'Unable to refresh company rankings. Any displayed rows reflect the last successful read.';
+        $('overviewLeaderboardRetry').classList.remove('hidden');
+      }
+    }
+  }
+
   async function refreshDiscovery() {
     var page;
     var request = ++discoveryRequest;
@@ -776,12 +812,14 @@
   }
 
   function refreshPublicView() {
-    if (currentView === 'discover') return refreshDiscovery();
+    if (currentView === 'overview') return refreshOverviewLeaderboard();
+    if (currentView === 'discover' && restoreDiscovery(new URLSearchParams(window.location.search))) return refreshDiscovery();
     if (currentView === 'events') return loadEvents(true);
     if (currentView === 'company') return refreshCompany(new URLSearchParams(window.location.search).get('ticker'));
   }
 
   function showView(moveFocus, fromHistory) {
+    var previousView = currentView;
     var route = new URLSearchParams(window.location.search);
     var view = routeView(route);
     var invalidTicker = false;
@@ -798,6 +836,7 @@
         eventLoaded = false;
       }
       if (currentView === 'discover') { discoveryRequest++; discoveryLoading = false; }
+      if (currentView === 'overview') overviewLeaderboardRequest++;
     }
     currentView = view;
 
@@ -810,6 +849,11 @@
     $('pageTitle').textContent = titles[view];
     $('activityRangeLabel').classList.toggle('hidden', !['overview', 'pipeline', 'models'].includes(view));
     $('activityRange').value = route.get('range') === '7d' ? '7d' : '24h';
+    if (view === 'overview') {
+      var leaderboardSort = route.get('leaderboardSort') === 'VELOCITY' ? 'VELOCITY' : 'SCORE';
+      $('overviewLeaderboardSort').value = leaderboardSort;
+      if (previousView !== 'overview' || overviewLeaderboardQuery !== leaderboardSort) refreshOverviewLeaderboard();
+    }
 
     var topNavigation = { overview: 'navOverview', pipeline: 'navPipeline', documents: 'navDocuments',
       models: 'navModels', settings: 'navSettings', discover: 'navDiscover', company: 'navDiscover', events: 'navEvents' };
@@ -865,7 +909,7 @@
       if (apiKey) window.sessionStorage.setItem(API_KEY_NAME, apiKey);
       else window.sessionStorage.removeItem(API_KEY_NAME);
       if (operations) operations.credentialsChanged();
-      if (['discover', 'company', 'events'].includes(currentView)) refreshPublicView();
+      if (['overview', 'discover', 'company', 'events'].includes(currentView)) refreshPublicView();
       var returnSearch = safeReturnSearch(window.history.state && window.history.state.returnSearch);
       if (adminKey && returnSearch && currentView === 'settings') navigate(returnSearch);
     });
@@ -877,11 +921,31 @@
       $('adminKey').value = '';
       $('apiKey').value = '';
       if (operations) operations.credentialsChanged();
-      if (['discover', 'company', 'events'].includes(currentView)) refreshPublicView();
+      if (['overview', 'discover', 'company', 'events'].includes(currentView)) refreshPublicView();
     });
     $('refresh').addEventListener('click', function () {
       if (operations) operations.refresh();
-      if (['discover', 'company', 'events'].includes(currentView)) refreshPublicView();
+      if (['overview', 'discover', 'company', 'events'].includes(currentView)) refreshPublicView();
+    });
+    $('overviewLeaderboardSort').addEventListener('change', function () {
+      var route = new URLSearchParams(window.location.search);
+      route.set('view', 'overview');
+      route.set('leaderboardSort', $('overviewLeaderboardSort').value);
+      window.history.pushState({}, '', '?' + route.toString());
+      refreshOverviewLeaderboard();
+    });
+    $('overviewLeaderboardRetry').addEventListener('click', refreshOverviewLeaderboard);
+    $('overviewLeaderboardAll').addEventListener('click', function (event) {
+      if (!ordinaryClick(event)) return;
+      event.preventDefault();
+      navigate('?view=discover&sort=' + ($('overviewLeaderboardSort').value || 'SCORE'));
+    });
+    $('overviewLeaderboardResults').addEventListener('click', function (event) {
+      if (!ordinaryClick(event)) return;
+      var link = event.target.closest('[data-ticker]');
+      if (!link) return;
+      event.preventDefault();
+      navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker), { returnSearch: window.location.search || '?view=overview' });
     });
     $('activityRange').addEventListener('change', function (event) {
       var route = new URLSearchParams(window.location.search);

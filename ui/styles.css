@@ -172,6 +172,11 @@ footer { padding: 0 24px 24px; }
 .leaderboard-table .saved-time { min-width: 150px; font-size: 12px; color: var(--muted); }
 .leaderboard-table tbody tr:hover { background: var(--panel-raised); }
 .leaderboard-table th.num { min-width: 100px; }
+.overview-priorities { grid-template-columns: minmax(220px, .65fr) minmax(0, 1.35fr); }
+.overview-priorities .panel-heading { flex-wrap: wrap; }
+.leaderboard-table.compact { min-width: 570px; }
+.leaderboard-table.compact td:first-child { min-width: 110px; }
+#overviewLeaderboardAll { display: inline-flex; align-items: center; min-height: 44px; }
 .catalyst-state { color: var(--muted); background: var(--panel-raised); }
 .catalyst-state.building, .catalyst-state.catalyzed, .catalyst-state.high { color: var(--accent); background: var(--accent-soft); }
 .catalyst-state.high { border: 1px solid var(--accent); }
