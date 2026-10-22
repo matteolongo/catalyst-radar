@@ -573,13 +573,23 @@ test('initial load defaults to Overview with an accessible destination navigatio
   await dashboard.flush();
   assert.match(html, /<nav[^>]+aria-label="Main navigation"/);
   assert.match(html, /id="navOverview"/);
-  assert.match(html, /id="navIntelligence"/);
+  assert.match(html, /id="navDiscover"[^>]*>Companies<\/a>/);
   assert.match(html, /id="discoverView"/);
   assert.match(html, /id="eventsView"/);
   assert.match(html, /id="overviewView"/);
   assert.equal(dashboard.elements.get('overviewView').hidden, false);
   assert.equal(dashboard.elements.get('discoverView').hidden, true);
   assert.match(dashboard.text('pageTitle'), /Overview/);
+});
+
+test('desktop navigation highlights Companies on company detail and preserves modified clicks', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL' });
+  await dashboard.flush();
+  assert.equal(dashboard.element('navDiscover').getAttribute('aria-current'), 'page');
+  let prevented = false;
+  dashboard.click('navEvents', { ctrlKey: true, preventDefault() { prevented = true; } });
+  assert.equal(prevented, false);
+  assert.equal(dashboard.window.location.search, '?view=company&ticker=DELL');
 });
 
 test('a discovery ticker opens a company route and browser back restores Discover', async () => {

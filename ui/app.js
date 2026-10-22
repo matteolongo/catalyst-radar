@@ -37,8 +37,8 @@
       pipeline: ['Pipeline', 'Follow ingestion (fetching and storing news), processing (extracting and grouping events), and scoring (recalculating company catalysts). RUNNING means work is active; SUCCESS means the run finished successfully; PARTIAL means some work had issues; FAILED means the run failed; CANCELLED means it was cancelled; INTERRUPTED means it stopped before finishing. Inspect the recorded run for details. Running the pipeline fetches news and may use paid model calls; this guide never starts a run.'],
       documents: ['Documents', 'Follow source text, processing attempts, extracted events and recorded model calls. PENDING means waiting; PROCESSING means an attempt is active; COMPLETED means processing finished; SKIPPED means processing was not needed; RETRYABLE_ERROR means processing can retry; TERMINAL_ERROR means automatic retries have stopped. Inspect the error and attempt history to understand what happened. UNRESOLVED means company links are missing; NOT_TRACKED means processing state is not recorded.'],
       models: ['Models & costs', 'Inspect recorded model status to find successful and failed calls, latency to see how long calls took, and activity to see which operations ran and when. Open a call to inspect its recorded context.'],
-      discover: ['Discover', 'Filter stored company snapshots by catalyst state, score and velocity. These are intelligence signals, not buy or sell recommendations.'],
-      company: ['Company', 'Open a company using its ticker or a Discover result. Compare the saved score, explanation, history and recorded valuations; an explanation reconstructed today is distinct from captured historical inputs.'],
+      discover: ['Companies', 'Filter stored company snapshots by catalyst state, score and 7-day score change. These are intelligence signals, not buy or sell recommendations.'],
+      company: ['Company', 'Open a company using its ticker or a Companies result. Compare the saved score, explanation, history and recorded calculations; an explanation reconstructed today is distinct from captured historical inputs.'],
       events: ['Events', 'Inspect classified events and supporting source evidence. Event clusters group reports about the same real-world event; duplicate reports do not multiply its catalyst score. Event, publication and discovery times describe different points in time.'],
     };
     var state = { path: null, completed: [], deferred: false };
@@ -728,6 +728,10 @@
     return value;
   }
 
+  function ordinaryClick(event) {
+    return !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && (event.button === undefined || event.button === 0);
+  }
+
   function navigate(localSearchValue, state) {
     var search = localSearch(localSearchValue);
     var historyState = {};
@@ -767,21 +771,17 @@
     });
 
     var titles = { overview: 'Overview', pipeline: 'Pipeline', documents: 'Documents', models: 'Models & costs',
-      settings: 'Settings', discover: 'Discover', company: 'Company', events: 'Events' };
+      settings: 'Settings', discover: 'Companies', company: 'Company', events: 'Events' };
     $('pageTitle').textContent = titles[view];
     $('activityRangeLabel').classList.toggle('hidden', !['overview', 'pipeline', 'models'].includes(view));
     $('activityRange').value = route.get('range') === '7d' ? '7d' : '24h';
 
-    var intelligence = ['discover', 'company', 'events'].includes(view);
     var topNavigation = { overview: 'navOverview', pipeline: 'navPipeline', documents: 'navDocuments',
-      models: 'navModels', settings: 'navSettings', discover: 'navIntelligence', company: 'navIntelligence', events: 'navIntelligence' };
-    ['navOverview', 'navPipeline', 'navDocuments', 'navModels', 'navIntelligence', 'navSettings', 'navDiscover', 'navEvents'].forEach(function (id) {
+      models: 'navModels', settings: 'navSettings', discover: 'navDiscover', company: 'navDiscover', events: 'navEvents' };
+    ['navOverview', 'navPipeline', 'navDocuments', 'navModels', 'navSettings', 'navDiscover', 'navEvents'].forEach(function (id) {
       $(id).removeAttribute('aria-current');
     });
     $(topNavigation[view]).setAttribute('aria-current', 'page');
-    if (view === 'discover' || view === 'company') $('navDiscover').setAttribute('aria-current', 'page');
-    if (view === 'events') $('navEvents').setAttribute('aria-current', 'page');
-    document.querySelectorAll('.intelligence-tabs').forEach(function (tabs) { tabs.classList.toggle('hidden', !intelligence); });
 
     if (view === 'company') {
       if (route.get('ticker').toUpperCase() !== currentCompany) refreshCompany(route.get('ticker').toUpperCase());
@@ -925,10 +925,11 @@
     });
     [
       ['navOverview', '?view=overview'], ['navPipeline', '?view=pipeline'], ['navDocuments', '?view=documents'],
-      ['navModels', '?view=models'], ['navIntelligence', '?view=discover'], ['navDiscover', '?view=discover'],
+      ['navModels', '?view=models'], ['navDiscover', '?view=discover'],
       ['navEvents', '?view=events'], ['navSettings', '?view=settings'],
     ].forEach(function (item) {
       $(item[0]).addEventListener('click', function (event) {
+        if (!ordinaryClick(event)) return;
         event.preventDefault();
         navigate(item[1]);
       });

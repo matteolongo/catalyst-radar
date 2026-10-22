@@ -7,19 +7,19 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <a class="skip-link" href="#mainContent">Skip to main content</a>
   <div class="app-shell">
     <aside class="sidebar">
       <a class="wordmark" href="?view=overview">CatalystRadar</a>
       <nav class="app-nav" aria-label="Main navigation">
         <a id="navOverview" href="?view=overview">Overview</a>
+        <span class="nav-group-label">Research</span>
+        <a id="navDiscover" href="?view=discover">Companies</a>
+        <a id="navEvents" href="?view=events">Events</a>
+        <span class="nav-group-label">Operations</span>
         <a id="navPipeline" href="?view=pipeline">Pipeline</a>
         <a id="navDocuments" href="?view=documents">Documents</a>
         <a id="navModels" href="?view=models">Models &amp; costs</a>
-        <a id="navIntelligence" href="?view=discover">Intelligence</a>
-        <div class="intelligence-tabs hidden" aria-label="Intelligence views">
-          <a id="navDiscover" href="?view=discover">Discover</a>
-          <a id="navEvents" href="?view=events">Events</a>
-        </div>
         <a id="navSettings" href="?view=settings">Settings</a>
       </nav>
     </aside>
@@ -45,7 +45,7 @@
 
       <div id="banner" class="banner hidden" role="alert"></div>
 
-      <main>
+      <main id="mainContent" tabindex="-1">
         <section id="onboarding" class="panel onboarding hidden" aria-label="Backoffice guide" tabindex="-1"></section>
         <section id="overviewView" class="view" aria-labelledby="pageTitle">
           <p id="overviewStatus" class="screen-status" role="status">Loading operational summary…</p>
@@ -254,7 +254,7 @@
         </section>
 
         <section id="discoverView" class="card view hidden" aria-labelledby="discoverTitle">
-          <div class="card-head"><div><h2 id="discoverTitle" tabindex="-1">Discover</h2><p class="muted">Find companies by their current catalyst profile.</p></div></div>
+          <div class="card-head"><div><h2 id="discoverTitle" tabindex="-1">Companies</h2><p class="muted">Rank latest stored company snapshots by catalyst score or 7-day score change.</p></div></div>
           <form id="companyLookup" class="filter-grid company-lookup" novalidate>
             <label>Company ticker<input id="companyLookupTicker" type="search" maxlength="15" autocomplete="off" spellcheck="false" placeholder="e.g. ABNB or BRK.B" aria-describedby="companyLookupStatus"></label>
             <button type="submit">Open company</button>
