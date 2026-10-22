@@ -147,6 +147,72 @@ test('changing credentials cancels a displayed disclosure and clears the configu
   assert.equal(dashboard.localValues.has('catalyst-onboarding-v1'), false);
 });
 
+test('a denied model configuration check clears protected caches and keeps execution disabled', async () => {
+  const dashboard = startDashboard({ search: '?view=overview', stored: { 'catalyst-admin-key': 'admin-secret' } });
+  await dashboard.flush();
+  assert.match(dashboard.html('overviewMetrics'), /Inspect waiting documents/);
+  const fetch = dashboard.context.fetch;
+  dashboard.context.fetch = (url, options) => new URL(url).pathname === '/internal/operations/config'
+    ? Promise.resolve({ ok: false, status: 403, json: async () => ({ code: 'FORBIDDEN' }) })
+    : fetch(url, options);
+  dashboard.click('navPipeline');
+  await dashboard.flush();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  assert.match(dashboard.html('pipelineStatus'), /Admin access required.*Settings/);
+  assert.doesNotMatch(dashboard.html('overviewMetrics'), /Inspect waiting documents/);
+  assert.doesNotMatch(dashboard.html('onboarding'), /confirm-pipeline|embed-model/);
+  assert.equal(dashboard.element('runNow').disabled, true);
+  dashboard.click('runNow');
+  await dashboard.flush();
+  assert.equal(dashboard.requests.some(({ method }) => method === 'POST'), false);
+  assert.equal(dashboard.localValues.has('catalyst-onboarding-v1'), false);
+});
+
+test('access denial cancels a displayed model confirmation without remembering approval', async () => {
+  const progress = { path: 'operator', completed: ['overview'], deferred: false };
+  const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' },
+    localStored: { 'catalyst-onboarding-v1': JSON.stringify(progress) } });
+  await dashboard.flush();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  assert.match(dashboard.html('onboarding'), /embed-model.*confirm-pipeline/s);
+  const fetch = dashboard.context.fetch;
+  dashboard.context.fetch = (url, options) => new URL(url).pathname === '/internal/operations/runs'
+    ? Promise.resolve({ ok: false, status: 403, json: async () => ({ code: 'FORBIDDEN' }) })
+    : fetch(url, options);
+  dashboard.click('refresh');
+  await dashboard.flush();
+  assert.doesNotMatch(dashboard.html('onboarding'), /embed-model|confirm-pipeline/);
+  assert.match(dashboard.html('pipelineStatus'), /Admin access required.*Settings/);
+  assert.equal(dashboard.element('runNow').disabled, true);
+  assert.deepEqual(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')), progress);
+  dashboard.click('runNow');
+  await dashboard.flush();
+  assert.equal(dashboard.requests.some(({ method }) => method === 'POST'), false);
+});
+
+for (const response of [undefined, 'error']) {
+  test('access denial cancels loading model disclosure before a late ' + (response ? 'failure' : 'success'), async () => {
+    const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' }, deferConfig: true });
+    await dashboard.flush();
+    dashboard.click('runNow');
+    const fetch = dashboard.context.fetch;
+    dashboard.context.fetch = (url, options) => new URL(url).pathname === '/internal/operations/runs'
+      ? Promise.resolve({ ok: false, status: 403, json: async () => ({ code: 'FORBIDDEN' }) })
+      : fetch(url, options);
+    dashboard.click('refresh');
+    await dashboard.flush();
+    assert.doesNotMatch(dashboard.html('onboarding'), /Checking configured models|confirm-pipeline/);
+    dashboard.resolveConfig(0, response);
+    await dashboard.flush();
+    assert.doesNotMatch(dashboard.html('onboarding'), /embed-model|confirm-pipeline|Unable to read model configuration/);
+    assert.equal(dashboard.element('runNow').disabled, true);
+    assert.equal(dashboard.requests.some(({ method }) => method === 'POST'), false);
+    assert.equal(dashboard.localValues.has('catalyst-onboarding-v1'), false);
+  });
+}
+
 test('polling and guide restart retain acknowledged disclosure without repeating the notice', async () => {
   const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' } });
   await dashboard.flush();
