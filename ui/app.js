@@ -15,6 +15,7 @@
   var appliedDiscoveryFilters;
   var discoveryRequest = 0;
   var discoveryLoading = false;
+  var renderedDiscoveryPath = null;
   var overviewLeaderboardRequest = 0;
   var overviewLeaderboardQuery = null;
   var companyRequest = 0;
@@ -756,9 +757,13 @@
     var path = discoveryPath();
     var requestOffset = discoveryOffset;
     var requestLimit = discoveryLimit;
+    var retainRows = renderedDiscoveryPath === path && $('discoveryResults').innerHTML !== '';
     discoveryLoading = true;
-    $('discoveryResults').innerHTML = '';
-    $('pageSummary').textContent = '';
+    if (!retainRows) {
+      $('discoveryResults').innerHTML = '';
+      $('pageSummary').textContent = '';
+      $('discoveryAsOf').textContent = '';
+    }
     $('discoveryStatus').textContent = 'Loading companies…';
     $('previousPage').disabled = true;
     $('nextPage').disabled = true;
@@ -767,10 +772,15 @@
     } catch (err) {
       if (revision !== credentialRevision || request !== discoveryRequest || currentView !== 'discover') return;
       discoveryLoading = false;
-      $('discoveryResults').innerHTML = '';
-      $('discoveryStatus').textContent = 'Unable to load discovery results.';
-      $('discoveryAsOf').textContent = '';
-      $('pageSummary').textContent = '';
+      if (retainRows && err.status !== 401 && err.status !== 403) {
+        $('discoveryStatus').textContent = 'Unable to refresh companies. Displayed rows reflect the last successful read.';
+      } else {
+        $('discoveryResults').innerHTML = '';
+        $('discoveryStatus').textContent = 'Unable to load discovery results.';
+        $('discoveryAsOf').textContent = '';
+        $('pageSummary').textContent = '';
+        renderedDiscoveryPath = null;
+      }
       $('previousPage').disabled = true;
       $('nextPage').disabled = true;
       showError('Discovery: ' + err.message);
@@ -778,6 +788,7 @@
     }
     if (revision !== credentialRevision || request !== discoveryRequest || currentView !== 'discover') return;
     discoveryLoading = false;
+    renderedDiscoveryPath = path;
     discoveryTotal = page.total;
     $('discoveryAsOf').textContent = 'Discovery query as of ' + fmtTime(page.asOf) + (page.asOf ? ' UTC' : '');
     $('pageSummary').textContent = page.total ?

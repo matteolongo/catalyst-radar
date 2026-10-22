@@ -744,6 +744,41 @@ test('desktop company keeps returned negative drivers visible and labels changes
   assert.doesNotMatch(dashboard.html('companyHistory'), /<polyline/);
 });
 
+test('desktop overview retains old rankings on transient failure and clears them on denial', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=overview', deferDiscovery: true });
+  await dashboard.flush();
+  dashboard.resolveDiscovery(0, discoveryPage('SAVED'));
+  await dashboard.flush();
+  dashboard.click('overviewLeaderboardRetry');
+  dashboard.resolveDiscovery(1, 'error');
+  await dashboard.flush();
+  assert.match(dashboard.html('overviewLeaderboardResults'), /SAVED/);
+  assert.match(dashboard.text('overviewLeaderboardStatus'), /last successful read/);
+  dashboard.click('overviewLeaderboardRetry');
+  dashboard.resolveDiscovery(2, 'forbidden');
+  await dashboard.flush();
+  assert.equal(dashboard.html('overviewLeaderboardResults'), '');
+  assert.equal(dashboard.text('overviewLeaderboardAsOf'), '');
+  assert.match(dashboard.html('overviewLeaderboardStatus'), /access denied/);
+});
+
+test('desktop Companies keeps same-query rows on refresh failure but clears them on denial', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=discover', deferDiscovery: true });
+  await dashboard.flush();
+  dashboard.resolveDiscovery(0, discoveryPage('SAVED'));
+  await dashboard.flush();
+  dashboard.click('refresh');
+  dashboard.resolveDiscovery(1, 'error');
+  await dashboard.flush();
+  assert.match(dashboard.html('discoveryResults'), /SAVED/);
+  assert.match(dashboard.text('discoveryStatus'), /last successful read/);
+  dashboard.click('refresh');
+  dashboard.resolveDiscovery(2, 'forbidden');
+  await dashboard.flush();
+  assert.equal(dashboard.html('discoveryResults'), '');
+  assert.equal(dashboard.text('discoveryAsOf'), '');
+});
+
 test('desktop company return action names its Overview opener', async () => {
   const dashboard = startDashboardWithRoute();
   await dashboard.flush();

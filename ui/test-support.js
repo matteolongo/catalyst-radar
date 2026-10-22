@@ -256,7 +256,9 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
       return answer === 'error' ? response({ detail: 'Company not found' }, 404) : response(answer || companyFixture[suffix]);
     }
     if (route === '/v1/discovery/catalyzed' && method === 'GET' && deferDiscovery) {
-      return new Promise((resolve) => discoveryResolvers.push((body) => resolve(body === 'error' ? response({ detail: 'Discovery unavailable' }, 503) : response(body))));
+      return new Promise((resolve) => discoveryResolvers.push((body) => resolve(body === 'error'
+        ? response({ detail: 'Discovery unavailable' }, 503) : body === 'forbidden'
+          ? response({ detail: 'Public key required' }, 403) : response(body))));
     }
     if (route.startsWith('/internal/') && deferAdmin && method !== 'POST') {
       return new Promise((resolve) => adminResolvers.push(() => resolve(response({ runs: [] }))));

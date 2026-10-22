@@ -393,7 +393,7 @@ button { color: #081118; font-weight: 600; }
   .documents-layout.has-selection .document-detail { grid-row: 1; }
 }
 @media (max-width: 700px) {
-  .table-scroll, .history-table { overflow: visible; }
+  .table-scroll, .history-table { overflow-x: auto; }
   .table-scroll table, .history-table table { min-width: 0; }
   .model-calls-table, .model-breakdown-table, .history-table table { display: block; }
   .model-calls-table thead, .model-breakdown-table thead, .history-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
