@@ -192,7 +192,7 @@ footer { padding: 0 24px 24px; }
 .company-panel h3[id] { scroll-margin-top: 24px; }
 .company-panel p, .company-panel blockquote { overflow-wrap: anywhere; }
 .score-header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.score-number { font-size: 32px; font-variant-numeric: tabular-nums; }
+.score-number { font-size: 28px; font-variant-numeric: tabular-nums; }
 .driver, .event-cluster { margin: 12px 0; }
 .driver h4, .event-cluster h4 { margin: 0; }
 .event-report + .event-report { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }

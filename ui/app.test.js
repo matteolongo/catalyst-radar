@@ -337,7 +337,7 @@ test('source inspection preserves the reconstructed explanation and server state
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL', stored: { 'catalyst-admin-key': 'admin-secret' } });
   await dashboard.flush();
   assert.match(dashboard.html('companyExplanation'), /Reconstructed current explanation: matching score and versions do not prove original driver membership/);
-  assert.match(dashboard.html('companyExplanation'), /Use Recorded valuations for the exact inputs retained by captured cycles/);
+  assert.match(dashboard.html('companyExplanation'), /Use Recorded calculations for the exact inputs retained by captured cycles/);
   assert.match(dashboard.html('companyExplanation'), /documentId=source-1.*Inspect source in backoffice/s);
   assert.match(dashboard.html('companyEvents'), /documentId=source-1.*Inspect source in backoffice/s);
   assert.match(dashboard.html('companyScore'), /68\.0.*CATALYZED.*65\.0.*80\.0/s);
@@ -399,7 +399,7 @@ test('company return controls preserve Discover and Events openers and reject un
     dashboard.click(container, { target: { closest: (selector) => selector === '[data-ticker]' ? { dataset: { ticker: 'DELL' } } : null } });
     assert.equal(dashboard.historyState.returnSearch, origin);
     assert.deepEqual(Object.keys(dashboard.historyState), ['returnSearch']);
-    assert.equal(dashboard.element('navIntelligence').getAttribute('aria-current'), 'page');
+    assert.equal(dashboard.element('navDiscover').getAttribute('aria-current'), 'page');
     dashboard.click('backToResults');
     assert.equal(dashboard.window.location.search, origin);
   }
@@ -716,6 +716,31 @@ test('desktop overview key clearing prevents an obsolete leaderboard response fr
   assert.doesNotMatch(dashboard.html('overviewLeaderboardResults'), /SECRET/);
 });
 
+test('desktop company keeps returned negative drivers visible and labels changes in points', async () => {
+  const driver = companyFixture['/catalyst'].topDrivers[0];
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: {
+    ...companyFixture, '/catalyst': { ...companyFixture['/catalyst'], velocity1d: 2,
+      topDrivers: [driver, driver, driver, { ...driver, direction: 'NEGATIVE', type: 'GUIDANCE_CUT', contribution: -4 }] },
+  } });
+  await dashboard.flush();
+  assert.match(dashboard.html('companyExplanation'), /GUIDANCE_CUT/);
+  assert.match(dashboard.html('companyScore'), /1-day change \(points\)/);
+  assert.match(dashboard.html('companyScore'), /\+2\.0/);
+  assert.match(dashboard.html('companyHistory'), /<circle/);
+  assert.doesNotMatch(dashboard.html('companyHistory'), /<polyline/);
+});
+
+test('desktop company return action names its Overview opener', async () => {
+  const dashboard = startDashboardWithRoute();
+  await dashboard.flush();
+  dashboard.element('overviewLeaderboardResults').trigger('click', { target: { closest: () => ({ dataset: { ticker: 'DELL' } }) } });
+  await dashboard.flush();
+  assert.equal(dashboard.text('backToResults'), 'Back to Overview');
+  dashboard.click('backToResults');
+  await dashboard.flush();
+  assert.match(dashboard.window.location.search, /view=overview/);
+});
+
 test('next page preserves filters and advances offset', async () => {
   const dashboard = startDashboard({ discovery: { asOf: '2026-10-02T12:02:00Z', total: 44, limit: 20, offset: 0, results: [{ ticker: 'DELL', name: 'Dell', sector: 'Technology', score: 30, state: 'WATCH', velocity7d: 1, events7d: 1, scoreVersion: 'score-v1', asOf: '2026-10-02T12:00:00Z' }] } });
   await waitForRequests(dashboard.requests, 2);
@@ -850,11 +875,11 @@ test('company route renders metadata, current metrics, reconstructed evidence, a
   assert.match(dashboard.elements.get('companyOverview').innerHTML, /NYSE.*Technology.*Hardware/s);
   const score = dashboard.elements.get('companyScore').innerHTML;
   assert.match(score, /68\.0.*CATALYZED.*65.*80/s);
-  assert.match(score, /1-day velocity.*3-day velocity.*7-day velocity.*Total events.*Events 7d.*score-v1.*taxonomy-v1/s);
+  assert.match(score, /1-day change.*3-day change.*7-day change.*Total events.*Events 7d.*score-v1.*taxonomy-v1/s);
   const why = dashboard.elements.get('companyExplanation').innerHTML;
   assert.match(why, /reconstructed/i);
   assert.match(why, /matching score and versions do not prove original driver membership/i);
-  assert.match(why, /Use Recorded valuations for the exact inputs retained by captured cycles/);
+  assert.match(why, /Use Recorded calculations for the exact inputs retained by captured cycles/);
   assert.match(why, /Raised guidance &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.match(why, /Event date.*First captured.*Source publication date/s);
   assert.match(why, /https:\/\/example.com\/story.*noopener noreferrer/s);

@@ -319,6 +319,9 @@
   }
 
   function statusPill(status) {
+    if (['NORMAL', 'WATCH', 'BUILDING', 'CATALYZED', 'HIGH'].includes(status)) {
+      return '<span class="pill catalyst-state ' + status.toLowerCase() + '">' + esc(status) + '</span>';
+    }
     var cls = status === 'SUCCESS' ? 'ok' : (status === 'PARTIAL' ? 'warn' : (status === 'FAILED' ? 'bad' : 'info'));
     return '<span class="pill ' + cls + '">' + esc(status) + '</span>';
   }
@@ -381,6 +384,11 @@
     return value === null || value === undefined || !Number.isFinite(Number(value)) ? '–' : Number(value).toFixed(1);
   }
 
+  function fmtChange(value) {
+    if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'Unavailable';
+    return (Number(value) > 0 ? '+' : '') + Number(value).toFixed(1).replace('-', '−');
+  }
+
   function fmtFactor(value) {
     return value === null || value === undefined || !Number.isFinite(Number(value)) ? '–' : String(value);
   }
@@ -398,6 +406,7 @@
   }
 
   function inspectSource(event) {
+    if (!ordinaryClick(event)) return false;
     var link = event.target.closest('[data-source-document-id]');
     if (!link || !link.dataset.sourceDocumentId) return false;
     event.preventDefault();
@@ -452,14 +461,15 @@
     var band = data.stateBand || {};
     $('companyScore').innerHTML = '<div class="score-header"><strong class="score-number">' + esc(fmtScore(data.score)) + '</strong>' + statusPill(data.state) +
       '<span>State range: ' + esc(fmtScore(band.minScore)) + '–' + esc(fmtScore(band.maxScore)) + (band.maxInclusive ? ' inclusive' : ' exclusive upper bound') + '</span></div>' +
-      '<dl class="fact-grid"><div><dt>1-day velocity</dt><dd>' + esc(fmtScore(data.velocity1d)) + '</dd></div>' +
-      '<div><dt>3-day velocity</dt><dd>' + esc(fmtScore(data.velocity3d)) + '</dd></div>' +
-      '<div><dt>7-day velocity</dt><dd>' + esc(fmtScore(data.velocity7d)) + '</dd></div>' +
+      '<dl class="fact-grid"><div><dt>1-day change (points)</dt><dd>' + esc(fmtChange(data.velocity1d)) + '</dd></div>' +
+      '<div><dt>3-day change (points)</dt><dd>' + esc(fmtChange(data.velocity3d)) + '</dd></div>' +
+      '<div><dt>7-day change (points)</dt><dd>' + esc(fmtChange(data.velocity7d)) + '</dd></div>' +
       '<div><dt>Total events</dt><dd>' + esc(fmtInt(data.totalEvents)) + '</dd></div>' +
       '<div><dt>Events 7d</dt><dd>' + esc(fmtInt(data.events7d)) + '</dd></div>' +
       '<div><dt>Saved as of</dt><dd>' + timeLabel(data.asOf) + '</dd></div>' +
       '<div><dt>Score version</dt><dd>' + esc(data.scoreVersion) + '</dd></div>' +
-      '<div><dt>Taxonomy version</dt><dd>' + esc(data.taxonomyVersion) + '</dd></div></dl>';
+      '<div><dt>Taxonomy version</dt><dd>' + esc(data.taxonomyVersion) + '</dd></div></dl>' +
+      '<p class="muted small">Score changes are returned by the server; this view does not establish complete lookback coverage.</p>';
     if (data.explanationStatus !== 'RECONSTRUCTED_SCORE_MATCH') {
       $('companyExplanation').innerHTML = '<p class="panel-error">Explanation unavailable: ' +
         (data.explanationStatus === 'VERSION_MISMATCH' ? 'score or taxonomy versions differ from the saved snapshot.' :
@@ -471,7 +481,7 @@
       '<div><dt>Negative summary</dt><dd>' + esc(fmtScore(data.negativeScore)) + '</dd></div>' +
       '<div><dt>Direct summary</dt><dd>' + esc(fmtScore(data.directScore)) + '</dd></div>' +
       '<div><dt>Inferred summary</dt><dd>' + esc(fmtScore(data.inferredScore)) + '</dd></div></dl>';
-    var drivers = (data.topDrivers || []).slice(0, 3).map(function (driver) {
+    var drivers = (data.topDrivers || []).map(function (driver) {
       return '<article class="driver"><h4>' + esc(driver.direction) + ' · ' + esc(driver.family || 'Unclassified') + ' / ' + esc(driver.type) + '</h4>' +
         '<p>Raw event contribution: ' + esc(fmtScore(driver.contribution)) + '</p>' +
         '<p>Event date: ' + timeLabel(driver.eventTimestamp) + ' · First captured: ' + timeLabel(driver.discoveredAt) + '</p>' +
@@ -479,7 +489,7 @@
         '<details><summary>Scoring details</summary><p>Score version: ' + esc(data.scoreVersion) + '</p>' + factorDetails(driver) + '</details></article>';
     }).join('');
     var calcFields = ['contributionSum', 'familyCount', 'convergenceMultiplier', 'rawScore', 'normalizationScale', 'contributionCutoff'];
-    $('companyExplanation').innerHTML = '<p class="muted">Reconstructed current explanation: matching score and versions do not prove original driver membership. Use Recorded valuations for the exact inputs retained by captured cycles.</p>' +
+    $('companyExplanation').innerHTML = '<p class="muted">Reconstructed current explanation: matching score and versions do not prove original driver membership. Use Recorded calculations for the exact inputs retained by captured cycles.</p>' +
       summary + (drivers || '<p>No reconstructed drivers available.</p>') +
       '<details><summary>Scoring details</summary><p>Score version: ' + esc(data.scoreVersion) + '</p><dl class="fact-grid">' +
       calcFields.map(function (key) { return '<div><dt>' + esc(key) + '</dt><dd>' + esc(fmtFactor(calculation[key])) + '</dd></div>'; }).join('') + '</dl></details>';
@@ -863,6 +873,9 @@
     $(topNavigation[view]).setAttribute('aria-current', 'page');
 
     if (view === 'company') {
+      var returnSearch = safeReturnSearch(window.history.state && window.history.state.returnSearch) || '?view=discover';
+      var returnView = routeView(new URLSearchParams(returnSearch));
+      $('backToResults').textContent = 'Back to ' + (titles[returnView] || 'Companies');
       if (route.get('ticker').toUpperCase() !== currentCompany) refreshCompany(route.get('ticker').toUpperCase());
     } else {
       companyRequest++;
