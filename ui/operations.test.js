@@ -466,10 +466,20 @@ test('unlinked embedding calls keep missing usage unknown and known zero visible
   const content = dashboard.html('modelDetailContent');
   assert.match(content, /No source association recorded/);
   assert.match(content, /<dt>Input tokens<\/dt><dd>Unknown<\/dd>/);
-  assert.match(content, /<dt>Output tokens<\/dt><dd>0<\/dd>/);
+  assert.match(content, /<dt>Output tokens<\/dt><dd>Not applicable \(recorded 0\)<\/dd>/);
   assert.match(content, /<dt>Estimated cost<\/dt><dd>Unknown<\/dd>/);
   assert.match(content, /<dt>Latency<\/dt><dd>Unknown<\/dd>/);
   assert.doesNotMatch(content, /data-model-source-id|data-model-attempt-id|data-operation-run-id/);
+});
+
+test('desktop models identifies embedding output as not applicable without inventing usage', async () => {
+  const embedding = modelCallFixture(MODEL_CALL, { operation: 'embed', outputTokens: null, estimatedCost: null });
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', modelDetail: embedding,
+    modelCalls: { ...modelCallsPageFixture(0), items: [embedding] } });
+  await dashboard.openModels('?view=models&modelRunId=' + MODEL_CALL);
+  assert.match(dashboard.html('modelRows'), /Not applicable/);
+  assert.match(dashboard.html('modelDetailContent'), /<dt>Output tokens<\/dt><dd>Not applicable<\/dd>/);
+  assert.match(dashboard.html('modelDetailContent'), /<dt>Estimated cost<\/dt><dd>Unknown<\/dd>/);
 });
 
 test('empty model history reports known zero cost and token sums', async () => {

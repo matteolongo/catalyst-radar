@@ -585,10 +585,10 @@
           return '<section class="trace-collection"><h4>Cycle ' + traceLink('?view=pipeline&runId=' + encodeURIComponent(group[0]), group[0]) + '</h4>' + group[1].join('') + '</section>';
         }).join('');
       }
-      if (!state.items.length) html = '<p class="muted">' + (state.loading ? 'Loading recorded valuations…' : state.loaded ? 'No recorded valuations for this context. Missing history is not evidence of a zero score or successful recalculation.' : 'Recorded valuations have not been loaded.') + '</p>';
+      if (!state.items.length) html = '<p class="muted">' + (state.loading ? 'Loading recorded calculations…' : state.loaded ? 'No recorded calculations for this context. Missing history is not evidence of a zero score or successful recalculation.' : 'Recorded calculations have not been loaded.') + '</p>';
       if (origin === 'document') html = '<p class="muted small">These valuations include this document as recorded evidence. Each underlying event contributes once; extra reports provide supporting evidence.</p>' + html;
       if (origin === 'company' && params.get('runId') && state.loaded && !state.items.some(function (item) { return item.operationRunId === params.get('runId'); })) {
-        html = '<p class="muted small">No successful valuation for the selected cycle is present in the loaded company pages. ' + traceLink('?view=pipeline&runId=' + encodeURIComponent(params.get('runId')), 'Inspect cycle issues') + (state.cursor ? '. Additional history remains on later pages.</p>' : '. No additional recorded valuation pages are available.</p>') + html;
+        html = '<p class="muted small">No successful valuation for the selected cycle is present in the loaded company pages. ' + traceLink('?view=pipeline&runId=' + encodeURIComponent(params.get('runId')), 'Inspect cycle issues') + (state.cursor ? '. Additional history remains on later pages.</p>' : '. No additional recorded calculation pages are available.</p>') + html;
       }
       if (state.error) html += '<p class="panel-error">' + esc(state.error) + '</p>';
       return traceHistoryNotice(state, origin === 'document' ? 'valuations' : origin === 'company' ? 'companyValuations' : 'runValuations') + html;
@@ -629,7 +629,7 @@
         }).join('') + '</ol></section>';
       });
       html += '<p>' + traceLink(documentSearch(documentFilters, { id: selectedDocumentId, tab: 'events' }), 'Inspect stored events and clusters') + ' · ' +
-        traceLink(documentSearch(documentFilters, { id: selectedDocumentId, tab: 'valuations' }), 'Inspect linked company valuations') + '</p>';
+        traceLink(documentSearch(documentFilters, { id: selectedDocumentId, tab: 'valuations' }), 'Inspect linked company calculations') + '</p>';
       if (state.cursor) html += '<p class="muted small">Earlier stages remain on older pages. Loaded stages are arranged chronologically within each run/attempt group.</p>';
       if (state.error) html += '<p class="panel-error">' + esc(state.error) + '</p>';
       return html;
@@ -837,7 +837,7 @@
         var button = selectedDocumentTab === 'steps' ? 'loadSteps' : 'loadDocumentValuations';
         toggleHidden(button, !state.cursor && !state.error);
         el(button).disabled = state.loading;
-        el(button).textContent = state.error ? 'Retry recorded read' : (selectedDocumentTab === 'steps' ? 'Load older steps' : 'Load more document valuations');
+        el(button).textContent = state.error ? 'Retry recorded read' : (selectedDocumentTab === 'steps' ? 'Load older steps' : 'Load more document calculations');
       } else if (selectedDocumentTab === 'attempts') {
         toggleHidden('loadAttempts', !state.cursor);
         el('loadAttempts').disabled = state.loading;
@@ -1332,22 +1332,25 @@
     function modelRowCost(item) {
       return item.estimatedCost == null ? 'Unknown' : cost(item.estimatedCost, 1, 1);
     }
+    function modelOutputTokens(item) {
+      return item.operation === 'embed' ? 'Not applicable' + (item.outputTokens == null ? '' : ' (recorded ' + integer(item.outputTokens) + ')') : integer(item.outputTokens);
+    }
     function renderModelRows() {
       var content = modelPageLoading && !modelPageLoaded && !modelItems.length
         ? '<p class="muted">Loading recorded model calls…</p>'
         : (modelItems.length ? '<div class="table-scroll"><table class="model-calls-table"><caption>' +
           modelItems.length + ' loaded recorded calls; summary totals cover the full selected window.</caption>' +
-          '<thead><tr><th scope="col">Call</th><th scope="col">Provider / operation / model</th><th scope="col">Outcome</th>' +
-          '<th scope="col">Recorded at (UTC)</th><th scope="col">Input / output tokens</th><th scope="col">Estimated cost</th><th scope="col">Latency</th><th scope="col">Associations</th></tr></thead><tbody>' +
+          '<thead><tr><th scope="col">Created at (UTC)</th><th scope="col">Operation</th><th scope="col">Model / associations</th><th scope="col">Outcome</th>' +
+          '<th scope="col" class="num">Latency</th><th scope="col" class="num">Input tokens</th><th scope="col" class="num">Output tokens</th><th scope="col" class="num">Estimated cost</th></tr></thead><tbody>' +
           modelItems.map(function (item) {
-            return '<tr' + (item.id === selectedModelCallId ? ' class="model-call-selected"' : '') + '><td data-label="Call"><button type="button" class="ghost model-row-button" data-model-run-id="' +
+            return '<tr' + (item.id === selectedModelCallId ? ' class="model-call-selected"' : '') + '><td data-label="Created at (UTC)">' + esc(time(item.createdAt)) + '<br><button type="button" class="ghost model-row-button" data-model-run-id="' +
               esc(item.id) + '" aria-current="' + (item.id === selectedModelCallId ? 'true' : 'false') + '">Inspect call</button></td>' +
-              '<td data-label="Provider / operation / model">' + esc(item.provider) + ' · ' + esc(item.operation) + ' · ' + esc(item.model) + '</td>' +
+              '<td data-label="Operation">' + esc(item.operation) + '</td><td data-label="Model / associations">' + esc(item.model) + '<span class="cell-secondary">' + esc(item.provider) + '</span><details><summary>Recorded associations</summary>' + renderModelLinks(item) + '</details></td>' +
               '<td data-label="Outcome"><span class="pill ' + (item.success ? 'ok' : 'bad') + '">' + (item.success ? 'Success' : 'Failed') + '</span>' +
               (item.errorCode ? '<br>' + esc(item.errorCode) : '') + '</td>' +
-              '<td data-label="Recorded at (UTC)">' + esc(time(item.createdAt)) + '</td><td data-label="Input / output tokens">' + esc(integer(item.inputTokens)) + ' / ' + esc(integer(item.outputTokens)) + '</td>' +
-              '<td data-label="Estimated cost">' + esc(modelRowCost(item)) + '</td><td data-label="Latency">' + esc(item.latencyMs == null ? 'Unknown' : integer(item.latencyMs) + ' ms') +
-              '</td><td data-label="Associations">' + renderModelLinks(item) + '</td></tr>';
+              '<td class="num" data-label="Latency">' + esc(item.latencyMs == null ? 'Unknown' : integer(item.latencyMs) + ' ms') + '</td>' +
+              '<td class="num" data-label="Input tokens">' + esc(integer(item.inputTokens)) + '</td><td class="num" data-label="Output tokens">' + esc(modelOutputTokens(item)) + '</td>' +
+              '<td class="num" data-label="Estimated cost">' + esc(modelRowCost(item)) + '</td></tr>';
           }).join('') + '</tbody></table></div>' : '<p class="muted">No recorded model calls match these filters.</p>');
       if (modelPageError && modelItems.length) content += '<p class="panel-error">' + esc(modelPageError) + '</p>';
       el('modelRows').innerHTML = content;
@@ -1384,11 +1387,10 @@
         esc(call.createdAt ? time(call.createdAt) + ' UTC' : 'at an unknown time') + '</p>' +
         (call.errorCode || call.errorMessage ? '<p class="panel-error">' + esc(call.errorCode || 'Error category not recorded') + ' · ' + esc(call.errorMessage || 'Error message not recorded') + '</p>' : '') +
         '</section>' + renderModelLinks(call) + '<dl class="model-detail-grid">' +
-        [['Call ID', call.id], ['Provider', call.provider], ['Operation', call.operation], ['Model', call.model],
-          ['Prompt version', call.promptVersion], ['Extractor version', call.extractorVersion], ['Recorded at (UTC)', time(call.createdAt)],
-          ['Outcome', call.success ? 'Success' : 'Failed'], ['Input tokens', integer(call.inputTokens)],
-          ['Output tokens', integer(call.outputTokens)], ['Estimated cost', modelRowCost(call)],
+        [['Input tokens', integer(call.inputTokens)], ['Output tokens', modelOutputTokens(call)], ['Estimated cost', modelRowCost(call)],
           ['Latency', call.latencyMs == null ? 'Unknown' : integer(call.latencyMs) + ' ms'],
+          ['Prompt version', call.promptVersion], ['Extractor version', call.extractorVersion], ['Recorded at (UTC)', time(call.createdAt)],
+          ['Call ID', call.id], ['Provider', call.provider], ['Operation', call.operation], ['Model', call.model], ['Outcome', call.success ? 'Success' : 'Failed'],
           ['Error category', call.errorCode], ['Safe error message', call.errorMessage]].map(function (entry) {
           return '<div><dt>' + esc(entry[0]) + '</dt><dd>' + esc(entry[1] == null || entry[1] === '' ? 'Unknown' : entry[1]) + '</dd></div>';
         }).join('') + '</dl>';
@@ -2720,7 +2722,7 @@
               (source.evidenceTruncated ? '<p class="muted small">Evidence facts or text are truncated.</p>' : '') + '<p>' + externalSourceLink(source.canonicalUrl, 'Open original source') + '</p></section>';
           }).join('') + '</details>';
       }).join('');
-      if (!state.items.length) html = '<p class="muted">' + (state.loading ? 'Loading recorded contributions…' : state.loaded ? 'No retained contributions were recorded for this valuation.' : 'Contributions have not been loaded.') + '</p>';
+      if (!state.items.length) html = '<p class="muted">' + (state.loading ? 'Loading recorded contributions…' : state.loaded ? 'No retained contributions were recorded for this calculation.' : 'Contributions have not been loaded.') + '</p>';
       if (state.cursor) html += '<p class="muted small">Additional contributions remain on later pages; totals above are the saved full calculation.</p>';
       if (state.error) html += '<p class="panel-error">' + esc(state.error) + '</p>';
       return traceHistoryNotice(state, 'contributions') + html;
@@ -2735,8 +2737,8 @@
         if (!loadedDocumentValuations.some(function (item) { return sameId(item.id, valuationId); })) {
           clearValuation();
           toggleHidden('valuationDetail', false);
-          el('valuationStatus').innerHTML = (page.cursor || tabState('valuations').cursor ? 'This valuation is not on the loaded document pages. Load more document valuations to find the recorded connection. ' : 'No recorded connection to this document appears in the loaded valuations. ') +
-            traceLink(traceRoute({ documentTab: 'valuations' }), 'Open document valuations');
+          el('valuationStatus').innerHTML = (page.cursor || tabState('valuations').cursor ? 'This valuation is not on the loaded document pages. Load more document calculations to find the recorded connection. ' : 'No recorded connection to this document appears in the loaded valuations. ') +
+            traceLink(traceRoute({ documentTab: 'valuations' }), 'Open document calculations');
           return Promise.resolve(false);
         }
       }
@@ -2745,7 +2747,7 @@
       var requestSequence = sequence;
       var expected = screen;
       valuationLoading = true;
-      el('valuationStatus').textContent = 'Loading exact recorded valuation…';
+      el('valuationStatus').textContent = 'Loading exact recorded calculation…';
       return read('/internal/operations/valuations/' + encodeURIComponent(id), revision, requestSequence, expected).then(function (result) {
         if (!result.current || id !== valuationId) return false;
         var item = result.data;
@@ -2757,7 +2759,7 @@
           return false;
         }
         valuation = item;
-        el('valuationTitle').textContent = item.ticker + ' · Recorded valuation';
+        el('valuationTitle').textContent = item.ticker + ' · Recorded calculation';
         el('valuationSummary').innerHTML = valuationSummary(item);
         el('valuationStatus').textContent = 'Exact saved inputs · valuation ID ' + item.id;
         el('valuationTitle').focus();
@@ -2765,14 +2767,14 @@
       }).catch(function (error) {
         if (!current(revision, requestSequence, expected) || id !== valuationId || error.name === 'AbortError') return false;
         if (error.status === 403 || error.code === 'FORBIDDEN') denyTraceAccess();
-        else el('valuationStatus').textContent = error.code === 'VALUATION_NOT_FOUND' ? 'Recorded valuation not found.' : 'Unable to read this valuation. Use Refresh to retry.';
+        else el('valuationStatus').textContent = error.code === 'VALUATION_NOT_FOUND' ? 'Recorded calculation not found.' : 'Unable to read this calculation. Use Refresh to retry.';
         return false;
       }).finally(function () { if (current(revision, requestSequence, expected) && id === valuationId) valuationLoading = false; });
     }
     function loadTraceScreen(force) {
       if (!credentials().hasAdmin) {
         clearTraceData();
-        if (screen === 'company') el('companyValuations').innerHTML = '<p class="muted">Admin access required for recorded valuations. ' + traceLink('?view=settings', 'Open Settings') + '</p>';
+        if (screen === 'company') el('companyValuations').innerHTML = '<p class="muted">Admin access required for recorded calculations. ' + traceLink('?view=settings', 'Open Settings') + '</p>';
         return Promise.resolve();
       }
       var tasks = [];

@@ -190,7 +190,7 @@
               <section id="documentSteps" class="document-tab-panel" role="tabpanel"></section>
               <button id="loadSteps" class="ghost hidden" type="button">Load older steps</button>
               <section id="documentValuations" class="document-tab-panel hidden" role="tabpanel"></section>
-              <button id="loadDocumentValuations" class="ghost hidden" type="button">Load more document valuations</button>
+              <button id="loadDocumentValuations" class="ghost hidden" type="button">Load more document calculations</button>
               <section id="documentOverview" class="document-tab-panel" role="tabpanel"></section>
               <section id="documentAttempts" class="document-tab-panel hidden" role="tabpanel"></section>
               <button id="loadAttempts" class="ghost hidden" type="button">Load older attempts</button>
@@ -242,14 +242,10 @@
         </section>
 
         <section id="settingsView" class="view hidden" aria-labelledby="settingsTitle">
-          <section class="panel" aria-label="Guide settings">
-            <h2>Backoffice guide</h2>
-            <p>Guide progress is saved only in this browser. Restart to choose another path.</p>
-            <button id="restartOnboarding" type="button" class="ghost">Restart guide</button>
-          </section>
           <h2 id="settingsTitle">Settings</h2>
           <section class="panel" aria-labelledby="settingsAccessTitle">
             <h3 id="settingsAccessTitle">Access for this tab</h3>
+            <p class="muted">The admin key protects operations, stored source text, and recorded calculations. A separate public API key enables company and event reads when public authentication is required.</p>
             <form id="settingsCredentials" class="settings-form">
               <label for="adminKey">Admin key<input id="adminKey" type="password" autocomplete="off" placeholder="Enter admin key"></label>
               <label for="apiKey">Public API key<input id="apiKey" type="password" autocomplete="off" placeholder="Optional for /v1"></label>
@@ -263,6 +259,11 @@
             </div>
             <p id="settingsStatus" class="screen-status" role="status">Configuration has not been loaded.</p>
             <div id="settingsConfig">Unknown / unavailable</div>
+          </section>
+          <section class="panel" aria-label="Guide settings">
+            <h3>Backoffice guide</h3>
+            <p>Guide progress is saved only in this browser. Restart to choose another path.</p>
+            <button id="restartOnboarding" type="button" class="ghost">Restart guide</button>
           </section>
         </section>
 
@@ -467,7 +468,7 @@
           <button id="loadEvents" type="button" class="ghost hidden">Load more</button>
         </section>
         <section id="valuationDetail" class="panel valuation-detail hidden" aria-labelledby="valuationTitle">
-          <div class="panel-heading"><div><h2 id="valuationTitle" tabindex="-1">Recorded valuation</h2><p id="valuationStatus" role="status"></p></div><button id="closeValuation" class="ghost" type="button">Close valuation</button></div>
+          <div class="panel-heading"><div><h2 id="valuationTitle" tabindex="-1">Recorded calculation</h2><p id="valuationStatus" role="status"></p></div><button id="closeValuation" class="ghost" type="button">Close calculation</button></div>
           <div id="valuationSummary"></div><h3>Recorded event contributions</h3><div id="valuationContributions" aria-live="polite"></div><button id="loadContributions" class="ghost hidden" type="button">Load more contributions</button>
         </section>
       </main>
