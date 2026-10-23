@@ -879,6 +879,9 @@
     var titles = { overview: 'Overview', pipeline: 'Pipeline', documents: 'Documents', models: 'Models & costs',
       settings: 'Settings', discover: 'Companies', company: 'Company', events: 'Events' };
     $('pageTitle').textContent = titles[view];
+    var researchView = ['discover', 'company', 'events'].includes(view);
+    $('lastRefresh').classList.toggle('hidden', researchView);
+    $('operationsPolling').classList.toggle('hidden', researchView);
     $('activityRangeLabel').classList.toggle('hidden', !['overview', 'pipeline', 'models'].includes(view));
     $('activityRange').value = route.get('range') === '7d' ? '7d' : '24h';
     if (view === 'overview') {

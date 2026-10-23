@@ -693,6 +693,17 @@ test('desktop overview leaderboard reads one bounded page without starting work'
   assert.match(dashboard.html('overviewLeaderboardResults'), /<table/);
 });
 
+test('desktop research hides operations-only polling and refresh timestamps', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=discover' });
+  await dashboard.flush();
+  assert.equal(dashboard.element('lastRefresh').classList.contains('hidden'), true);
+  assert.equal(dashboard.element('operationsPolling').classList.contains('hidden'), true);
+  dashboard.click('navOverview');
+  await dashboard.flush();
+  assert.equal(dashboard.element('lastRefresh').classList.contains('hidden'), false);
+  assert.equal(dashboard.element('operationsPolling').classList.contains('hidden'), false);
+});
+
 test('desktop overview leaderboard does not wait for administrative reads or poll with operations', async () => {
   const dashboard = startDashboardWithRoute({ search: '?view=overview',
     stored: { 'catalyst-admin-key': 'admin-secret' }, deferOverview: true });

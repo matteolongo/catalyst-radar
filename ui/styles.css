@@ -296,6 +296,7 @@ input[type="checkbox"] { accent-color: var(--accent); }
   padding: 9px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top;
 }
 .model-row-button { min-height: 44px; padding: 6px 9px; }
+.model-calls-table .num { text-align: right; }
 .model-call-selected { background: var(--accent-soft); }
 .model-detail { margin-top: 16px; }
 .model-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; }
