@@ -337,7 +337,7 @@ test('source inspection preserves the reconstructed explanation and server state
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL', stored: { 'catalyst-admin-key': 'admin-secret' } });
   await dashboard.flush();
   assert.match(dashboard.html('companyExplanation'), /Reconstructed current explanation: matching score and versions do not prove original driver membership/);
-  assert.match(dashboard.html('companyExplanation'), /Use Recorded valuations for the exact inputs retained by captured cycles/);
+  assert.match(dashboard.html('companyExplanation'), /Use Recorded calculations for the exact inputs retained by captured cycles/);
   assert.match(dashboard.html('companyExplanation'), /documentId=source-1.*Inspect source in backoffice/s);
   assert.match(dashboard.html('companyEvents'), /documentId=source-1.*Inspect source in backoffice/s);
   assert.match(dashboard.html('companyScore'), /68\.0.*CATALYZED.*65\.0.*80\.0/s);
@@ -399,7 +399,7 @@ test('company return controls preserve Discover and Events openers and reject un
     dashboard.click(container, { target: { closest: (selector) => selector === '[data-ticker]' ? { dataset: { ticker: 'DELL' } } : null } });
     assert.equal(dashboard.historyState.returnSearch, origin);
     assert.deepEqual(Object.keys(dashboard.historyState), ['returnSearch']);
-    assert.equal(dashboard.element('navIntelligence').getAttribute('aria-current'), 'page');
+    assert.equal(dashboard.element('navDiscover').getAttribute('aria-current'), 'page');
     dashboard.click('backToResults');
     assert.equal(dashboard.window.location.search, origin);
   }
@@ -573,13 +573,23 @@ test('initial load defaults to Overview with an accessible destination navigatio
   await dashboard.flush();
   assert.match(html, /<nav[^>]+aria-label="Main navigation"/);
   assert.match(html, /id="navOverview"/);
-  assert.match(html, /id="navIntelligence"/);
+  assert.match(html, /id="navDiscover"[^>]*>Companies<\/a>/);
   assert.match(html, /id="discoverView"/);
   assert.match(html, /id="eventsView"/);
   assert.match(html, /id="overviewView"/);
   assert.equal(dashboard.elements.get('overviewView').hidden, false);
   assert.equal(dashboard.elements.get('discoverView').hidden, true);
   assert.match(dashboard.text('pageTitle'), /Overview/);
+});
+
+test('desktop navigation highlights Companies on company detail and preserves modified clicks', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL' });
+  await dashboard.flush();
+  assert.equal(dashboard.element('navDiscover').getAttribute('aria-current'), 'page');
+  let prevented = false;
+  dashboard.click('navEvents', { ctrlKey: true, preventDefault() { prevented = true; } });
+  assert.equal(prevented, false);
+  assert.equal(dashboard.window.location.search, '?view=company&ticker=DELL');
 });
 
 test('a discovery ticker opens a company route and browser back restores Discover', async () => {
@@ -603,6 +613,192 @@ test('discovery filters serialize repeated states and zero velocity', async () =
   await dashboard.elements.get('discoveryFilters').trigger('submit', { preventDefault() {} });
   assert.equal(new URL(dashboard.requests.at(-1).url).pathname + new URL(dashboard.requests.at(-1).url).search,
     '/v1/discovery/catalyzed?state=CATALYZED&state=HIGH&minScore=65&minVelocity7d=0&sector=Technology&sort=VELOCITY&limit=20&offset=0');
+});
+
+test('desktop companies restores applied filters and server sorting from its route', async () => {
+  const dashboard = startDashboard({ search: '?view=discover&state=HIGH&sector=Technology&sort=VELOCITY&limit=50&offset=50' });
+  await dashboard.flush();
+  const reads = dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed');
+  const query = new URL(reads.at(-1).url).searchParams;
+  assert.equal(query.get('sort'), 'VELOCITY');
+  assert.equal(query.get('offset'), '50');
+  assert.equal(query.get('limit'), '50');
+  assert.deepEqual(query.getAll('state'), ['HIGH']);
+  assert.equal(dashboard.element('sector').value, 'Technology');
+  assert.match(dashboard.html('discoveryResults'), /<table/);
+});
+
+test('desktop companies rejects invalid route filters and can reset to a valid first page', async () => {
+  const dashboard = startDashboard({ search: '?view=discover&minScore=101&offset=40' });
+  await dashboard.flush();
+  const reads = () => dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed');
+  assert.equal(reads().length, 0);
+  assert.match(dashboard.text('discoveryFilterError'), /between 0 and 100/);
+  assert.equal(dashboard.element('minScore').value, '101');
+  dashboard.click('resetDiscovery');
+  await dashboard.flush();
+  assert.equal(reads().length, 1);
+  assert.equal(new URL(reads()[0].url).searchParams.get('offset'), '0');
+});
+
+test('desktop companies rejects incomplete native number input instead of removing the filter', async () => {
+  const dashboard = startDashboard();
+  await dashboard.flush();
+  const reads = () => dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').length;
+  const before = reads();
+  dashboard.element('minScore').value = '';
+  dashboard.element('minScore').validity = { badInput: true };
+  dashboard.element('discoveryFilters').trigger('submit');
+  await dashboard.flush();
+  assert.equal(reads(), before);
+  assert.equal(dashboard.element('minScore').getAttribute('aria-invalid'), 'true');
+  assert.match(dashboard.text('discoveryFilterError'), /complete number/);
+});
+
+test('desktop companies applies signed change without sorting the returned page locally', async () => {
+  const dashboard = startDashboard({ discovery: url => discoveryPage(url.searchParams.get('sort') === 'VELOCITY' ? 'FAST' : 'HIGH') });
+  await dashboard.flush();
+  dashboard.element('discoverySort').value = 'VELOCITY';
+  dashboard.element('minVelocity7d').value = '-2';
+  dashboard.element('discoveryFilters').trigger('submit');
+  await dashboard.flush();
+  assert.match(dashboard.html('discoveryResults'), /FAST/);
+  assert.equal(new URLSearchParams(dashboard.window.location.search).get('minVelocity7d'), '-2');
+  const sourceRoute = dashboard.window.location.search;
+  dashboard.element('discoveryResults').trigger('click', { target: { closest: () => ({ dataset: { ticker: 'DELL' } }) } });
+  dashboard.click('backToResults');
+  await dashboard.flush();
+  assert.equal(dashboard.window.location.search, sourceRoute);
+});
+
+test('desktop companies empty later page retains a way back to the first page', async () => {
+  const dashboard = startDashboard({ search: '?view=discover&offset=20',
+    discovery: { asOf: '2026-10-22T10:00:00Z', total: 0, limit: 20, offset: 20, results: [] } });
+  await dashboard.flush();
+  assert.equal(dashboard.element('previousPage').disabled, false);
+  assert.equal(dashboard.element('firstPage').hidden, false);
+  dashboard.click('firstPage');
+  await dashboard.flush();
+  assert.equal(new URLSearchParams(dashboard.window.location.search).get('offset'), '0');
+});
+
+test('desktop overview leaderboard reads one bounded page without starting work', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=overview' });
+  await dashboard.flush();
+  const reads = dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed');
+  assert.equal(reads.length, 1);
+  assert.equal(new URL(reads[0].url).searchParams.get('limit'), '5');
+  assert.equal(new URL(reads[0].url).searchParams.get('offset'), '0');
+  assert.equal(dashboard.requests.filter(r => r.method === 'POST').length, 0);
+  assert.match(dashboard.html('overviewLeaderboardResults'), /<table/);
+});
+
+test('desktop research hides operations-only polling and refresh timestamps', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=discover' });
+  await dashboard.flush();
+  assert.equal(dashboard.element('lastRefresh').classList.contains('hidden'), true);
+  assert.equal(dashboard.element('operationsPolling').classList.contains('hidden'), true);
+  dashboard.click('navOverview');
+  await dashboard.flush();
+  assert.equal(dashboard.element('lastRefresh').classList.contains('hidden'), false);
+  assert.equal(dashboard.element('operationsPolling').classList.contains('hidden'), false);
+});
+
+test('desktop overview leaderboard does not wait for administrative reads or poll with operations', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=overview',
+    stored: { 'catalyst-admin-key': 'admin-secret' }, deferOverview: true });
+  await dashboard.flush();
+  assert.match(dashboard.html('overviewLeaderboardResults'), /DELL/);
+  dashboard.tick();
+  await dashboard.flush();
+  assert.equal(dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').length, 1);
+});
+
+test('desktop overview leaderboard ignores stale sort responses and carries the sort into Companies', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=overview&range=7d', deferDiscovery: true });
+  await dashboard.flush();
+  assert.equal(dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').length, 1);
+  dashboard.element('overviewLeaderboardSort').value = 'VELOCITY';
+  dashboard.element('overviewLeaderboardSort').trigger('change');
+  await dashboard.flush();
+  dashboard.resolveDiscovery(1, discoveryPage('LATEST'));
+  dashboard.resolveDiscovery(0, discoveryPage('OLD'));
+  await dashboard.flush();
+  assert.match(dashboard.html('overviewLeaderboardResults'), /LATEST/);
+  assert.doesNotMatch(dashboard.html('overviewLeaderboardResults'), /OLD/);
+  assert.equal(new URLSearchParams(dashboard.window.location.search).get('range'), '7d');
+  assert.equal(dashboard.element('overviewLeaderboardAll').href, '?view=discover&sort=VELOCITY');
+});
+
+test('desktop overview key clearing prevents an obsolete leaderboard response from returning', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=overview', deferDiscovery: true,
+    stored: { 'catalyst-api-key': 'old-key' } });
+  await dashboard.flush();
+  assert.equal(dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').length, 1);
+  dashboard.click('clearKey');
+  dashboard.resolveDiscovery(0, discoveryPage('SECRET'));
+  await dashboard.flush();
+  assert.doesNotMatch(dashboard.html('overviewLeaderboardResults'), /SECRET/);
+});
+
+test('desktop company keeps returned negative drivers visible and labels changes in points', async () => {
+  const driver = companyFixture['/catalyst'].topDrivers[0];
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: {
+    ...companyFixture, '/catalyst': { ...companyFixture['/catalyst'], velocity1d: 2,
+      topDrivers: [driver, driver, driver, { ...driver, direction: 'NEGATIVE', type: 'GUIDANCE_CUT', contribution: -4 }] },
+  } });
+  await dashboard.flush();
+  assert.match(dashboard.html('companyExplanation'), /GUIDANCE_CUT/);
+  assert.match(dashboard.html('companyScore'), /1-day change \(points\)/);
+  assert.match(dashboard.html('companyScore'), /\+2\.0/);
+  assert.match(dashboard.html('companyHistory'), /<circle/);
+  assert.doesNotMatch(dashboard.html('companyHistory'), /<polyline/);
+});
+
+test('desktop overview retains old rankings on transient failure and clears them on denial', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=overview', deferDiscovery: true });
+  await dashboard.flush();
+  dashboard.resolveDiscovery(0, discoveryPage('SAVED'));
+  await dashboard.flush();
+  dashboard.click('overviewLeaderboardRetry');
+  dashboard.resolveDiscovery(1, 'error');
+  await dashboard.flush();
+  assert.match(dashboard.html('overviewLeaderboardResults'), /SAVED/);
+  assert.match(dashboard.text('overviewLeaderboardStatus'), /last successful read/);
+  dashboard.click('overviewLeaderboardRetry');
+  dashboard.resolveDiscovery(2, 'forbidden');
+  await dashboard.flush();
+  assert.equal(dashboard.html('overviewLeaderboardResults'), '');
+  assert.equal(dashboard.text('overviewLeaderboardAsOf'), '');
+  assert.match(dashboard.html('overviewLeaderboardStatus'), /access denied/);
+});
+
+test('desktop Companies keeps same-query rows on refresh failure but clears them on denial', async () => {
+  const dashboard = startDashboardWithRoute({ search: '?view=discover', deferDiscovery: true });
+  await dashboard.flush();
+  dashboard.resolveDiscovery(0, discoveryPage('SAVED'));
+  await dashboard.flush();
+  dashboard.click('refresh');
+  dashboard.resolveDiscovery(1, 'error');
+  await dashboard.flush();
+  assert.match(dashboard.html('discoveryResults'), /SAVED/);
+  assert.match(dashboard.text('discoveryStatus'), /last successful read/);
+  dashboard.click('refresh');
+  dashboard.resolveDiscovery(2, 'forbidden');
+  await dashboard.flush();
+  assert.equal(dashboard.html('discoveryResults'), '');
+  assert.equal(dashboard.text('discoveryAsOf'), '');
+});
+
+test('desktop company return action names its Overview opener', async () => {
+  const dashboard = startDashboardWithRoute();
+  await dashboard.flush();
+  dashboard.element('overviewLeaderboardResults').trigger('click', { target: { closest: () => ({ dataset: { ticker: 'DELL' } }) } });
+  await dashboard.flush();
+  assert.equal(dashboard.text('backToResults'), 'Back to Overview');
+  dashboard.click('backToResults');
+  await dashboard.flush();
+  assert.match(dashboard.window.location.search, /view=overview/);
 });
 
 test('next page preserves filters and advances offset', async () => {
@@ -739,11 +935,11 @@ test('company route renders metadata, current metrics, reconstructed evidence, a
   assert.match(dashboard.elements.get('companyOverview').innerHTML, /NYSE.*Technology.*Hardware/s);
   const score = dashboard.elements.get('companyScore').innerHTML;
   assert.match(score, /68\.0.*CATALYZED.*65.*80/s);
-  assert.match(score, /1-day velocity.*3-day velocity.*7-day velocity.*Total events.*Events 7d.*score-v1.*taxonomy-v1/s);
+  assert.match(score, /1-day change.*3-day change.*7-day change.*Total events.*Events 7d.*score-v1.*taxonomy-v1/s);
   const why = dashboard.elements.get('companyExplanation').innerHTML;
   assert.match(why, /reconstructed/i);
   assert.match(why, /matching score and versions do not prove original driver membership/i);
-  assert.match(why, /Use Recorded valuations for the exact inputs retained by captured cycles/);
+  assert.match(why, /Use Recorded calculations for the exact inputs retained by captured cycles/);
   assert.match(why, /Raised guidance &lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.match(why, /Event date.*First captured.*Source publication date/s);
   assert.match(why, /https:\/\/example.com\/story.*noopener noreferrer/s);
@@ -914,6 +1110,9 @@ test('event cursor appends reports and preserves source evidence when returning 
   assert.equal(new URL(dashboard.requests.at(-1).url).searchParams.get('cursor'), 'opaque-page-2');
   assert.match(dashboard.elements.get('eventResults').innerHTML, /Raised guidance.*Second report/s);
   assert.match(dashboard.elements.get('eventResults').innerHTML, /cluster-1/);
+  assert.match(dashboard.html('eventResults'), /<table/);
+  assert.match(dashboard.html('eventResults'), /Loaded reports: 2/);
+  assert.equal((dashboard.html('eventResults').match(/class="event-cluster"/g) || []).length, 1);
   dashboard.elements.get('eventResults').trigger('click', { target: { closest: () => ({ dataset: { ticker: 'DELL' } }) }, preventDefault() {} });
   assert.equal(dashboard.window.location.search, '?view=company&ticker=DELL');
   dashboard.popstate('?view=events');

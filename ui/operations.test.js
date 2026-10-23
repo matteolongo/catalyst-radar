@@ -259,7 +259,7 @@ test('Documents opens company Intelligence and the return control restores the d
   assert.equal(dashboard.window.location.search, '?view=company&ticker=DELL');
   assert.equal(dashboard.historyState.returnSearch, origin);
   assert.deepEqual(Object.keys(dashboard.historyState), ['returnSearch']);
-  assert.equal(dashboard.element('navIntelligence').getAttribute('aria-current'), 'page');
+  assert.equal(dashboard.element('navDiscover').getAttribute('aria-current'), 'page');
   assert.equal(dashboard.element('navDocuments').getAttribute('aria-current'), null);
   dashboard.click('backToResults');
   await dashboard.flush();
@@ -466,10 +466,20 @@ test('unlinked embedding calls keep missing usage unknown and known zero visible
   const content = dashboard.html('modelDetailContent');
   assert.match(content, /No source association recorded/);
   assert.match(content, /<dt>Input tokens<\/dt><dd>Unknown<\/dd>/);
-  assert.match(content, /<dt>Output tokens<\/dt><dd>0<\/dd>/);
+  assert.match(content, /<dt>Output tokens<\/dt><dd>Not applicable \(recorded 0\)<\/dd>/);
   assert.match(content, /<dt>Estimated cost<\/dt><dd>Unknown<\/dd>/);
   assert.match(content, /<dt>Latency<\/dt><dd>Unknown<\/dd>/);
   assert.doesNotMatch(content, /data-model-source-id|data-model-attempt-id|data-operation-run-id/);
+});
+
+test('desktop models identifies embedding output as not applicable without inventing usage', async () => {
+  const embedding = modelCallFixture(MODEL_CALL, { operation: 'embed', outputTokens: null, estimatedCost: null });
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', modelDetail: embedding,
+    modelCalls: { ...modelCallsPageFixture(0), items: [embedding] } });
+  await dashboard.openModels('?view=models&modelRunId=' + MODEL_CALL);
+  assert.match(dashboard.html('modelRows'), /Not applicable/);
+  assert.match(dashboard.html('modelDetailContent'), /<dt>Output tokens<\/dt><dd>Not applicable<\/dd>/);
+  assert.match(dashboard.html('modelDetailContent'), /<dt>Estimated cost<\/dt><dd>Unknown<\/dd>/);
 });
 
 test('empty model history reports known zero cost and token sums', async () => {
@@ -1584,6 +1594,21 @@ test('document list escapes titles, shows derived states, and never includes sou
   assert.match(dashboard.html('documentRows'), /Skipped/);
   assert.doesNotMatch(dashboard.html('documentsView'), /Quoted source:/);
   assert.match(dashboard.text('documentStatus'), /3 loaded/);
+  assert.match(dashboard.html('documentRows'), /<table/);
+  assert.match(dashboard.html('documentRows'), /href="\?view=documents/);
+});
+
+test('desktop document title preserves native modified-link navigation', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret' });
+  await dashboard.openDocuments();
+  let prevented = false;
+  dashboard.click('documentRows', { ctrlKey: true,
+    preventDefault() { prevented = true; },
+    target: { closest: () => ({ dataset: { documentId: DOC_A } }) },
+  });
+  await dashboard.flush();
+  assert.equal(prevented, false);
+  assert.equal(new URLSearchParams(dashboard.window.location.search).has('documentId'), false);
 });
 
 test('load more retains rows after failure and retries with ID deduplication', async () => {

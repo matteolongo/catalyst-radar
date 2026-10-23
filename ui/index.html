@@ -7,19 +7,19 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <a class="skip-link" href="#mainContent">Skip to main content</a>
   <div class="app-shell">
     <aside class="sidebar">
       <a class="wordmark" href="?view=overview">CatalystRadar</a>
       <nav class="app-nav" aria-label="Main navigation">
         <a id="navOverview" href="?view=overview">Overview</a>
+        <span class="nav-group-label">Research</span>
+        <a id="navDiscover" href="?view=discover">Companies</a>
+        <a id="navEvents" href="?view=events">Events</a>
+        <span class="nav-group-label">Operations</span>
         <a id="navPipeline" href="?view=pipeline">Pipeline</a>
         <a id="navDocuments" href="?view=documents">Documents</a>
         <a id="navModels" href="?view=models">Models &amp; costs</a>
-        <a id="navIntelligence" href="?view=discover">Intelligence</a>
-        <div class="intelligence-tabs hidden" aria-label="Intelligence views">
-          <a id="navDiscover" href="?view=discover">Discover</a>
-          <a id="navEvents" href="?view=events">Events</a>
-        </div>
         <a id="navSettings" href="?view=settings">Settings</a>
       </nav>
     </aside>
@@ -39,35 +39,48 @@
           <span class="utc-label">Times shown in UTC</span>
           <span id="health" class="pill unknown" title="API health" role="status">Checking API…</span>
           <button id="refresh" type="button" class="ghost">Refresh</button>
-          <label class="poll"><input id="autoRefresh" type="checkbox" checked> Auto-refresh every 30 seconds</label>
+          <label id="operationsPolling" class="poll"><input id="autoRefresh" type="checkbox" checked> Auto-refresh operations · 30 seconds</label>
         </div>
       </header>
 
       <div id="banner" class="banner hidden" role="alert"></div>
 
-      <main>
+      <main id="mainContent" tabindex="-1">
         <section id="onboarding" class="panel onboarding hidden" aria-label="Backoffice guide" tabindex="-1"></section>
         <section id="overviewView" class="view" aria-labelledby="pageTitle">
           <p id="overviewStatus" class="screen-status" role="status">Loading operational summary…</p>
           <div id="overviewMetrics" class="metrics-grid" aria-label="Current operational metrics">
             <article class="metric"><h2>Last successful ingestion</h2><p class="metric-value">—</p></article>
             <article class="metric"><h2>Waiting documents</h2><p class="metric-value">—</p></article>
-            <article class="metric"><h2>Terminal documents</h2><p class="metric-value">—</p></article>
-            <article class="metric"><h2>Estimated recorded model cost</h2><p class="metric-value">—</p></article>
+            <article class="metric"><h2>Processing documents</h2><p class="metric-value">—</p></article>
+            <article class="metric"><h2>Terminal failures</h2><p class="metric-value">—</p></article>
           </div>
-          <section class="panel" aria-labelledby="overviewCoverageTitle">
-            <h2 id="overviewCoverageTitle">Document coverage</h2>
-            <p class="muted small">Current stored coverage across all capture dates. Missing company links or processing state are separate from terminal failures.</p>
-            <div id="overviewCoverage" class="coverage-metrics" role="status">Waiting for an authorized operational read.</div>
-          </section>
-          <section class="panel" aria-labelledby="overviewActivityTitle">
-            <h2 id="overviewActivityTitle">Activity</h2>
-            <div id="overviewActivity" role="status">Waiting for an authorized operational read.</div>
-          </section>
-          <div class="overview-columns">
+          <div class="overview-columns overview-priorities">
             <section class="panel" aria-labelledby="overviewSignalsTitle">
               <h2 id="overviewSignalsTitle">Needs attention</h2>
               <div id="overviewSignals" role="status">Waiting for an authorized operational read.</div>
+            </section>
+            <section class="panel" aria-labelledby="overviewLeadersTitle">
+              <div class="panel-heading"><h2 id="overviewLeadersTitle">Latest catalyst leaders</h2>
+                <label class="range-control">Sort<select id="overviewLeaderboardSort"><option value="SCORE">Highest score</option><option value="VELOCITY">Highest 7-day change</option></select></label>
+              </div>
+              <p class="muted small">Latest stored snapshots; independent of the activity period. Refresh to update this ranking.</p>
+              <p id="overviewLeaderboardStatus" role="status">Loading companies…</p>
+              <p id="overviewLeaderboardAsOf" class="muted small"></p>
+              <div id="overviewLeaderboardResults"></div>
+              <button id="overviewLeaderboardRetry" type="button" class="ghost hidden">Retry</button>
+              <a id="overviewLeaderboardAll" href="?view=discover">Open Companies</a>
+            </section>
+          </div>
+          <section class="panel" aria-labelledby="overviewActivityTitle">
+            <h2 id="overviewActivityTitle">Recorded activity in selected period</h2>
+            <div id="overviewActivity" role="status">Waiting for an authorized operational read.</div>
+          </section>
+          <div class="overview-columns">
+            <section class="panel" aria-labelledby="overviewCoverageTitle">
+              <h2 id="overviewCoverageTitle">Document coverage</h2>
+              <p class="muted small">Current stored coverage across all capture dates. Missing company links or processing state are separate from terminal failures.</p>
+              <div id="overviewCoverage" class="coverage-metrics" role="status">Waiting for an authorized operational read.</div>
             </section>
             <section class="panel" aria-labelledby="overviewDependenciesTitle">
               <h2 id="overviewDependenciesTitle">Dependencies</h2>
@@ -92,7 +105,7 @@
               <option>FAILED</option><option>CANCELLED</option><option>INTERRUPTED</option>
             </select></label>
             <button id="runNow" type="button">Run pipeline now</button>
-            <p id="runNowCaption" class="muted small">Fetches news and can use paid model calls.</p>
+            <p id="runNowCaption" class="muted small">Runs configured news ingestion and processing. Provider and model charges may apply.</p>
           </div>
           <div id="pipelineWorkspace" class="pipeline-layout">
             <section class="panel pipeline-history-panel" aria-label="Pipeline history">
@@ -106,7 +119,7 @@
               </div>
               <div id="runDetailContent"></div>
               <section class="trace-collection" aria-label="Documents for selected cycle"><h4>Documents</h4><div id="runDocuments" aria-live="polite"></div><button id="loadRunDocuments" class="ghost hidden" type="button">Load more cycle documents</button></section>
-              <section class="trace-collection" aria-label="Company valuations for selected cycle"><h4>Company valuations</h4><div id="runValuations" aria-live="polite"></div><button id="loadRunValuations" class="ghost hidden" type="button">Load more cycle valuations</button></section>
+              <section class="trace-collection" aria-label="Recorded calculations for selected cycle"><h4>Recorded calculations</h4><div id="runValuations" aria-live="polite"></div><button id="loadRunValuations" class="ghost hidden" type="button">Load more cycle calculations</button></section>
               <section aria-label="Ingestion runs for selected cycle">
                 <h4>Ingestion runs for this cycle</h4><div id="runIngestionRows" aria-live="polite"></div>
                 <button id="loadRunIngestion" class="ghost hidden" type="button">Load more cycle ingestion runs</button>
@@ -168,16 +181,16 @@
               <div class="document-tabs" role="tablist" aria-label="Document details">
                 <button id="documentTabSteps" type="button" role="tab" data-document-tab="steps">Timeline</button>
                 <button id="documentTabOverview" type="button" role="tab" data-document-tab="overview">Overview</button>
-                <button id="documentTabValuations" type="button" role="tab" data-document-tab="valuations">Valuations</button>
+                <button id="documentTabValuations" type="button" role="tab" data-document-tab="valuations">Recorded calculations</button>
                 <button id="documentTabAttempts" type="button" role="tab" data-document-tab="attempts">Attempts</button>
-                <button id="documentTabModels" type="button" role="tab" data-document-tab="models">Models</button>
+                <button id="documentTabModels" type="button" role="tab" data-document-tab="models">Model calls</button>
                 <button id="documentTabEvents" type="button" role="tab" data-document-tab="events">Events</button>
                 <button id="documentTabSource" type="button" role="tab" data-document-tab="source">Source</button>
               </div>
               <section id="documentSteps" class="document-tab-panel" role="tabpanel"></section>
               <button id="loadSteps" class="ghost hidden" type="button">Load older steps</button>
               <section id="documentValuations" class="document-tab-panel hidden" role="tabpanel"></section>
-              <button id="loadDocumentValuations" class="ghost hidden" type="button">Load more document valuations</button>
+              <button id="loadDocumentValuations" class="ghost hidden" type="button">Load more document calculations</button>
               <section id="documentOverview" class="document-tab-panel" role="tabpanel"></section>
               <section id="documentAttempts" class="document-tab-panel hidden" role="tabpanel"></section>
               <button id="loadAttempts" class="ghost hidden" type="button">Load older attempts</button>
@@ -229,14 +242,10 @@
         </section>
 
         <section id="settingsView" class="view hidden" aria-labelledby="settingsTitle">
-          <section class="panel" aria-label="Guide settings">
-            <h2>Backoffice guide</h2>
-            <p>Guide progress is saved only in this browser. Restart to choose another path.</p>
-            <button id="restartOnboarding" type="button" class="ghost">Restart guide</button>
-          </section>
           <h2 id="settingsTitle">Settings</h2>
           <section class="panel" aria-labelledby="settingsAccessTitle">
             <h3 id="settingsAccessTitle">Access for this tab</h3>
+            <p class="muted">The admin key protects operations, stored source text, and recorded calculations. A separate public API key enables company and event reads when public authentication is required.</p>
             <form id="settingsCredentials" class="settings-form">
               <label for="adminKey">Admin key<input id="adminKey" type="password" autocomplete="off" placeholder="Enter admin key"></label>
               <label for="apiKey">Public API key<input id="apiKey" type="password" autocomplete="off" placeholder="Optional for /v1"></label>
@@ -251,46 +260,55 @@
             <p id="settingsStatus" class="screen-status" role="status">Configuration has not been loaded.</p>
             <div id="settingsConfig">Unknown / unavailable</div>
           </section>
+          <section class="panel" aria-label="Guide settings">
+            <h3>Backoffice guide</h3>
+            <p>Guide progress is saved only in this browser. Restart to choose another path.</p>
+            <button id="restartOnboarding" type="button" class="ghost">Restart guide</button>
+          </section>
         </section>
 
         <section id="discoverView" class="card view hidden" aria-labelledby="discoverTitle">
-          <div class="card-head"><div><h2 id="discoverTitle" tabindex="-1">Discover</h2><p class="muted">Find companies by their current catalyst profile.</p></div></div>
+          <div class="card-head"><div><h2 id="discoverTitle" tabindex="-1">Companies</h2><p class="muted">Rank latest stored company snapshots by catalyst score or 7-day score change.</p></div></div>
           <form id="companyLookup" class="filter-grid company-lookup" novalidate>
             <label>Company ticker<input id="companyLookupTicker" type="search" maxlength="15" autocomplete="off" spellcheck="false" placeholder="e.g. ABNB or BRK.B" aria-describedby="companyLookupStatus"></label>
             <button type="submit">Open company</button>
             <p id="companyLookupStatus" class="panel-error" role="alert"></p>
           </form>
-          <form id="discoveryFilters" class="filter-grid">
+          <p id="discoveryFilterError" class="panel-error" role="alert"></p>
+          <form id="discoveryFilters" class="filter-grid" novalidate>
             <label>States
               <select id="discoveryStates" multiple size="5" aria-describedby="stateHelp">
                 <option value="NORMAL">Normal</option><option value="WATCH">Watch</option><option value="BUILDING">Building</option><option value="CATALYZED">Catalyzed</option><option value="HIGH">High</option>
               </select><span id="stateHelp" class="muted small">Select one or more states.</span>
             </label>
-            <label>Minimum score <input id="minScore" type="number" step="any" inputmode="decimal"></label>
-            <label>Minimum 7-day velocity <input id="minVelocity7d" type="number" step="any" inputmode="decimal"></label>
+            <label>Minimum score <input id="minScore" type="number" min="0" max="100" step="any" inputmode="decimal" aria-describedby="discoveryFilterError"></label>
+            <label>Minimum 7-day change <input id="minVelocity7d" type="number" step="any" inputmode="decimal" aria-describedby="discoveryFilterError"></label>
             <label>Sector (exact match) <input id="sector" type="text"></label>
-            <label>Sort by <select id="discoverySort"><option value="SCORE">Score</option><option value="VELOCITY">7-day velocity</option></select></label>
+            <label>Sort by <select id="discoverySort"><option value="SCORE">Highest score</option><option value="VELOCITY">Highest 7-day change</option></select></label>
             <label>Results per page <select id="pageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label>
             <button type="submit">Apply filters</button>
+            <button id="resetDiscovery" type="button" class="ghost">Reset filters</button>
           </form>
           <p id="discoveryStatus" class="muted" role="status">Loading…</p>
           <p id="discoveryAsOf" class="muted small"></p>
           <div id="discoveryResults" class="discovery-results"></div>
-          <div class="pager"><button id="previousPage" type="button" class="ghost" disabled>Previous</button><span id="pageSummary" aria-live="polite"></span><button id="nextPage" type="button" class="ghost" disabled>Next</button></div>
+          <p class="muted small">Score changes are returned by the server; this view does not establish complete lookback coverage. Events discovered counts underlying clusters or unclustered events, not articles or current scoring membership.</p>
+          <div class="pager"><button id="previousPage" type="button" class="ghost" disabled>Previous</button><span id="pageSummary" aria-live="polite"></span><button id="nextPage" type="button" class="ghost" disabled>Next</button><button id="firstPage" type="button" class="ghost hidden">Return to first page</button></div>
+          <p class="muted small">Rankings can change between page reads.</p>
         </section>
         <section id="companyView" class="card view hidden" aria-labelledby="companyTitle">
           <button id="backToResults" type="button" class="ghost">← Return to results</button>
           <h2 id="companyTitle" tabindex="-1">Company analysis</h2>
           <nav id="companySections" class="company-sections" aria-label="Company analysis sections">
             <a href="#companySummaryTitle" data-company-section="companySummaryTitle">Current snapshot</a>
-            <a href="#companyValuationsTitle" data-company-section="companyValuationsTitle">Recorded valuations</a>
+            <a href="#companyValuationsTitle" data-company-section="companyValuationsTitle">Recorded calculations</a>
             <a href="#historyTitle" data-company-section="historyTitle">Score history</a>
             <a href="#explanationTitle" data-company-section="explanationTitle">Current explanation</a>
             <a href="#companyEventsTitle" data-company-section="companyEventsTitle">Events</a>
           </nav>
           <div id="companyOverview" role="status">Loading company…</div>
           <section class="company-panel" aria-label="Current catalyst"><h3 id="companySummaryTitle" tabindex="-1">Current catalyst</h3><div id="companyScore" role="status">Loading current score…</div></section>
-          <section class="company-panel" aria-labelledby="companyValuationsTitle"><h3 id="companyValuationsTitle" tabindex="-1">Recorded valuations</h3><p class="muted small">Exact calculations saved with pipeline and daily snapshot cycles, across all dates. Earlier snapshots may have no recorded valuation. The current snapshot and reconstructed explanation are separate from these saved calculations.</p><div id="companyValuations" aria-live="polite"></div><button id="loadCompanyValuations" class="ghost hidden" type="button">Load more company valuations</button></section>
+          <section class="company-panel" aria-labelledby="companyValuationsTitle"><h3 id="companyValuationsTitle" tabindex="-1">Recorded calculations</h3><p class="muted small">Exact catalyst calculations saved with pipeline and daily snapshot cycles, across all dates. Earlier snapshots may have no recorded calculation. These records capture the inputs used, but do not by themselves establish eligibility for historical replay. The current snapshot and reconstructed explanation are separate from these saved calculations.</p><div id="companyValuations" aria-live="polite"></div><button id="loadCompanyValuations" class="ghost hidden" type="button">Load more recorded calculations</button></section>
           <section class="company-panel" aria-labelledby="historyTitle">
             <div class="card-head"><h3 id="historyTitle" tabindex="-1">Score history</h3>
               <label>History range <select id="historyRange"><option value="30">30 days</option><option value="90">90 days</option><option value="max">Maximum returned</option></select></label>
@@ -298,7 +316,7 @@
             <p id="historyRangeNote" class="muted small">Showing up to 200 stored snapshots and transitions from the last 30 days.</p>
             <div id="companyHistory" role="status">Loading score history…</div>
           </section>
-          <section class="company-panel" aria-labelledby="explanationTitle"><h3 id="explanationTitle" tabindex="-1">Why this state?</h3><div id="companyExplanation" role="status">Loading explanation…</div></section>
+          <section class="company-panel" aria-labelledby="explanationTitle"><h3 id="explanationTitle" tabindex="-1">Current reconstructed explanation</h3><div id="companyExplanation" role="status">Loading explanation…</div></section>
           <section class="company-panel" aria-labelledby="companyEventsTitle"><h3 id="companyEventsTitle" tabindex="-1">Contextual company events</h3><p class="muted small">Loaded reports are grouped by event cluster. These events do not establish causes of past scores; scoring remains server determined.</p><div id="companyEvents" role="status">Loading events…</div><p id="companyEventsStatus" class="panel-error" role="status"></p><button id="loadCompanyEvents" type="button" class="ghost hidden">Load more</button></section>
         </section>
         <section id="eventsView" class="card view hidden" aria-labelledby="eventsTitle">
@@ -450,7 +468,7 @@
           <button id="loadEvents" type="button" class="ghost hidden">Load more</button>
         </section>
         <section id="valuationDetail" class="panel valuation-detail hidden" aria-labelledby="valuationTitle">
-          <div class="panel-heading"><div><h2 id="valuationTitle" tabindex="-1">Recorded valuation</h2><p id="valuationStatus" role="status"></p></div><button id="closeValuation" class="ghost" type="button">Close valuation</button></div>
+          <div class="panel-heading"><div><h2 id="valuationTitle" tabindex="-1">Recorded calculation</h2><p id="valuationStatus" role="status"></p></div><button id="closeValuation" class="ghost" type="button">Close calculation</button></div>
           <div id="valuationSummary"></div><h3>Recorded event contributions</h3><div id="valuationContributions" aria-live="polite"></div><button id="loadContributions" class="ghost hidden" type="button">Load more contributions</button>
         </section>
       </main>
@@ -460,6 +478,7 @@
   </div>
   <script src="operations-model.js"></script>
   <script src="operations.js"></script>
+  <script src="leaderboard.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
