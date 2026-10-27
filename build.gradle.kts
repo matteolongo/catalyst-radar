@@ -61,7 +61,7 @@ tasks.withType<Test> {
 
 tasks.processResources {
 	from("ui") {
-		include("index.html", "app.js", "styles.css", "operations-model.js", "operations.js", "leaderboard.js")
+		include("index.html", "app.js", "styles.css", "operations-model.js", "operations.js", "leaderboard.js", "notebooks.js")
 		into("static/ops")
 	}
 }
