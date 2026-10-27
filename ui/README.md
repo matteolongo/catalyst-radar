@@ -5,7 +5,22 @@ application. Follow the [local startup steps](../README.md#operator-dashboard-po
 It uses the API's origin, HTML/CSS and vanilla JavaScript, with no separate
 frontend build. See the [operator/API reference](../docs/operations-backoffice.md).
 
-## Seven areas
+## Record views and process notebooks
+
+**Process notebooks** is the first navigation entry. Open
+`/ops/index.html?view=notebooks&module=companies` to follow six pages:
+Companies, Collect news, Extract events, Group reports, Calculate scores and Track
+changes. Each explains inputs, processing, outputs, missing results and the next
+stage, using the same explicitly fictional ExampleCo walkthrough. These examples
+are never saved as company data or presented as live results.
+
+An optional known ticker stays in notebook URLs and scopes company/document
+inspection links. It does not configure the active universe or select tickers for
+ingestion. Model links select extraction or embedding calls; other list links
+retain their stated scope. Company detail has a named return action; browser Back
+returns from the other record views. Notebooks need no keys, make no domain reads,
+do not poll, and cannot run individual stages. Linked records retain normal access
+rules. Overview remains the default route.
 
 - **Overview** opens first: ingestion freshness, current queue, recorded activity,
   estimated model cost, inspection signals and observed dependencies. Document
@@ -69,15 +84,12 @@ a busy response creates no extra history row. There is no document retry,
 scheduler editing, cancel control or automatic replay. GET reads never trigger
 paid work. Use HTTPS and restricted remote access; do not expose the local profile.
 
-## Backoffice guide
+## Guided process and pipeline execution
 
-The optional, non-modal guide offers two paths: **Manage the pipeline** for
-operators covers Overview, Pipeline, Documents and Models & costs;
-**Explore company intelligence** for analysts covers Companies, Company and Events.
-You can keep using the backoffice while following it. Progress stays only in
-this browser. Choose **Later** or **Continue later** to defer, **Resume guide**
-to continue, or restart the guide from **Settings**. The guide never starts
-pipeline work.
+A compact contextual link on record screens opens the relevant notebook. This
+replaces the large acknowledgement guide; there is no completion checklist to
+maintain. Settings also links to the notebooks. Existing acknowledgement of the
+first-run model disclosure is preserved independently of notebook navigation.
 
 On the first manual **Run pipeline now**, the backoffice reads the existing safe
 configuration view and explains the configured models: extraction turns articles

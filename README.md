@@ -198,8 +198,12 @@ Keep scheduled ingestion disabled until you intend to make provider calls.
 
 The explicitly requested optional operations backoffice is served by the API at
 `http://localhost:8080/ops/index.html`, with no separate frontend build or CORS
-configuration. It opens on **Overview** and has six areas: Overview, Pipeline,
-Documents, Models & costs, Intelligence (Discover, Company, Events), and Settings.
+configuration. It opens on **Overview**, with Companies, Events, Pipeline,
+Documents, Models & costs and Settings available directly in navigation.
+**Process notebooks** explains the journey in six guided in-app pages, from
+company references and news collection through extraction, grouping, scoring and
+history. Each page has a labeled fictional example and links to stored records;
+reading notebooks never executes pipeline work.
 It reads stored data for queue/freshness, bounded investigation histories,
 explicit source/attempt/run correlations and full recorded model cost aggregates.
 GETs make no provider/LLM/replay/recalculation calls. Unknown costs and incomplete

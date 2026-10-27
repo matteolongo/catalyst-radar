@@ -67,3 +67,26 @@ Files: `ui/README.md`, root `README.md`, this plan.
   the jar for notebooks.js and absence of tests. Do not run full local suites.
 - [ ] Review the change, fix concrete defects, push atomic commits and update the existing PR.
 - [ ] Report verification limitations honestly; no real ingestion or historical backfill is executed.
+
+## Implementation outcome
+
+Delivered the six explanatory pages, URL-based module/ticker context, stored-record
+links, compact contextual entry points, Settings entry, and the existing guarded
+pipeline confirmation. No backend or dependency changes were introduced.
+
+Verification on 2026-10-27:
+
+- Renderer: 4 tests passed (six modules, context, escaping/recovery and scope claims).
+- Selected app routing, credential and disclosure regressions: 25 passed.
+- Selected pipeline regressions: 11 passed.
+- Independent review: 18 selected tests passed and no actionable defects found.
+- Runtime syntax and whitespace checks passed; production bootJar build succeeded.
+- Browser checked the extraction notebook layout and real DOM, applied `dell`,
+  confirmed normalisation to DELL and ticker propagation into chapter/document links.
+  A native-looking ticker input found in that check was brought into the existing
+  input style. The browser connection then disappeared after the tool environment
+  changed, so all-chapter, keyboard and breakpoint visual checks remain incomplete.
+- Full suites run in CI. No live provider calls or backfill was executed.
+
+The earlier checklist is the intended verification sequence; the browser limits
+above qualify what was actually performed.
