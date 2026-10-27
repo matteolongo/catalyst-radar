@@ -65,6 +65,16 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
         closest(selector) { return selector.startsWith('[data-') && this.dataset[selector.slice(6, -1).replace(/^data-/, '').replace(/-([a-z])/g, (_, ch) => ch.toUpperCase())] ? this : null; },
         _handlers: handlers,
       };
+      const select = html.match(new RegExp('<select\\b[^>]*id="' + id + '"[^>]*>([\\s\\S]*?)</select>'));
+      if (select) {
+        element.options = Array.from(select[1].matchAll(/<option\b([^>]*)>([^<]*)<\/option>/g), match => ({
+          value: match[1].match(/value="([^"]*)"/)?.[1] ?? match[2], selected: false,
+        }));
+        Object.defineProperty(element, 'selectedOptions', {
+          get() { return this.options.filter(option => option.selected); },
+          set(values) { this.options.forEach(option => { option.selected = values.some(value => value.value === option.value); }); },
+        });
+      }
       elements.set(id, element);
     }
     return elements.get(id);
@@ -246,7 +256,9 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
       return answer === 'error' ? response({ detail: 'Company not found' }, 404) : response(answer || companyFixture[suffix]);
     }
     if (route === '/v1/discovery/catalyzed' && method === 'GET' && deferDiscovery) {
-      return new Promise((resolve) => discoveryResolvers.push((body) => resolve(body === 'error' ? response({ detail: 'Discovery unavailable' }, 503) : response(body))));
+      return new Promise((resolve) => discoveryResolvers.push((body) => resolve(body === 'error'
+        ? response({ detail: 'Discovery unavailable' }, 503) : body === 'forbidden'
+          ? response({ detail: 'Public key required' }, 403) : response(body))));
     }
     if (route.startsWith('/internal/') && deferAdmin && method !== 'POST') {
       return new Promise((resolve) => adminResolvers.push(() => resolve(response({ runs: [] }))));
@@ -275,7 +287,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
     throw new Error('Unrecognized API request: ' + method + ' ' + route);
   }
   const context = { window, document, fetch, URLSearchParams, URL, AbortController, Promise, setImmediate };
-  for (const file of ['operations-model.js', 'operations.js', 'app.js']) {
+  for (const file of ['operations-model.js', 'operations.js', 'leaderboard.js', 'notebooks.js', 'app.js']) {
     const filePath = path.join(__dirname, file);
     if (fs.existsSync(filePath)) {
       let source = fs.readFileSync(filePath, 'utf8');

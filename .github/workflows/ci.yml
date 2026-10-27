@@ -23,7 +23,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Test dashboard
-        run: node --test ui/app.test.js
+        run: node --test ui/app.test.js ui/operations.test.js ui/operations-model.test.js ui/leaderboard.test.js ui/notebooks.test.js
 
       - name: Build and test
         # Integration tests use Testcontainers (Docker is available on

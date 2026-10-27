@@ -15,6 +15,9 @@
   var appliedDiscoveryFilters;
   var discoveryRequest = 0;
   var discoveryLoading = false;
+  var renderedDiscoveryPath = null;
+  var overviewLeaderboardRequest = 0;
+  var overviewLeaderboardQuery = null;
   var companyRequest = 0;
   var historyRequest = 0;
   var currentCompany = '';
@@ -31,28 +34,14 @@
 
   function createOnboarding() {
     var storageKey = 'catalyst-onboarding-v1';
-    var paths = { operator: ['overview', 'pipeline', 'documents', 'models'], analyst: ['discover', 'company', 'events'] };
-    var steps = {
-      overview: ['Overview', 'Check freshness, waiting documents and provider observations. Pending means a captured document is waiting for processing. Empty data can mean nothing has been captured yet; it does not confirm provider health.'],
-      pipeline: ['Pipeline', 'Follow ingestion (fetching and storing news), processing (extracting and grouping events), and scoring (recalculating company catalysts). RUNNING means work is active; SUCCESS means the run finished successfully; PARTIAL means some work had issues; FAILED means the run failed; CANCELLED means it was cancelled; INTERRUPTED means it stopped before finishing. Inspect the recorded run for details. Running the pipeline fetches news and may use paid model calls; this guide never starts a run.'],
-      documents: ['Documents', 'Follow source text, processing attempts, extracted events and recorded model calls. PENDING means waiting; PROCESSING means an attempt is active; COMPLETED means processing finished; SKIPPED means processing was not needed; RETRYABLE_ERROR means processing can retry; TERMINAL_ERROR means automatic retries have stopped. Inspect the error and attempt history to understand what happened. UNRESOLVED means company links are missing; NOT_TRACKED means processing state is not recorded.'],
-      models: ['Models & costs', 'Inspect recorded model status to find successful and failed calls, latency to see how long calls took, and activity to see which operations ran and when. Open a call to inspect its recorded context.'],
-      discover: ['Discover', 'Filter stored company snapshots by catalyst state, score and velocity. These are intelligence signals, not buy or sell recommendations.'],
-      company: ['Company', 'Open a company using its ticker or a Discover result. Compare the saved score, explanation, history and recorded valuations; an explanation reconstructed today is distinct from captured historical inputs.'],
-      events: ['Events', 'Inspect classified events and supporting source evidence. Event clusters group reports about the same real-world event; duplicate reports do not multiply its catalyst score. Event, publication and discovery times describe different points in time.'],
-    };
     var state = { path: null, completed: [], deferred: false };
     var disclosure = null;
     try {
       var saved = JSON.parse(window.localStorage.getItem(storageKey));
-      if (saved && (saved.path === null || Object.prototype.hasOwnProperty.call(paths, saved.path)) &&
-          Array.isArray(saved.completed) && typeof saved.deferred === 'boolean') {
-        state = { path: saved.path, completed: (paths[saved.path] || []).filter(function (view) {
-          return saved.completed.includes(view);
-        }), deferred: saved.deferred };
+      if (saved && typeof saved === 'object') {
         if (saved.modelDisclosureAcknowledged === true) state.modelDisclosureAcknowledged = true;
       }
-    } catch (_) { /* Guide progress remains available in memory when browser storage is unavailable. */ }
+    } catch (_) { /* Disclosure acknowledgement remains in memory if storage is unavailable. */ }
 
     function save() {
       try { window.localStorage.setItem(storageKey, JSON.stringify(state)); } catch (_) { /* Keep the current in-memory progress. */ }
@@ -118,42 +107,15 @@
         panel.innerHTML = content;
         return;
       }
-      if (state.deferred) {
-        panel.innerHTML = content + '<p>Continue whenever you are ready.</p>' + button('resume', 'Resume guide');
-        return;
-      }
-      if (!state.path) {
-        panel.innerHTML = content + '<p>What would you like to do? This optional guide saves only your progress in this browser.</p>' +
-          '<div class="onboarding-actions">' + button('operator', 'Manage the pipeline') + button('analyst', 'Explore company intelligence') +
-          button('defer', 'Later') + '</div>';
-        return;
-      }
-      var path = paths[state.path];
-      var complete = state.completed.length === path.length;
-      content += '<p>' + (complete ? 'Guide complete. Restart from Settings to explore another path.' :
-        state.completed.length + ' of ' + path.length + ' steps complete. Open each view and acknowledge its explanation.') + '</p>';
-      content += '<ol class="onboarding-steps">' + path.map(function (step) {
-        return '<li>' + button(step, steps[step][0]) + ' <span>' + (state.completed.includes(step) ? 'Complete' : 'To explore') + '</span></li>';
-      }).join('') + '</ol>';
-      if (path.includes(view)) {
-        content += '<h3>' + steps[view][0] + '</h3><p>' + steps[view][1] + '</p>';
-        if (!state.completed.includes(view)) content += button('acknowledge', 'I understand this view');
-      } else content += '<p>Choose a step above to continue your guide.</p>';
-      if (!complete) content += button('defer', 'Continue later');
-      panel.innerHTML = content;
+      renderNotebookPrompt(view, panel);
     }
     function restart() {
       cancelPipelineCheck();
-      state.path = null;
-      state.completed = [];
-      state.deferred = false;
-      save();
-      show(currentView);
-      $('onboarding').focus();
+      navigate('?view=notebooks&module=companies');
     }
     function click(event) {
       var target = event.target.closest('[data-onboarding-action]');
-      if (!target) return;
+      if (!target) return onNotebookLink(event);
       var action = target.dataset.onboardingAction;
       if (action === 'confirm-pipeline' || action === 'cancel-pipeline') {
         if (!disclosure || disclosure.status !== 'ready' || !disclosure.resolve) return;
@@ -173,31 +135,6 @@
         navigate('?view=settings');
         return;
       }
-      if (action === 'operator' || action === 'analyst') {
-        state.path = action;
-        state.completed = [];
-        state.deferred = false;
-        save();
-        navigate('?view=' + paths[action][0]);
-        return;
-      }
-      if (action === 'defer' || action === 'resume') state.deferred = action === 'defer';
-      else if (action === 'acknowledge' && state.path && paths[state.path].includes(currentView)) {
-        if (!state.completed.includes(currentView)) state.completed.push(currentView);
-      } else if (state.path && paths[state.path].includes(action)) {
-        if (action === 'company' && currentView !== 'company') {
-          navigate('?view=discover');
-          $('companyLookupTicker').focus();
-        } else if (action !== currentView) navigate('?view=' + action);
-        return;
-      } else return;
-      save();
-      if (action === 'acknowledge' && state.completed.length === paths[state.path].length) {
-        navigate('?view=' + paths[state.path][0]);
-        return;
-      }
-      show(currentView);
-      $('onboarding').focus();
     }
     return { show: show, restart: restart, click: click, beforePipelineRun: beforePipelineRun, cancelPipelineCheck: cancelPipelineCheck };
   }
@@ -290,6 +227,9 @@
   function invalidatePublicCredentials() {
     abortPublicReads();
     discoveryRequest++;
+    overviewLeaderboardRequest++;
+    overviewLeaderboardQuery = null;
+    ['overviewLeaderboardResults', 'overviewLeaderboardAsOf', 'overviewLeaderboardStatus'].forEach(function (id) { $(id).innerHTML = ''; $(id).textContent = ''; });
     companyRequest++;
     historyRequest++;
     eventRequest++;
@@ -314,25 +254,79 @@
   }
 
   function statusPill(status) {
+    if (['NORMAL', 'WATCH', 'BUILDING', 'CATALYZED', 'HIGH'].includes(status)) {
+      return '<span class="pill catalyst-state ' + status.toLowerCase() + '">' + esc(status) + '</span>';
+    }
     var cls = status === 'SUCCESS' ? 'ok' : (status === 'PARTIAL' ? 'warn' : (status === 'FAILED' ? 'bad' : 'info'));
     return '<span class="pill ' + cls + '">' + esc(status) + '</span>';
   }
 
   function readDiscoveryFilters() {
-    var query = new URLSearchParams();
-    Array.from($('discoveryStates').selectedOptions || []).forEach(function (option) {
-      query.append('state', option.value);
+    ['minScore', 'minVelocity7d'].forEach(function (id) {
+      if ($(id).validity && $(id).validity.badInput) {
+        var error = new Error('Enter a complete number or clear the field.'); error.field = id; throw error;
+      }
     });
-    if ($('minScore').value !== '') query.set('minScore', $('minScore').value);
-    if ($('minVelocity7d').value !== '') query.set('minVelocity7d', $('minVelocity7d').value);
-    if ($('sector').value.trim()) query.set('sector', $('sector').value.trim());
-    query.set('sort', $('discoverySort').value || 'SCORE');
-    query.set('limit', String(Math.min(100, Math.max(1, Number($('pageSize').value) || 20))));
-    return query;
+    return window.CatalystLeaderboard.query({
+      states: Array.from($('discoveryStates').selectedOptions || []).map(function (option) { return option.value; }),
+      minScore: $('minScore').value, minVelocity7d: $('minVelocity7d').value, sector: $('sector').value,
+      sort: $('discoverySort').value || 'SCORE', limit: Number($('pageSize').value) || 20
+    });
+  }
+
+  function clearDiscoveryValidation() {
+    $('discoveryFilterError').textContent = '';
+    ['discoveryStates', 'minScore', 'minVelocity7d', 'discoverySort', 'pageSize'].forEach(function (id) { $(id).removeAttribute('aria-invalid'); });
+  }
+
+  function discoveryValidation(error) {
+    discoveryRequest++;
+    discoveryLoading = false;
+    $('discoveryFilterError').textContent = error.message;
+    if (error.field) $(error.field).setAttribute('aria-invalid', 'true');
+    $('discoveryResults').innerHTML = '';
+    $('discoveryAsOf').textContent = '';
+    $('pageSummary').textContent = '';
+    $('discoveryStatus').textContent = 'Correct the filters or reset to the first page.';
+    $('previousPage').disabled = true;
+    $('nextPage').disabled = true;
+    $('firstPage').classList.add('hidden');
+  }
+
+  function restoreDiscovery(route) {
+    clearDiscoveryValidation();
+    var states = route.getAll('state');
+    Array.from($('discoveryStates').options).forEach(function (option) { option.selected = states.includes(option.value); });
+    ['minScore', 'minVelocity7d', 'sector'].forEach(function (id) { $(id).value = route.get(id) || ''; });
+    $('discoverySort').value = route.get('sort') || 'SCORE';
+    $('pageSize').value = route.get('limit') || '20';
+    try {
+      appliedDiscoveryFilters = window.CatalystLeaderboard.query({ states: states, minScore: route.get('minScore'),
+        minVelocity7d: route.get('minVelocity7d'), sector: route.get('sector'), sort: route.get('sort') || 'SCORE',
+        limit: route.get('limit') || 20, offset: route.get('offset') || 0 });
+      if (![20, 50, 100].includes(Number(appliedDiscoveryFilters.get('limit')))) {
+        var error = new Error('Choose 20, 50, or 100 results per page.'); error.field = 'pageSize'; throw error;
+      }
+      discoveryLimit = Number(appliedDiscoveryFilters.get('limit'));
+      discoveryOffset = Number(appliedDiscoveryFilters.get('offset'));
+      return true;
+    } catch (error) { discoveryValidation(error); return false; }
+  }
+
+  function updateDiscoveryRoute() {
+    var query = new URLSearchParams(appliedDiscoveryFilters);
+    query.set('offset', String(discoveryOffset));
+    window.history.pushState({}, '', '?view=discover&' + query.toString());
+    return refreshDiscovery();
   }
 
   function fmtScore(value) {
     return value === null || value === undefined || !Number.isFinite(Number(value)) ? '–' : Number(value).toFixed(1);
+  }
+
+  function fmtChange(value) {
+    if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'Unavailable';
+    return (Number(value) > 0 ? '+' : '') + Number(value).toFixed(1).replace('-', '−');
   }
 
   function fmtFactor(value) {
@@ -352,6 +346,7 @@
   }
 
   function inspectSource(event) {
+    if (!ordinaryClick(event)) return false;
     var link = event.target.closest('[data-source-document-id]');
     if (!link || !link.dataset.sourceDocumentId) return false;
     event.preventDefault();
@@ -406,14 +401,15 @@
     var band = data.stateBand || {};
     $('companyScore').innerHTML = '<div class="score-header"><strong class="score-number">' + esc(fmtScore(data.score)) + '</strong>' + statusPill(data.state) +
       '<span>State range: ' + esc(fmtScore(band.minScore)) + '–' + esc(fmtScore(band.maxScore)) + (band.maxInclusive ? ' inclusive' : ' exclusive upper bound') + '</span></div>' +
-      '<dl class="fact-grid"><div><dt>1-day velocity</dt><dd>' + esc(fmtScore(data.velocity1d)) + '</dd></div>' +
-      '<div><dt>3-day velocity</dt><dd>' + esc(fmtScore(data.velocity3d)) + '</dd></div>' +
-      '<div><dt>7-day velocity</dt><dd>' + esc(fmtScore(data.velocity7d)) + '</dd></div>' +
+      '<dl class="fact-grid"><div><dt>1-day change (points)</dt><dd>' + esc(fmtChange(data.velocity1d)) + '</dd></div>' +
+      '<div><dt>3-day change (points)</dt><dd>' + esc(fmtChange(data.velocity3d)) + '</dd></div>' +
+      '<div><dt>7-day change (points)</dt><dd>' + esc(fmtChange(data.velocity7d)) + '</dd></div>' +
       '<div><dt>Total events</dt><dd>' + esc(fmtInt(data.totalEvents)) + '</dd></div>' +
       '<div><dt>Events 7d</dt><dd>' + esc(fmtInt(data.events7d)) + '</dd></div>' +
       '<div><dt>Saved as of</dt><dd>' + timeLabel(data.asOf) + '</dd></div>' +
       '<div><dt>Score version</dt><dd>' + esc(data.scoreVersion) + '</dd></div>' +
-      '<div><dt>Taxonomy version</dt><dd>' + esc(data.taxonomyVersion) + '</dd></div></dl>';
+      '<div><dt>Taxonomy version</dt><dd>' + esc(data.taxonomyVersion) + '</dd></div></dl>' +
+      '<p class="muted small">Score changes are returned by the server; this view does not establish complete lookback coverage.</p>';
     if (data.explanationStatus !== 'RECONSTRUCTED_SCORE_MATCH') {
       $('companyExplanation').innerHTML = '<p class="panel-error">Explanation unavailable: ' +
         (data.explanationStatus === 'VERSION_MISMATCH' ? 'score or taxonomy versions differ from the saved snapshot.' :
@@ -425,7 +421,7 @@
       '<div><dt>Negative summary</dt><dd>' + esc(fmtScore(data.negativeScore)) + '</dd></div>' +
       '<div><dt>Direct summary</dt><dd>' + esc(fmtScore(data.directScore)) + '</dd></div>' +
       '<div><dt>Inferred summary</dt><dd>' + esc(fmtScore(data.inferredScore)) + '</dd></div></dl>';
-    var drivers = (data.topDrivers || []).slice(0, 3).map(function (driver) {
+    var drivers = (data.topDrivers || []).map(function (driver) {
       return '<article class="driver"><h4>' + esc(driver.direction) + ' · ' + esc(driver.family || 'Unclassified') + ' / ' + esc(driver.type) + '</h4>' +
         '<p>Raw event contribution: ' + esc(fmtScore(driver.contribution)) + '</p>' +
         '<p>Event date: ' + timeLabel(driver.eventTimestamp) + ' · First captured: ' + timeLabel(driver.discoveredAt) + '</p>' +
@@ -433,7 +429,7 @@
         '<details><summary>Scoring details</summary><p>Score version: ' + esc(data.scoreVersion) + '</p>' + factorDetails(driver) + '</details></article>';
     }).join('');
     var calcFields = ['contributionSum', 'familyCount', 'convergenceMultiplier', 'rawScore', 'normalizationScale', 'contributionCutoff'];
-    $('companyExplanation').innerHTML = '<p class="muted">Reconstructed current explanation: matching score and versions do not prove original driver membership. Use Recorded valuations for the exact inputs retained by captured cycles.</p>' +
+    $('companyExplanation').innerHTML = '<p class="muted">Reconstructed current explanation: matching score and versions do not prove original driver membership. Use Recorded calculations for the exact inputs retained by captured cycles.</p>' +
       summary + (drivers || '<p>No reconstructed drivers available.</p>') +
       '<details><summary>Scoring details</summary><p>Score version: ' + esc(data.scoreVersion) + '</p><dl class="fact-grid">' +
       calcFields.map(function (key) { return '<div><dt>' + esc(key) + '</dt><dd>' + esc(fmtFactor(calculation[key])) + '</dd></div>'; }).join('') + '</dl></details>';
@@ -481,20 +477,35 @@
       '</tbody></table></div>' + transitionList;
   }
 
-  function renderCompanyEvents() {
+  function eventTable(items, container, showCompany) {
+    if (!items.length) return '<p>No events match these filters.</p>';
+    var expanded = new Set(Array.from(document.querySelectorAll('#' + container + ' details[open]')).map(function (detail) { return detail.dataset.eventGroup; }));
     var groups = new Map();
-    companyEvents.forEach(function (event) {
-      var id = event.clusterId || event.id;
+    items.forEach(function (event) {
+      var id = (event.ticker || '') + ':' + (event.clusterId || event.id);
       if (!groups.has(id)) groups.set(id, []);
       groups.get(id).push(event);
     });
-    $('companyEvents').innerHTML = companyEvents.length ? Array.from(groups.values()).map(function (group) {
-      return '<article class="event-cluster"><h4>' + (group.length > 1 ? 'Reports about one catalyst' : 'Event report') + '</h4>' + group.map(function (event) {
+    var rows = Array.from(groups.entries()).map(function (entry) {
+      var key = entry[0], group = entry[1], first = group[0];
+      var company = first.ticker ? '<a href="?view=company&amp;ticker=' + encodeURIComponent(first.ticker) + '" data-ticker="' + esc(first.ticker) + '">' + esc(first.ticker) + '</a>' : 'Ticker unavailable';
+      return '<tr class="event-cluster">' + (showCompany ? '<td>' + company + '<span class="cell-secondary">' + esc(first.companyName || 'Company name unavailable') + '</span></td>' : '') +
+        '<td>' + esc(first.type) + '<span class="cell-secondary">' + esc(first.family) + '</span></td><td>' + esc(first.direction) + '</td>' +
+        '<td>' + timeLabel(first.eventTimestamp) + '</td><td>' + timeLabel(first.discoveredAt) + '</td>' +
+        '<td>' + esc(first.source && first.source.provider || 'Unavailable') + '</td><td class="record-id">' + esc(first.clusterId || 'Unclustered') + '</td></tr>' +
+        '<tr class="event-evidence-row"><td colspan="' + (showCompany ? 7 : 6) + '"><details data-event-group="' + esc(key) + '"' + (expanded.has(key) ? ' open' : '') + '><summary>Evidence and sources · Loaded reports: ' + group.length + '</summary>' +
+        '<p class="muted small">Reports about one underlying event. Only loaded reports are shown; additional coverage does not multiply its catalyst contribution.</p>' + group.map(function (event) {
         return '<div class="event-report"><strong>' + esc(event.direction) + ' · ' + esc(event.family) + ' / ' + esc(event.type) + '</strong>' +
           '<p>Event date: ' + timeLabel(event.eventTimestamp) + ' · First captured: ' + timeLabel(event.discoveredAt) + '</p>' +
           evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p><p>' + sourceInspection(event) + '</p></div>';
-      }).join('') + '</article>';
-    }).join('') : '<p>No company events found.</p>';
+      }).join('') + '</details></td></tr>';
+    }).join('');
+    return '<div class="table-scroll" tabindex="0" role="region" aria-label="Event reports and evidence"><table class="events-table"><caption class="sr-only">Loaded event reports grouped by stored cluster</caption><thead><tr>' +
+      (showCompany ? '<th scope="col">Company</th>' : '') + '<th scope="col">Family / type</th><th scope="col">Direction</th><th scope="col">Event time</th><th scope="col">Discovered at</th><th scope="col">Source</th><th scope="col">Cluster reference</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+
+  function renderCompanyEvents() {
+    $('companyEvents').innerHTML = eventTable(companyEvents, 'companyEvents', false);
     $('loadCompanyEvents').classList[companyNextCursor ? 'remove' : 'add']('hidden');
     $('loadCompanyEvents').disabled = !companyNextCursor || companyEventsLoading;
   }
@@ -512,16 +523,7 @@
   }
 
   function renderEvents() {
-    $('eventResults').innerHTML = eventItems.length ? eventItems.map(function (event) {
-      var company = event.ticker
-        ? '<a href="?view=company&ticker=' + encodeURIComponent(event.ticker) + '" data-ticker="' + esc(event.ticker) + '">' + esc(event.ticker) + '</a>'
-        : '<span class="muted">Ticker unavailable</span>';
-      return '<article class="event-cluster"><h3>' + company + ' · ' + esc(event.companyName || 'Company name unavailable') + '</h3>' +
-        '<strong>' + esc(event.direction) + ' · ' + esc(event.family) + ' / ' + esc(event.type) + '</strong>' +
-        '<p>Event date: ' + timeLabel(event.eventTimestamp) + ' · First captured: ' + timeLabel(event.discoveredAt) + '</p>' +
-        '<p class="muted small">Cluster: ' + esc(event.clusterId || 'unclustered') + '</p>' +
-        evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p><p>' + sourceInspection(event) + '</p></article>';
-    }).join('') : '<p>No events match these filters.</p>';
+    $('eventResults').innerHTML = eventTable(eventItems, 'eventResults', true);
     $('loadEvents').classList[eventNextCursor ? 'remove' : 'add']('hidden');
     $('loadEvents').disabled = !eventNextCursor || eventLoading;
   }
@@ -651,6 +653,37 @@
     return '/v1/discovery/catalyzed?' + query.toString();
   }
 
+  async function refreshOverviewLeaderboard() {
+    var sort = $('overviewLeaderboardSort').value || 'SCORE';
+    var request = ++overviewLeaderboardRequest;
+    var revision = credentialRevision;
+    if (overviewLeaderboardQuery !== sort) {
+      $('overviewLeaderboardResults').innerHTML = '';
+      $('overviewLeaderboardAsOf').textContent = '';
+    }
+    overviewLeaderboardQuery = sort;
+    $('overviewLeaderboardStatus').textContent = 'Loading companies…';
+    $('overviewLeaderboardRetry').classList.add('hidden');
+    $('overviewLeaderboardAll').href = '?view=discover&sort=' + sort;
+    try {
+      var page = await api('/v1/discovery/catalyzed?' + window.CatalystLeaderboard.query({ sort: sort, limit: 5, offset: 0 }));
+      if (request !== overviewLeaderboardRequest || revision !== credentialRevision || currentView !== 'overview') return;
+      $('overviewLeaderboardResults').innerHTML = page.results.length ? window.CatalystLeaderboard.render(page, { compact: true, sort: sort }) : '';
+      $('overviewLeaderboardAsOf').textContent = 'Query as of ' + fmtTime(page.asOf) + ' UTC';
+      $('overviewLeaderboardStatus').textContent = page.results.length ? 'Latest stored company snapshots' : 'No company snapshots are available.';
+    } catch (error) {
+      if (request !== overviewLeaderboardRequest || revision !== credentialRevision || currentView !== 'overview') return;
+      if (error.status === 401 || error.status === 403) {
+        $('overviewLeaderboardResults').innerHTML = '';
+        $('overviewLeaderboardAsOf').textContent = '';
+        $('overviewLeaderboardStatus').innerHTML = 'Company access denied. <a href="?view=settings">Open Settings to update the public API key.</a>';
+      } else {
+        $('overviewLeaderboardStatus').textContent = 'Unable to refresh company rankings. Any displayed rows reflect the last successful read.';
+        $('overviewLeaderboardRetry').classList.remove('hidden');
+      }
+    }
+  }
+
   async function refreshDiscovery() {
     var page;
     var request = ++discoveryRequest;
@@ -658,8 +691,14 @@
     var path = discoveryPath();
     var requestOffset = discoveryOffset;
     var requestLimit = discoveryLimit;
+    var retainRows = renderedDiscoveryPath === path && $('discoveryResults').innerHTML !== '';
     discoveryLoading = true;
-    $('discoveryStatus').textContent = 'Loading results…';
+    if (!retainRows) {
+      $('discoveryResults').innerHTML = '';
+      $('pageSummary').textContent = '';
+      $('discoveryAsOf').textContent = '';
+    }
+    $('discoveryStatus').textContent = 'Loading companies…';
     $('previousPage').disabled = true;
     $('nextPage').disabled = true;
     try {
@@ -667,10 +706,15 @@
     } catch (err) {
       if (revision !== credentialRevision || request !== discoveryRequest || currentView !== 'discover') return;
       discoveryLoading = false;
-      $('discoveryResults').innerHTML = '';
-      $('discoveryStatus').textContent = 'Unable to load discovery results.';
-      $('discoveryAsOf').textContent = '';
-      $('pageSummary').textContent = '';
+      if (retainRows && err.status !== 401 && err.status !== 403) {
+        $('discoveryStatus').textContent = 'Unable to refresh companies. Displayed rows reflect the last successful read.';
+      } else {
+        $('discoveryResults').innerHTML = '';
+        $('discoveryStatus').textContent = 'Unable to load discovery results.';
+        $('discoveryAsOf').textContent = '';
+        $('pageSummary').textContent = '';
+        renderedDiscoveryPath = null;
+      }
       $('previousPage').disabled = true;
       $('nextPage').disabled = true;
       showError('Discovery: ' + err.message);
@@ -678,28 +722,21 @@
     }
     if (revision !== credentialRevision || request !== discoveryRequest || currentView !== 'discover') return;
     discoveryLoading = false;
+    renderedDiscoveryPath = path;
     discoveryTotal = page.total;
     $('discoveryAsOf').textContent = 'Discovery query as of ' + fmtTime(page.asOf) + (page.asOf ? ' UTC' : '');
     $('pageSummary').textContent = page.total ?
       'Results ' + (requestOffset + 1) + '–' + (requestOffset + page.results.length) + ' of ' + page.total : '0 results';
     $('previousPage').disabled = requestOffset === 0;
     $('nextPage').disabled = requestOffset + requestLimit >= discoveryTotal;
+    $('firstPage').classList.toggle('hidden', requestOffset === 0 || page.results.length > 0);
     if (!page.results.length) {
       $('discoveryStatus').textContent = 'No companies match these filters.';
       $('discoveryResults').innerHTML = '';
       return;
     }
     $('discoveryStatus').textContent = page.total + ' matching companies';
-    $('discoveryResults').innerHTML = page.results.map(function (entry) {
-      return '<article class="discovery-card"><h3><a href="?view=company&ticker=' + encodeURIComponent(entry.ticker) + '" data-ticker="' + esc(entry.ticker) + '">' + esc(entry.ticker) + '</a> <span class="muted">' + esc(entry.name) + '</span></h3>' +
-        '<dl><div><dt>Sector</dt><dd>' + esc(entry.sector || '–') + '</dd></div>' +
-        '<div><dt>Score</dt><dd>' + esc(Number(entry.score).toFixed(1)) + '</dd></div>' +
-        '<div><dt>State</dt><dd>' + statusPill(entry.state) + '</dd></div>' +
-        '<div><dt>7-day velocity</dt><dd>' + esc(Number(entry.velocity7d).toFixed(1)) + '</dd></div>' +
-        '<div><dt>Events 7d</dt><dd>' + fmtInt(entry.events7d) + '</dd></div>' +
-        '<div><dt>Score version</dt><dd>' + esc(entry.scoreVersion) + '</dd></div>' +
-        '<div><dt>Company as of</dt><dd>' + timeLabel(entry.asOf) + '</dd></div></dl></article>';
-    }).join('');
+    $('discoveryResults').innerHTML = window.CatalystLeaderboard.render(page, { sort: appliedDiscoveryFilters.get('sort') });
   }
 
   function routeView(route) {
@@ -718,7 +755,7 @@
     if (typeof value !== 'string' || !value.startsWith('?') || value.startsWith('??') || value.indexOf('#') >= 0 || value.indexOf('\\') >= 0) return null;
     var view = new URLSearchParams(value.slice(1)).get('view') || 'overview';
     if (view === 'operations') view = 'pipeline';
-    return ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events'].includes(view) ? value : null;
+    return ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view) ? value : null;
   }
 
   function localSearch(value) {
@@ -726,6 +763,40 @@
       throw new TypeError('Navigation accepts only a local query string');
     }
     return value;
+  }
+
+  function ordinaryClick(event) {
+    return !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && (event.button === undefined || event.button === 0);
+  }
+
+  function renderNotebookPrompt(view, panel) {
+    panel.classList.toggle('hidden', view === 'notebooks');
+    if (view === 'notebooks') { panel.innerHTML = ''; return; }
+    var modules = { pipeline: ['collect', 'How news is collected'], documents: ['extract', 'How documents become events'],
+      events: ['group', 'How reports become one catalyst'], models: ['extract', 'What the models do'],
+      company: ['score', 'How company scores are calculated'] };
+    var chapter = modules[view] || ['companies', 'Start with the complete process'];
+    var ticker = new URLSearchParams(window.location.search).get('ticker');
+    var href = '?view=notebooks&module=' + chapter[0] + (validTicker(ticker) ? '&ticker=' + encodeURIComponent(ticker.toUpperCase()) : '');
+    panel.innerHTML = '<p class="notebook-prompt"><strong>Process notebooks</strong><a data-notebook-link href="' + esc(href) + '">' + chapter[1] + ' →</a><span class="muted small">Inputs, steps and results, explained.</span></p>';
+  }
+
+  function showNotebook(route) {
+    var ticker = (route.get('ticker') || '').trim().toUpperCase();
+    var invalid = ticker !== '' && !validTicker(ticker);
+    $('notebookTicker').value = ticker;
+    $('notebookCompanyStatus').textContent = invalid ? 'Enter a valid ticker, or leave it empty to browse all records.' : '';
+    var page = window.CatalystNotebooks.render(route.get('module'), invalid ? '' : ticker);
+    $('pageTitle').textContent = page.title;
+    $('notebookContent').innerHTML = page.html;
+  }
+
+  function onNotebookLink(event) {
+    if (!ordinaryClick(event)) return;
+    var link = event.target.closest('[data-notebook-link]');
+    if (!link) return;
+    event.preventDefault();
+    navigate(link.getAttribute('href'), { returnSearch: window.location.search });
   }
 
   function navigate(localSearchValue, state) {
@@ -737,12 +808,14 @@
   }
 
   function refreshPublicView() {
-    if (currentView === 'discover') return refreshDiscovery();
+    if (currentView === 'overview') return refreshOverviewLeaderboard();
+    if (currentView === 'discover' && restoreDiscovery(new URLSearchParams(window.location.search))) return refreshDiscovery();
     if (currentView === 'events') return loadEvents(true);
     if (currentView === 'company') return refreshCompany(new URLSearchParams(window.location.search).get('ticker'));
   }
 
   function showView(moveFocus, fromHistory) {
+    var previousView = currentView;
     var route = new URLSearchParams(window.location.search);
     var view = routeView(route);
     var invalidTicker = false;
@@ -750,7 +823,7 @@
       view = 'discover';
       invalidTicker = true;
     }
-    if (!['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events'].includes(view)) view = 'overview';
+    if (!['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view)) view = 'overview';
     if (currentView !== view) {
       abortPublicReads();
       if (currentView === 'events' && eventLoading) {
@@ -759,38 +832,48 @@
         eventLoaded = false;
       }
       if (currentView === 'discover') { discoveryRequest++; discoveryLoading = false; }
+      if (currentView === 'overview') overviewLeaderboardRequest++;
     }
     currentView = view;
 
-    ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events'].forEach(function (name) {
+    ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events', 'notebooks'].forEach(function (name) {
       $(name + 'View').classList.toggle('hidden', name !== view);
     });
 
     var titles = { overview: 'Overview', pipeline: 'Pipeline', documents: 'Documents', models: 'Models & costs',
-      settings: 'Settings', discover: 'Discover', company: 'Company', events: 'Events' };
+      settings: 'Settings', discover: 'Companies', company: 'Company', events: 'Events', notebooks: 'Process notebooks' };
     $('pageTitle').textContent = titles[view];
+    var researchView = ['discover', 'company', 'events', 'notebooks'].includes(view);
+    $('refresh').classList.toggle('hidden', view === 'notebooks');
+    $('lastRefresh').classList.toggle('hidden', researchView);
+    $('operationsPolling').classList.toggle('hidden', researchView);
     $('activityRangeLabel').classList.toggle('hidden', !['overview', 'pipeline', 'models'].includes(view));
     $('activityRange').value = route.get('range') === '7d' ? '7d' : '24h';
+    if (view === 'notebooks') showNotebook(route);
+    if (view === 'overview') {
+      var leaderboardSort = route.get('leaderboardSort') === 'VELOCITY' ? 'VELOCITY' : 'SCORE';
+      $('overviewLeaderboardSort').value = leaderboardSort;
+      if (previousView !== 'overview' || overviewLeaderboardQuery !== leaderboardSort) refreshOverviewLeaderboard();
+    }
 
-    var intelligence = ['discover', 'company', 'events'].includes(view);
     var topNavigation = { overview: 'navOverview', pipeline: 'navPipeline', documents: 'navDocuments',
-      models: 'navModels', settings: 'navSettings', discover: 'navIntelligence', company: 'navIntelligence', events: 'navIntelligence' };
-    ['navOverview', 'navPipeline', 'navDocuments', 'navModels', 'navIntelligence', 'navSettings', 'navDiscover', 'navEvents'].forEach(function (id) {
+      models: 'navModels', settings: 'navSettings', discover: 'navDiscover', company: 'navDiscover', events: 'navEvents', notebooks: 'navNotebooks' };
+    ['navOverview', 'navPipeline', 'navDocuments', 'navModels', 'navSettings', 'navDiscover', 'navEvents', 'navNotebooks'].forEach(function (id) {
       $(id).removeAttribute('aria-current');
     });
     $(topNavigation[view]).setAttribute('aria-current', 'page');
-    if (view === 'discover' || view === 'company') $('navDiscover').setAttribute('aria-current', 'page');
-    if (view === 'events') $('navEvents').setAttribute('aria-current', 'page');
-    document.querySelectorAll('.intelligence-tabs').forEach(function (tabs) { tabs.classList.toggle('hidden', !intelligence); });
 
     if (view === 'company') {
+      var returnSearch = safeReturnSearch(window.history.state && window.history.state.returnSearch) || '?view=discover';
+      var returnView = routeView(new URLSearchParams(returnSearch));
+      $('backToResults').textContent = 'Back to ' + (titles[returnView] || 'Companies');
       if (route.get('ticker').toUpperCase() !== currentCompany) refreshCompany(route.get('ticker').toUpperCase());
     } else {
       companyRequest++;
       historyRequest++;
       currentCompany = '';
     }
-    if (view === 'discover') {
+    if (view === 'discover' && restoreDiscovery(route)) {
       var discoverRead = refreshDiscovery();
       var validationRequest = discoveryRequest;
       var validationRevision = credentialRevision;
@@ -812,6 +895,20 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
+    $('notebookContent').addEventListener('click', onNotebookLink);
+    $('notebookCompany').addEventListener('submit', function (event) {
+      event.preventDefault();
+      var ticker = $('notebookTicker').value.trim().toUpperCase();
+      if (ticker && !validTicker(ticker)) {
+        $('notebookCompanyStatus').textContent = 'Enter a valid ticker, or leave it empty to browse all records.';
+        $('notebookTicker').focus();
+        return;
+      }
+      var route = new URLSearchParams(window.location.search);
+      route.set('view', 'notebooks');
+      if (ticker) route.set('ticker', ticker); else route.delete('ticker');
+      navigate('?' + route.toString());
+    });
     $('onboarding').addEventListener('click', onboarding.click);
     $('restartOnboarding').addEventListener('click', onboarding.restart);
     appliedDiscoveryFilters = readDiscoveryFilters();
@@ -830,7 +927,7 @@
       if (apiKey) window.sessionStorage.setItem(API_KEY_NAME, apiKey);
       else window.sessionStorage.removeItem(API_KEY_NAME);
       if (operations) operations.credentialsChanged();
-      if (['discover', 'company', 'events'].includes(currentView)) refreshPublicView();
+      if (['overview', 'discover', 'company', 'events'].includes(currentView)) refreshPublicView();
       var returnSearch = safeReturnSearch(window.history.state && window.history.state.returnSearch);
       if (adminKey && returnSearch && currentView === 'settings') navigate(returnSearch);
     });
@@ -842,11 +939,31 @@
       $('adminKey').value = '';
       $('apiKey').value = '';
       if (operations) operations.credentialsChanged();
-      if (['discover', 'company', 'events'].includes(currentView)) refreshPublicView();
+      if (['overview', 'discover', 'company', 'events'].includes(currentView)) refreshPublicView();
     });
     $('refresh').addEventListener('click', function () {
       if (operations) operations.refresh();
-      if (['discover', 'company', 'events'].includes(currentView)) refreshPublicView();
+      if (['overview', 'discover', 'company', 'events'].includes(currentView)) refreshPublicView();
+    });
+    $('overviewLeaderboardSort').addEventListener('change', function () {
+      var route = new URLSearchParams(window.location.search);
+      route.set('view', 'overview');
+      route.set('leaderboardSort', $('overviewLeaderboardSort').value);
+      window.history.pushState({}, '', '?' + route.toString());
+      refreshOverviewLeaderboard();
+    });
+    $('overviewLeaderboardRetry').addEventListener('click', refreshOverviewLeaderboard);
+    $('overviewLeaderboardAll').addEventListener('click', function (event) {
+      if (!ordinaryClick(event)) return;
+      event.preventDefault();
+      navigate('?view=discover&sort=' + ($('overviewLeaderboardSort').value || 'SCORE'));
+    });
+    $('overviewLeaderboardResults').addEventListener('click', function (event) {
+      if (!ordinaryClick(event)) return;
+      var link = event.target.closest('[data-ticker]');
+      if (!link) return;
+      event.preventDefault();
+      navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker), { returnSearch: window.location.search || '?view=overview' });
     });
     $('activityRange').addEventListener('change', function (event) {
       var route = new URLSearchParams(window.location.search);
@@ -871,23 +988,28 @@
     });
     $('discoveryFilters').addEventListener('submit', function (event) {
       event.preventDefault();
-      appliedDiscoveryFilters = readDiscoveryFilters();
+      clearDiscoveryValidation();
+      try { appliedDiscoveryFilters = readDiscoveryFilters(); }
+      catch (error) { discoveryValidation(error); if (error.field) $(error.field).focus(); return; }
       discoveryLimit = Number(appliedDiscoveryFilters.get('limit'));
       discoveryOffset = 0;
       clearError();
-      return refreshDiscovery();
+      return updateDiscoveryRoute();
     });
+    $('resetDiscovery').addEventListener('click', function () { navigate('?view=discover'); });
+    $('firstPage').addEventListener('click', function () { discoveryOffset = 0; return updateDiscoveryRoute(); });
     $('previousPage').addEventListener('click', function () {
       if (discoveryLoading || discoveryOffset === 0) return;
       discoveryOffset = Math.max(0, discoveryOffset - discoveryLimit);
-      return refreshDiscovery();
+      return updateDiscoveryRoute();
     });
     $('nextPage').addEventListener('click', function () {
       if (discoveryLoading || discoveryOffset + discoveryLimit >= discoveryTotal) return;
       discoveryOffset += discoveryLimit;
-      return refreshDiscovery();
+      return updateDiscoveryRoute();
     });
     $('discoveryResults').addEventListener('click', function (event) {
+      if (!ordinaryClick(event)) return;
       var link = event.target.closest('[data-ticker]');
       if (!link) return;
       if (event.preventDefault) event.preventDefault();
@@ -917,6 +1039,7 @@
     });
     $('loadEvents').addEventListener('click', function () { return loadEvents(false); });
     $('eventResults').addEventListener('click', function (event) {
+      if (!ordinaryClick(event)) return;
       if (inspectSource(event)) return;
       var link = event.target.closest('[data-ticker]');
       if (!link) return;
@@ -924,11 +1047,13 @@
       navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker), { returnSearch: window.location.search || '?view=events' });
     });
     [
+      ['navNotebooks', '?view=notebooks&module=companies'],
       ['navOverview', '?view=overview'], ['navPipeline', '?view=pipeline'], ['navDocuments', '?view=documents'],
-      ['navModels', '?view=models'], ['navIntelligence', '?view=discover'], ['navDiscover', '?view=discover'],
+      ['navModels', '?view=models'], ['navDiscover', '?view=discover'],
       ['navEvents', '?view=events'], ['navSettings', '?view=settings'],
     ].forEach(function (item) {
       $(item[0]).addEventListener('click', function (event) {
+        if (!ordinaryClick(event)) return;
         event.preventDefault();
         navigate(item[1]);
       });

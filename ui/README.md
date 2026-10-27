@@ -5,25 +5,49 @@ application. Follow the [local startup steps](../README.md#operator-dashboard-po
 It uses the API's origin, HTML/CSS and vanilla JavaScript, with no separate
 frontend build. See the [operator/API reference](../docs/operations-backoffice.md).
 
-## Six areas
+## Record views and process notebooks
+
+**Process notebooks** is the first navigation entry. Open
+`/ops/index.html?view=notebooks&module=companies` to follow six pages:
+Companies, Collect news, Extract events, Group reports, Calculate scores and Track
+changes. Each explains inputs, processing, outputs, missing results and the next
+stage, using the same explicitly fictional ExampleCo walkthrough. These examples
+are never saved as company data or presented as live results.
+
+An optional known ticker stays in notebook URLs and scopes company/document
+inspection links. It does not configure the active universe or select tickers for
+ingestion. Model links select extraction or embedding calls; other list links
+retain their stated scope. Company detail has a named return action; browser Back
+returns from the other record views. Notebooks need no keys, make no domain reads,
+do not poll, and cannot run individual stages. Linked records retain normal access
+rules. Overview remains the default route.
 
 - **Overview** opens first: ingestion freshness, current queue, recorded activity,
   estimated model cost, inspection signals and observed dependencies. Document
   coverage has separate counts and inspection links for missing company
   associations and missing processing state, across all capture dates. These
   categories are not counted as terminal failures. Dependency labels describe
-  recent recorded observations; they are not live provider health checks.
+  recent recorded observations; they are not live provider health checks. A separate
+  five-company leaderboard ranks latest saved snapshots by highest score or highest
+  7-day score change. It refreshes on entry, sort changes and explicit Refresh;
+  operations polling and the activity period do not change this ranking.
 - **Pipeline** shows pipeline and daily-snapshot cycles, provider ingestion runs,
   issues, cycle documents, and frozen company valuations with explicit associations. **Run pipeline now** uses the existing POST.
 - **Documents** opens a chronological Timeline by default, with Overview,
   Valuations, Attempts, Model calls, Events and Source tabs. Source text loads only when requested.
 - **Models & costs** shows full server period totals, coverage and bounded calls.
   Detail shows safe errors and recorded source/attempt/run IDs.
-- **Intelligence** contains Discover/Events tabs and Company analysis. Original
-  Discover/Events/Company URLs still work. **Open company** accepts a known ticker
-  directly in Discover, normalizes it, and uses the existing company route while
+- **Companies** (`?view=discover`) presents a bounded table with server-side ranking
+  by highest score or highest 7-day change. Applied state, score, signed change,
+  exact-sector, page-size and offset filters live in the URL. Reset returns to the
+  first page. The UI does not sort only the loaded rows or offer unsupported
+  declining/1-day/3-day rankings. **Open company** accepts a known ticker
+  directly in Companies, normalizes it, and uses the existing company route while
   retaining the return destination. It does not change discovery filters or
-  fetch external company data. Events has an inclusive UTC through
+  fetch external company data. Company analysis retains its named return destination.
+- **Events** groups loaded reports by stored company/cluster into expandable evidence
+  rows. Counts describe loaded reports, not total coverage or independent catalysts.
+  Events has an inclusive UTC through
   date; Documents uses next-day exclusive `to`. Event types are selected by a
   readable name, grouped by their taxonomy-v1 family; invalid filters show an
   inline correction message rather than an internal conversion error.
@@ -32,7 +56,8 @@ frontend build. See the [operator/API reference](../docs/operations-backoffice.m
 
 The activity picker (24h/7d) applies to Overview, Pipeline and Models, independently
 of the current queue and Documents. All times display UTC. Refresh updates the
-current area; auto-refresh runs every 30 seconds while visible. Selection,
+current area; operations auto-refresh runs every 30 seconds while visible. Research
+screens use explicit refresh and their own snapshot/query timestamps. Selection,
 filters and source text survive refresh for the same source/credential revision.
 Back/Forward restores local investigation context.
 
@@ -46,7 +71,7 @@ the last seven days without changing the selected call or fabricating activity.
 
 Administrative reads require `X-Admin-Key`. The local profile uses
 `local-dev-secret`; other profiles use `CATALYST_INTERNAL_ADMIN_KEY`. With public
-API authentication enabled, Intelligence requires a separately issued public
+API authentication enabled, company and event reads require a separately issued public
 API key. Admin keys go only to `/internal/*`; public keys only to `/v1/*`.
 Settings keeps them in this tab's `sessionStorage`. Changing/clearing keys
 clears protected data and invalidates obsolete reads. Source inspection needs
@@ -59,15 +84,12 @@ a busy response creates no extra history row. There is no document retry,
 scheduler editing, cancel control or automatic replay. GET reads never trigger
 paid work. Use HTTPS and restricted remote access; do not expose the local profile.
 
-## Backoffice guide
+## Guided process and pipeline execution
 
-The optional, non-modal guide offers two paths: **Manage the pipeline** for
-operators covers Overview, Pipeline, Documents and Models & costs;
-**Explore company intelligence** for analysts covers Discover, Company and Events.
-You can keep using the backoffice while following it. Progress stays only in
-this browser. Choose **Later** or **Continue later** to defer, **Resume guide**
-to continue, or restart the guide from **Settings**. The guide never starts
-pipeline work.
+A compact contextual link on record screens opens the relevant notebook. This
+replaces the large acknowledgement guide; there is no completion checklist to
+maintain. Settings also links to the notebooks. Existing acknowledgement of the
+first-run model disclosure is preserved independently of notebook navigation.
 
 On the first manual **Run pipeline now**, the backoffice reads the existing safe
 configuration view and explains the configured models: extraction turns articles
@@ -87,7 +109,7 @@ configuration check fails, choose **Run pipeline now** again to retry the check.
    attempt outcomes and counters; an attempt count is not historical evidence.
 5. Follow its operation ID into **Pipeline**, inspecting issues/provider runs.
    Document completion and company scoring success are separate outcomes.
-6. Follow a ticker into **Company** in Intelligence. Back returns to the opener;
+6. Follow a ticker into **Company** analysis. Back returns to the opener;
    source inspection appears only when a real source ID exists.
 
 Missing IDs mean missing recorded associations. The UI never guesses links from
@@ -97,10 +119,10 @@ and real interrupted finish times can be absent.
 Company labels its snapshot **Saved as of ... UTC**. Its explanation is a current
 reconstruction when score/versions match the saved snapshot; raw contributions
 are not normalized score points.
-The section links at the top provide direct access to **Recorded valuations**,
+The section links at the top provide direct access to **Recorded calculations**,
 which appears immediately after the current snapshot, before history and the
 reconstructed explanation. These links read existing content and do not rescore.
-History contains stored points only: at most
+History contains stored points only, without interpolated lines: at most
 200 snapshots and 200 transitions per range. Contextual events do not establish
 original historical scoring drivers or causes. Active artifacts are `taxonomy-v1`,
 `event-extractor-v1` (prompt/extractor), and `score-v1`; Settings reports configured
@@ -134,11 +156,11 @@ Disabled daily scheduling is shown separately from absence of historical rows.
    inspect stored reports, cluster IDs and evidence. Attempt/run filters on the
    document model tab apply to loaded pages; load more for older calls. Opening
    **Source** is the explicit action that requests the protected text body.
-4. Open the document's **Valuations** tab. These relationships come from the
+4. Open the document's **Recorded calculations** tab. These relationships come from the
    complete frozen source/event relation, not the ticker, cycle, current snapshot
    or nearby timestamps. The run filter remains attached to every page. Supporting
    documents beyond the display metadata cap still appear through this endpoint.
-5. Open a valuation from the cycle, document, or **Company → Recorded valuations**.
+5. Open a valuation from the cycle, document, or **Company → Recorded calculations**.
    Company history defaults to all dates and groups loaded valuation rows by run.
    The protected subsection needs the admin key; public company analysis keeps
    its existing public access rules. A selected valuation retains explicit run,
@@ -178,7 +200,7 @@ eligibility for backdated scoring.
 
 All new reads use bounded 25-row pages and retain their parent IDs and opaque
 cursors. A deep document/valuation URL is shown only after that valuation is found
-in the document's frozen valuation pages; if it is older, open **Valuations** and
+in the document's frozen valuation pages; if it is older, open **Recorded calculations** and
 load more to verify the relationship. No unbounded search is performed. Run and
 company detail also check the valuation's stored parent IDs. Key changes clear
 protected records and abort/invalidate stale reads. Existing pipeline execution
