@@ -34,28 +34,14 @@
 
   function createOnboarding() {
     var storageKey = 'catalyst-onboarding-v1';
-    var paths = { operator: ['overview', 'pipeline', 'documents', 'models'], analyst: ['discover', 'company', 'events'] };
-    var steps = {
-      overview: ['Overview', 'Check freshness, waiting documents and provider observations. Pending means a captured document is waiting for processing. Empty data can mean nothing has been captured yet; it does not confirm provider health.'],
-      pipeline: ['Pipeline', 'Follow ingestion (fetching and storing news), processing (extracting and grouping events), and scoring (recalculating company catalysts). RUNNING means work is active; SUCCESS means the run finished successfully; PARTIAL means some work had issues; FAILED means the run failed; CANCELLED means it was cancelled; INTERRUPTED means it stopped before finishing. Inspect the recorded run for details. Running the pipeline fetches news and may use paid model calls; this guide never starts a run.'],
-      documents: ['Documents', 'Follow source text, processing attempts, extracted events and recorded model calls. PENDING means waiting; PROCESSING means an attempt is active; COMPLETED means processing finished; SKIPPED means processing was not needed; RETRYABLE_ERROR means processing can retry; TERMINAL_ERROR means automatic retries have stopped. Inspect the error and attempt history to understand what happened. UNRESOLVED means company links are missing; NOT_TRACKED means processing state is not recorded.'],
-      models: ['Models & costs', 'Inspect recorded model status to find successful and failed calls, latency to see how long calls took, and activity to see which operations ran and when. Open a call to inspect its recorded context.'],
-      discover: ['Companies', 'Filter stored company snapshots by catalyst state, score and 7-day score change. These are intelligence signals, not buy or sell recommendations.'],
-      company: ['Company', 'Open a company using its ticker or a Companies result. Compare the saved score, explanation, history and recorded calculations; an explanation reconstructed today is distinct from captured historical inputs.'],
-      events: ['Events', 'Inspect classified events and supporting source evidence. Event clusters group reports about the same real-world event; duplicate reports do not multiply its catalyst score. Event, publication and discovery times describe different points in time.'],
-    };
     var state = { path: null, completed: [], deferred: false };
     var disclosure = null;
     try {
       var saved = JSON.parse(window.localStorage.getItem(storageKey));
-      if (saved && (saved.path === null || Object.prototype.hasOwnProperty.call(paths, saved.path)) &&
-          Array.isArray(saved.completed) && typeof saved.deferred === 'boolean') {
-        state = { path: saved.path, completed: (paths[saved.path] || []).filter(function (view) {
-          return saved.completed.includes(view);
-        }), deferred: saved.deferred };
+      if (saved && typeof saved === 'object') {
         if (saved.modelDisclosureAcknowledged === true) state.modelDisclosureAcknowledged = true;
       }
-    } catch (_) { /* Guide progress remains available in memory when browser storage is unavailable. */ }
+    } catch (_) { /* Disclosure acknowledgement remains in memory if storage is unavailable. */ }
 
     function save() {
       try { window.localStorage.setItem(storageKey, JSON.stringify(state)); } catch (_) { /* Keep the current in-memory progress. */ }
@@ -121,42 +107,15 @@
         panel.innerHTML = content;
         return;
       }
-      if (state.deferred) {
-        panel.innerHTML = content + '<p>Continue whenever you are ready.</p>' + button('resume', 'Resume guide');
-        return;
-      }
-      if (!state.path) {
-        panel.innerHTML = content + '<p>What would you like to do? This optional guide saves only your progress in this browser.</p>' +
-          '<div class="onboarding-actions">' + button('operator', 'Manage the pipeline') + button('analyst', 'Explore company intelligence') +
-          button('defer', 'Later') + '</div>';
-        return;
-      }
-      var path = paths[state.path];
-      var complete = state.completed.length === path.length;
-      content += '<p>' + (complete ? 'Guide complete. Restart from Settings to explore another path.' :
-        state.completed.length + ' of ' + path.length + ' steps complete. Open each view and acknowledge its explanation.') + '</p>';
-      content += '<ol class="onboarding-steps">' + path.map(function (step) {
-        return '<li>' + button(step, steps[step][0]) + ' <span>' + (state.completed.includes(step) ? 'Complete' : 'To explore') + '</span></li>';
-      }).join('') + '</ol>';
-      if (path.includes(view)) {
-        content += '<h3>' + steps[view][0] + '</h3><p>' + steps[view][1] + '</p>';
-        if (!state.completed.includes(view)) content += button('acknowledge', 'I understand this view');
-      } else content += '<p>Choose a step above to continue your guide.</p>';
-      if (!complete) content += button('defer', 'Continue later');
-      panel.innerHTML = content;
+      renderNotebookPrompt(view, panel);
     }
     function restart() {
       cancelPipelineCheck();
-      state.path = null;
-      state.completed = [];
-      state.deferred = false;
-      save();
-      show(currentView);
-      $('onboarding').focus();
+      navigate('?view=notebooks&module=companies');
     }
     function click(event) {
       var target = event.target.closest('[data-onboarding-action]');
-      if (!target) return;
+      if (!target) return onNotebookLink(event);
       var action = target.dataset.onboardingAction;
       if (action === 'confirm-pipeline' || action === 'cancel-pipeline') {
         if (!disclosure || disclosure.status !== 'ready' || !disclosure.resolve) return;
@@ -176,31 +135,6 @@
         navigate('?view=settings');
         return;
       }
-      if (action === 'operator' || action === 'analyst') {
-        state.path = action;
-        state.completed = [];
-        state.deferred = false;
-        save();
-        navigate('?view=' + paths[action][0]);
-        return;
-      }
-      if (action === 'defer' || action === 'resume') state.deferred = action === 'defer';
-      else if (action === 'acknowledge' && state.path && paths[state.path].includes(currentView)) {
-        if (!state.completed.includes(currentView)) state.completed.push(currentView);
-      } else if (state.path && paths[state.path].includes(action)) {
-        if (action === 'company' && currentView !== 'company') {
-          navigate('?view=discover');
-          $('companyLookupTicker').focus();
-        } else if (action !== currentView) navigate('?view=' + action);
-        return;
-      } else return;
-      save();
-      if (action === 'acknowledge' && state.completed.length === paths[state.path].length) {
-        navigate('?view=' + paths[state.path][0]);
-        return;
-      }
-      show(currentView);
-      $('onboarding').focus();
     }
     return { show: show, restart: restart, click: click, beforePipelineRun: beforePipelineRun, cancelPipelineCheck: cancelPipelineCheck };
   }
@@ -821,7 +755,7 @@
     if (typeof value !== 'string' || !value.startsWith('?') || value.startsWith('??') || value.indexOf('#') >= 0 || value.indexOf('\\') >= 0) return null;
     var view = new URLSearchParams(value.slice(1)).get('view') || 'overview';
     if (view === 'operations') view = 'pipeline';
-    return ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events'].includes(view) ? value : null;
+    return ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view) ? value : null;
   }
 
   function localSearch(value) {
@@ -833,6 +767,36 @@
 
   function ordinaryClick(event) {
     return !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && (event.button === undefined || event.button === 0);
+  }
+
+  function renderNotebookPrompt(view, panel) {
+    panel.classList.toggle('hidden', view === 'notebooks');
+    if (view === 'notebooks') { panel.innerHTML = ''; return; }
+    var modules = { pipeline: ['collect', 'How news is collected'], documents: ['extract', 'How documents become events'],
+      events: ['group', 'How reports become one catalyst'], models: ['extract', 'What the models do'],
+      company: ['score', 'How company scores are calculated'] };
+    var chapter = modules[view] || ['companies', 'Start with the complete process'];
+    var ticker = new URLSearchParams(window.location.search).get('ticker');
+    var href = '?view=notebooks&module=' + chapter[0] + (validTicker(ticker) ? '&ticker=' + encodeURIComponent(ticker.toUpperCase()) : '');
+    panel.innerHTML = '<p class="notebook-prompt"><strong>Process notebooks</strong><a data-notebook-link href="' + esc(href) + '">' + chapter[1] + ' →</a><span class="muted small">Inputs, steps and results, explained.</span></p>';
+  }
+
+  function showNotebook(route) {
+    var ticker = (route.get('ticker') || '').trim().toUpperCase();
+    var invalid = ticker !== '' && !validTicker(ticker);
+    $('notebookTicker').value = ticker;
+    $('notebookCompanyStatus').textContent = invalid ? 'Enter a valid ticker, or leave it empty to browse all records.' : '';
+    var page = window.CatalystNotebooks.render(route.get('module'), invalid ? '' : ticker);
+    $('pageTitle').textContent = page.title;
+    $('notebookContent').innerHTML = page.html;
+  }
+
+  function onNotebookLink(event) {
+    if (!ordinaryClick(event)) return;
+    var link = event.target.closest('[data-notebook-link]');
+    if (!link) return;
+    event.preventDefault();
+    navigate(link.getAttribute('href'), { returnSearch: window.location.search });
   }
 
   function navigate(localSearchValue, state) {
@@ -859,7 +823,7 @@
       view = 'discover';
       invalidTicker = true;
     }
-    if (!['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events'].includes(view)) view = 'overview';
+    if (!['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view)) view = 'overview';
     if (currentView !== view) {
       abortPublicReads();
       if (currentView === 'events' && eventLoading) {
@@ -872,18 +836,20 @@
     }
     currentView = view;
 
-    ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events'].forEach(function (name) {
+    ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events', 'notebooks'].forEach(function (name) {
       $(name + 'View').classList.toggle('hidden', name !== view);
     });
 
     var titles = { overview: 'Overview', pipeline: 'Pipeline', documents: 'Documents', models: 'Models & costs',
-      settings: 'Settings', discover: 'Companies', company: 'Company', events: 'Events' };
+      settings: 'Settings', discover: 'Companies', company: 'Company', events: 'Events', notebooks: 'Process notebooks' };
     $('pageTitle').textContent = titles[view];
-    var researchView = ['discover', 'company', 'events'].includes(view);
+    var researchView = ['discover', 'company', 'events', 'notebooks'].includes(view);
+    $('refresh').classList.toggle('hidden', view === 'notebooks');
     $('lastRefresh').classList.toggle('hidden', researchView);
     $('operationsPolling').classList.toggle('hidden', researchView);
     $('activityRangeLabel').classList.toggle('hidden', !['overview', 'pipeline', 'models'].includes(view));
     $('activityRange').value = route.get('range') === '7d' ? '7d' : '24h';
+    if (view === 'notebooks') showNotebook(route);
     if (view === 'overview') {
       var leaderboardSort = route.get('leaderboardSort') === 'VELOCITY' ? 'VELOCITY' : 'SCORE';
       $('overviewLeaderboardSort').value = leaderboardSort;
@@ -891,8 +857,8 @@
     }
 
     var topNavigation = { overview: 'navOverview', pipeline: 'navPipeline', documents: 'navDocuments',
-      models: 'navModels', settings: 'navSettings', discover: 'navDiscover', company: 'navDiscover', events: 'navEvents' };
-    ['navOverview', 'navPipeline', 'navDocuments', 'navModels', 'navSettings', 'navDiscover', 'navEvents'].forEach(function (id) {
+      models: 'navModels', settings: 'navSettings', discover: 'navDiscover', company: 'navDiscover', events: 'navEvents', notebooks: 'navNotebooks' };
+    ['navOverview', 'navPipeline', 'navDocuments', 'navModels', 'navSettings', 'navDiscover', 'navEvents', 'navNotebooks'].forEach(function (id) {
       $(id).removeAttribute('aria-current');
     });
     $(topNavigation[view]).setAttribute('aria-current', 'page');
@@ -929,6 +895,20 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
+    $('notebookContent').addEventListener('click', onNotebookLink);
+    $('notebookCompany').addEventListener('submit', function (event) {
+      event.preventDefault();
+      var ticker = $('notebookTicker').value.trim().toUpperCase();
+      if (ticker && !validTicker(ticker)) {
+        $('notebookCompanyStatus').textContent = 'Enter a valid ticker, or leave it empty to browse all records.';
+        $('notebookTicker').focus();
+        return;
+      }
+      var route = new URLSearchParams(window.location.search);
+      route.set('view', 'notebooks');
+      if (ticker) route.set('ticker', ticker); else route.delete('ticker');
+      navigate('?' + route.toString());
+    });
     $('onboarding').addEventListener('click', onboarding.click);
     $('restartOnboarding').addEventListener('click', onboarding.restart);
     appliedDiscoveryFilters = readDiscoveryFilters();
@@ -1067,6 +1047,7 @@
       navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker), { returnSearch: window.location.search || '?view=events' });
     });
     [
+      ['navNotebooks', '?view=notebooks&module=companies'],
       ['navOverview', '?view=overview'], ['navPipeline', '?view=pipeline'], ['navDocuments', '?view=documents'],
       ['navModels', '?view=models'], ['navDiscover', '?view=discover'],
       ['navEvents', '?view=events'], ['navSettings', '?view=settings'],

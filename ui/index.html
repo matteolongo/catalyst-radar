@@ -12,6 +12,7 @@
     <aside class="sidebar">
       <a class="wordmark" href="?view=overview">CatalystRadar</a>
       <nav class="app-nav" aria-label="Main navigation">
+        <a id="navNotebooks" href="?view=notebooks&amp;module=companies">Process notebooks</a>
         <a id="navOverview" href="?view=overview">Overview</a>
         <span class="nav-group-label">Research</span>
         <a id="navDiscover" href="?view=discover">Companies</a>
@@ -47,6 +48,17 @@
 
       <main id="mainContent" tabindex="-1">
         <section id="onboarding" class="panel onboarding hidden" aria-label="Backoffice guide" tabindex="-1"></section>
+        <section id="notebooksView" class="view hidden" aria-labelledby="pageTitle">
+          <div class="notebook-intro"><p>Follow the process, one module at a time. These pages explain the pipeline; they do not execute it.</p>
+            <form id="notebookCompany" class="notebook-company" novalidate>
+              <label for="notebookTicker">Known company ticker (optional)<input id="notebookTicker" type="search" maxlength="15" autocomplete="off" spellcheck="false" placeholder="e.g. DELL" aria-describedby="notebookCompanyHint notebookCompanyStatus"></label>
+              <button type="submit" class="ghost">Use for inspection links</button>
+            </form>
+            <p id="notebookCompanyHint" class="muted small">Carries your ticker between notebooks. The fictional ExampleCo walkthrough stays separate from your records. Clear the ticker and apply to browse without company scope.</p>
+            <p id="notebookCompanyStatus" role="status"></p>
+          </div>
+          <div id="notebookContent" class="notebook-layout"></div>
+        </section>
         <section id="overviewView" class="view" aria-labelledby="pageTitle">
           <p id="overviewStatus" class="screen-status" role="status">Loading operational summary…</p>
           <div id="overviewMetrics" class="metrics-grid" aria-label="Current operational metrics">
@@ -260,10 +272,10 @@
             <p id="settingsStatus" class="screen-status" role="status">Configuration has not been loaded.</p>
             <div id="settingsConfig">Unknown / unavailable</div>
           </section>
-          <section class="panel" aria-label="Guide settings">
-            <h3>Backoffice guide</h3>
-            <p>Guide progress is saved only in this browser. Restart to choose another path.</p>
-            <button id="restartOnboarding" type="button" class="ghost">Restart guide</button>
+          <section class="panel" aria-label="Process notebooks">
+            <h3>Understand the process</h3>
+            <p>Six guided notebooks explain how company news becomes catalyst scores and saved history.</p>
+            <button id="restartOnboarding" type="button" class="ghost">Open process notebooks</button>
           </section>
         </section>
 
@@ -479,6 +491,7 @@
   <script src="operations-model.js"></script>
   <script src="operations.js"></script>
   <script src="leaderboard.js"></script>
+  <script src="notebooks.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

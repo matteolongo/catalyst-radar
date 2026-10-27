@@ -157,7 +157,7 @@ footer { padding: 0 24px 24px; }
 .small { font-size: 12px; }
 .filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); align-items: end; gap: 12px; margin: 16px 0; }
 .filter-grid label, .settings-form label { display: grid; gap: 4px; min-width: 0; }
-.filter-grid input, .filter-grid select, .settings-form input, .range-control select, #historyRange {
+.filter-grid input, .filter-grid select, .settings-form input, .notebook-company input, .range-control select, #historyRange {
   width: 100%; min-width: 0; min-height: 40px; padding: 8px;
   color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
 }
@@ -404,13 +404,43 @@ button { color: #081118; font-weight: 600; }
   td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); }
   .trace-row, .step-timeline > li { padding: 10px; }
 }
-/* Optional guide stays in the normal page flow. */
+/* Compact process entry; first-run pipeline disclosure uses the same panel. */
 .onboarding { border-inline-start: 4px solid #5274d5; margin-bottom: 1rem; }
-.onboarding-actions, .onboarding-steps { display: flex; flex-wrap: wrap; gap: .75rem; }
-.onboarding-steps { padding-left: 1.5rem; gap: .75rem 2rem; }
 .onboarding > button { margin: 0 .5rem .5rem 0; }
 .onboarding :focus-visible, .onboarding:focus-visible, #restartOnboarding:focus-visible { outline: 3px solid #5274d5; outline-offset: 3px; }
-@media (max-width: 600px) {
-  .onboarding-actions, .onboarding-steps { flex-direction: column; align-items: flex-start; }
-  .onboarding button { white-space: normal; text-align: left; }
+.notebook-prompt { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px; margin: 0; }
+.notebook-prompt a { padding-block: 8px; }
+.notebook-intro { max-width: 1120px; margin-bottom: 24px; }
+.notebook-intro > p:first-child { margin-top: 0; font-size: 16px; }
+.notebook-company { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.notebook-company label { display: grid; gap: 6px; width: min(100%, 280px); }
+.notebook-company input { width: 100%; }
+.notebook-layout { display: grid; grid-template-columns: 220px minmax(0, 860px); gap: 32px; align-items: start; }
+.notebook-contents { position: sticky; top: 24px; }
+.eyebrow { color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }
+.notebook-contents ol { list-style: none; margin: 0; padding: 0; }
+.notebook-contents a { display: block; padding: 12px; border-left: 2px solid var(--border); text-decoration: none; color: var(--muted); }
+.notebook-contents a[aria-current="step"] { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+.notebook-page { min-width: 0; padding: 28px 32px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); overflow-wrap: anywhere; }
+.notebook-page > header h2 { margin: 6px 0; font-size: 28px; font-weight: 600; }
+.notebook-purpose { margin-bottom: 24px; font-size: 18px; color: var(--muted); }
+.notebook-cell { border-top: 1px solid var(--border); padding-block: 20px; }
+.notebook-page h3 { font-size: 16px; margin: 0 0 8px; }
+.notebook-cell h3 span { font-size: 12px; color: var(--accent); margin-right: 10px; }
+.notebook-page p { line-height: 1.7; }
+.notebook-cell > p, .notebook-example > p { margin-block: 8px 0; }
+.notebook-example { padding: 20px; background: var(--panel-raised); border: 1px dashed var(--border); border-radius: var(--radius); margin-bottom: 20px; }
+.notebook-flow { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 20px; }
+.notebook-flow > span:first-child, .notebook-flow strong { padding: 10px 12px; background: var(--canvas); border-radius: var(--radius); font-size: 13px; }
+.notebook-note { padding: 12px; border-left: 3px solid var(--warning); background: var(--warning-soft); }
+.notebook-inspect { padding: 20px; background: var(--canvas); border-radius: var(--radius); }
+.notebook-links { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.notebook-links a { display: inline-flex; align-items: center; min-height: 44px; }
+.notebook-next { padding: 20px 0 0; }
+.notebook-next .notebook-links { justify-content: space-between; }
+@media (max-width: 1100px) {
+  .notebook-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .notebook-contents { position: static; }
+  .notebook-contents ol { display: flex; flex-wrap: wrap; }
+  .notebook-page { padding: 20px; }
 }

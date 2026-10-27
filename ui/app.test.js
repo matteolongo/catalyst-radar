@@ -4,6 +4,76 @@ const { startDashboard: startDashboardWithRoute, waitForRequests, companyFixture
 
 function startDashboard(options = {}) { return startDashboardWithRoute({ search: '?view=discover', ...options }); }
 
+function notebookClick(dashboard, container, href, extra = {}) {
+  dashboard.click(container, { target: { closest: selector => selector === '[data-notebook-link]'
+    ? { getAttribute: () => href } : null }, ...extra });
+}
+
+test('notebook routes explain every module without protected reads, polling or execution', async () => {
+  const dashboard = startDashboard({ search: '?view=notebooks&module=companies' });
+  await dashboard.flush();
+  for (const module of ['companies', 'collect', 'extract', 'group', 'score', 'history']) {
+    dashboard.popstate('?view=notebooks&module=' + module);
+    dashboard.tick();
+    await dashboard.flush();
+    assert.equal(dashboard.element('notebooksView').hidden, false);
+    assert.equal(dashboard.element('navNotebooks').getAttribute('aria-current'), 'page');
+    assert.equal(dashboard.element('onboarding').hidden, true);
+    assert.equal(dashboard.element('operationsPolling').hidden, true);
+    assert.equal(dashboard.element('refresh').hidden, true);
+    assert.match(dashboard.html('notebookContent'), /What goes in.*What happens.*What comes out/s);
+  }
+  assert.equal(dashboard.requests.some(r => new URL(r.url).pathname !== '/actuator/health'), false);
+  assert.equal(dashboard.localValues.size, 0);
+});
+
+test('notebook company context survives chapter changes, inspection and return', async () => {
+  const dashboard = startDashboard({ search: '?view=notebooks&module=score' });
+  await dashboard.flush();
+  dashboard.element('notebookTicker').value = ' dell ';
+  dashboard.element('notebookCompany').trigger('submit');
+  await dashboard.flush();
+  const origin = dashboard.window.location.search;
+  assert.equal(new URLSearchParams(origin).get('ticker'), 'DELL');
+  notebookClick(dashboard, 'notebookContent', '?view=notebooks&module=history&ticker=DELL');
+  assert.equal(dashboard.element('notebookTicker').value, 'DELL');
+  const historyPage = dashboard.window.location.search;
+  notebookClick(dashboard, 'notebookContent', '?view=company&ticker=DELL');
+  await dashboard.flush();
+  assert.equal(dashboard.text('backToResults'), 'Back to Process notebooks');
+  dashboard.click('backToResults');
+  assert.equal(dashboard.window.location.search, historyPage);
+  dashboard.popstate(origin);
+  assert.match(dashboard.text('pageTitle'), /Calculate scores/);
+  assert.equal(dashboard.document.activeElement.id, 'pageTitle');
+});
+
+test('notebooks reject malformed tickers and preserve native modified links', async () => {
+  const dashboard = startDashboard({ search: '?view=notebooks&module=score&ticker=%3Cbad%3E' });
+  await dashboard.flush();
+  assert.match(dashboard.text('notebookCompanyStatus'), /valid ticker/);
+  assert.doesNotMatch(dashboard.html('notebookContent'), /ticker=%3Cbad%3E|<bad>/);
+  dashboard.element('notebookTicker').value = 'not a ticker';
+  dashboard.element('notebookCompany').trigger('submit');
+  assert.equal(dashboard.document.activeElement.id, 'notebookTicker');
+  const origin = dashboard.window.location.search;
+  notebookClick(dashboard, 'notebookContent', '?view=documents', { ctrlKey: true });
+  assert.equal(dashboard.window.location.search, origin);
+  assert.equal(dashboard.requests.some(r => r.method === 'POST'), false);
+});
+
+test('compact guidance opens the matching notebook instead of requiring acknowledgement', async () => {
+  for (const [view, module] of [['overview', 'companies'], ['pipeline', 'collect'], ['documents', 'extract'], ['events', 'group'], ['company&ticker=DELL', 'score']]) {
+    const dashboard = startDashboard({ search: '?view=' + view });
+    await dashboard.flush();
+    assert.match(dashboard.html('onboarding'), new RegExp('module=' + module));
+    assert.doesNotMatch(dashboard.html('onboarding'), /I understand this view|steps complete|Manage the pipeline/);
+    notebookClick(dashboard, 'onboarding', '?view=notebooks&module=' + module);
+    assert.equal(new URLSearchParams(dashboard.window.location.search).get('view'), 'notebooks');
+    assert.equal(dashboard.requests.some(r => r.method === 'POST'), false);
+  }
+});
+
 test('first manual run shows only configured models before posting and persists only acknowledgement', async () => {
   const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' },
     config: { providers: [{ name: 'openai', configured: true }], versions: {
@@ -213,7 +283,7 @@ for (const response of [undefined, 'error']) {
   });
 }
 
-test('polling and guide restart retain acknowledged disclosure without repeating the notice', async () => {
+test('polling and notebook navigation retain acknowledged disclosure without repeating the notice', async () => {
   const dashboard = startDashboard({ search: '?view=pipeline', stored: { 'catalyst-admin-key': 'admin-secret' } });
   await dashboard.flush();
   dashboard.click('runNow');
@@ -229,104 +299,14 @@ test('polling and guide restart retain acknowledged disclosure without repeating
   await dashboard.flush();
   dashboard.click('navSettings');
   dashboard.click('restartOnboarding');
-  dashboard.clickOnboarding('operator');
-  dashboard.clickOnboarding('pipeline');
+  assert.equal(dashboard.window.location.search, '?view=notebooks&module=companies');
+  dashboard.click('navPipeline');
   await dashboard.flush();
   dashboard.click('runNow');
   await dashboard.flush();
   assert.equal(dashboard.requests.filter(({ method }) => method === 'POST').length, 2);
   assert.equal(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')).modelDisclosureAcknowledged, true);
 });
-
-test('first visit offers an operator path and records only local guide progress', async () => {
-  const dashboard = startDashboard({ search: '?view=overview', stored: { 'catalyst-admin-key': 'admin-secret' } });
-  await dashboard.flush();
-  assert.match(dashboard.html('onboarding'), /Manage the pipeline/);
-  dashboard.clickOnboarding('operator');
-  assert.equal(dashboard.window.location.search, '?view=overview');
-  assert.deepEqual(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')),
-    { path: 'operator', completed: [], deferred: false });
-  dashboard.clickOnboarding('acknowledge');
-  assert.deepEqual(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')).completed, ['overview']);
-  for (const view of ['pipeline', 'documents', 'models']) {
-    dashboard.clickOnboarding(view);
-    await dashboard.flush();
-    assert.equal(dashboard.window.location.search, '?view=' + view);
-    dashboard.clickOnboarding('acknowledge');
-  }
-  assert.match(dashboard.html('onboarding'), /Guide complete/);
-  assert.equal(dashboard.window.location.search, '?view=overview');
-  assert.equal(dashboard.requests.some((request) => request.method === 'POST'), false);
-  assert.equal(dashboard.localValues.size, 1);
-  assert.equal(dashboard.values.get('catalyst-admin-key'), 'admin-secret');
-});
-
-test('analyst guide acknowledges displayed views and defers resumes and restarts locally', async () => {
-  const dashboard = startDashboard();
-  await dashboard.flush();
-  dashboard.clickOnboarding('analyst');
-  dashboard.clickOnboarding('acknowledge');
-  dashboard.clickOnboarding('company');
-  assert.equal(dashboard.document.activeElement.id, 'companyLookupTicker');
-  assert.deepEqual(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')).completed, ['discover']);
-  dashboard.element('companyLookupTicker').value = 'DELL';
-  dashboard.element('companyLookup').trigger('submit');
-  await dashboard.flush();
-  dashboard.clickOnboarding('acknowledge');
-  dashboard.clickOnboarding('defer');
-  assert.match(dashboard.html('onboarding'), /Resume guide/);
-  const resumed = startDashboard({ localStored: Object.fromEntries(dashboard.localValues) });
-  await resumed.flush();
-  resumed.clickOnboarding('resume');
-  resumed.clickOnboarding('events');
-  await resumed.flush();
-  resumed.clickOnboarding('acknowledge');
-  assert.match(resumed.html('onboarding'), /Guide complete/);
-  assert.equal(resumed.window.location.search, '?view=discover');
-  resumed.click('navSettings');
-  resumed.click('restartOnboarding');
-  assert.match(resumed.html('onboarding'), /Manage the pipeline/);
-  assert.deepEqual(JSON.parse(resumed.localValues.get('catalyst-onboarding-v1')),
-    { path: null, completed: [], deferred: false });
-  assert.equal(resumed.requests.some((request) => request.method === 'POST'), false);
-});
-
-test('guide accepts defer before choosing a path and safely handles invalid or unavailable storage', async () => {
-  for (const options of [{ localStored: { 'catalyst-onboarding-v1': '{bad' } },
-    { localStored: { 'catalyst-onboarding-v1': JSON.stringify({ path: 'https://evil.example', completed: ['models'], deferred: false }) } },
-    { localStorageFailure: true }]) {
-    const dashboard = startDashboard(options);
-    await dashboard.flush();
-    dashboard.clickOnboarding('defer');
-    dashboard.clickOnboarding('resume');
-    assert.match(dashboard.html('onboarding'), /Manage the pipeline/);
-    dashboard.clickOnboarding('analyst');
-    dashboard.clickOnboarding('acknowledge');
-    assert.match(dashboard.html('onboarding'), /1 of 3/);
-    assert.equal(dashboard.requests.some((request) => request.method === 'POST'), false);
-  }
-});
-
-for (const [view, path, explanation] of [
-  ['overview', 'operator', /Pending means.*waiting.*processing/i],
-  ['pipeline', 'operator', /ingestion.*processing.*scoring.*SUCCESS.*PARTIAL.*FAILED.*CANCELLED.*INTERRUPTED/s],
-  ['documents', 'operator', /PENDING.*PROCESSING.*COMPLETED.*SKIPPED.*RETRYABLE_ERROR.*TERMINAL_ERROR.*error.*attempt/s],
-  ['models', 'operator', /status.*latency.*activity/s],
-  ['events', 'analyst', /clusters.*same.*event.*duplicate reports.*score/s],
-]) {
-  test('guide explains ' + view + ' before allowing acknowledgement', async () => {
-    const dashboard = startDashboard({ search: '?view=' + view, localStored: {
-      'catalyst-onboarding-v1': JSON.stringify({ path, completed: [], deferred: false }),
-    } });
-    await dashboard.flush();
-    assert.match(dashboard.html('onboarding'), explanation);
-    if (view === 'models') assert.doesNotMatch(dashboard.html('onboarding'), /tokens|estimated costs/i);
-    assert.deepEqual(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')).completed, []);
-    dashboard.clickOnboarding('acknowledge');
-    assert.deepEqual(JSON.parse(dashboard.localValues.get('catalyst-onboarding-v1')).completed, [view]);
-    assert.equal(dashboard.requests.some((request) => request.method === 'POST'), false);
-  });
-}
 
 function sourceClick(dashboard, container, id) {
   dashboard.click(container, { target: { closest: (selector) => selector === '[data-source-document-id]'
