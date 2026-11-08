@@ -138,7 +138,7 @@ class PipelineService(
             }
             val providerIssue = ingestionResult.runs.any { it.status != IngestionStatus.SUCCESS }
             val noProviderSucceeded = ingestionResult.runs.isNotEmpty() && ingestionResult.runs.all {
-                it.status == IngestionStatus.FAILED || (it.status == IngestionStatus.PARTIAL && it.added == 0)
+                it.status == IngestionStatus.FAILED || (it.status == IngestionStatus.PARTIAL && it.fetched == 0)
             }
             val status = when {
                 noProviderSucceeded && counts.documentsCompleted == 0 -> "FAILED"
@@ -202,6 +202,7 @@ class PipelineService(
                     recorder.issue(runId, OperationPhase.PROCESSING, "PROCESSING_FAILURE", documentId = sourceDocumentId)
                 }
             val resolved = documentCompanies.findCompanyIds(sourceDocumentId).mapNotNull(companies::findById)
+                .filter { it.active }
             if (resolved.isEmpty()) {
                 start(DocumentStage.EVENT_EXTRACTION)
                 finish(status = StepStatus.SKIPPED)

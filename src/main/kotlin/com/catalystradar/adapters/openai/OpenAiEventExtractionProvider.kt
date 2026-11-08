@@ -22,6 +22,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.HttpServerErrorException
+import org.springframework.web.client.ResourceAccessException
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
@@ -88,6 +89,11 @@ class OpenAiEventExtractionProvider(
                 throw mapped
             } catch (e: HttpServerErrorException) {
                 val failure = ProviderException.TemporaryUnavailable("openai: ${e.statusCode}", provider = "openai")
+                trace.fail(failure)
+                recordFailure(request, response, started, failure)
+                throw failure
+            } catch (_: ResourceAccessException) {
+                val failure = ProviderException.TemporaryUnavailable("openai: connection failed or timed out", provider = "openai")
                 trace.fail(failure)
                 recordFailure(request, response, started, failure)
                 throw failure

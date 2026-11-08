@@ -1,0 +1,44 @@
+spring:
+  datasource:
+    url: ${CATALYST_DB_URL}
+    username: ${CATALYST_DB_USER}
+    password: ${CATALYST_DB_PASSWORD}
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  web:
+    resources:
+      add-mappings: false
+
+server:
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db
+
+springdoc:
+  paths-to-match: /v1/**
+  swagger-ui:
+    enabled: false
+
+catalyst:
+  universe:
+    tickers: ${CATALYST_TICKERS:}
+  api:
+    auth-enabled: true
+  ingestion:
+    enabled: ${CATALYST_INGESTION_ENABLED:false}
+    fallback-provider: none
+    ticker-batch-size: 1
+    page-size: 20
+  pipeline:
+    batch-size: 20
+  snapshots:
+    enabled: true

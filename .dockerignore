@@ -3,7 +3,7 @@
 .kotlin
 build
 .env
-.env.local
+.env.*
 *.log
 .idea
 .vscode

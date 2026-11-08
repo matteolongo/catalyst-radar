@@ -7,9 +7,12 @@ import com.catalystradar.application.operations.OperationsResource
 import com.catalystradar.application.operations.OperationsResourceNotFoundException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
+import org.springframework.web.servlet.NoHandlerFoundException
+import org.springframework.web.servlet.resource.NoResourceFoundException
 import java.util.UUID
 
 /**
@@ -27,6 +30,14 @@ data class ProblemResponse(
 
 @RestControllerAdvice
 class ApiExceptionHandler {
+
+    @ExceptionHandler(NoHandlerFoundException::class, NoResourceFoundException::class)
+    fun routeNotFound(request: HttpServletRequest): ResponseEntity<ProblemResponse> =
+        problem(HttpStatus.NOT_FOUND, "ROUTE_NOT_FOUND", "Route not found", "No endpoint matches this request.", request)
+
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun invalidBody(request: HttpServletRequest): ResponseEntity<ProblemResponse> =
+        problem(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request", "Supply a valid JSON request body.", request)
 
     @ExceptionHandler(OperationsResourceNotFoundException::class)
     fun operationsResourceNotFound(e: OperationsResourceNotFoundException, request: HttpServletRequest): ResponseEntity<ProblemResponse> {

@@ -96,7 +96,7 @@ class IngestionService(
         var firstErrorCode: String? = null
         val fresh = mutableListOf<NewDocument>()
         try {
-            for (chunk in tickers.chunked(TICKER_CHUNK_SIZE)) {
+            for (chunk in tickers.sorted().chunked(properties.tickerBatchSize)) {
                 val page = provider.fetch(
                     NewsFetchRequest(
                         tickers = chunk,
@@ -106,6 +106,7 @@ class IngestionService(
                     ),
                 )
                 fetched += page.articles.size
+                if (page.nextCursor != null && firstErrorCode == null) firstErrorCode = "NEWS_WINDOW_TRUNCATED"
                 for (article in page.articles) {
                     try {
                         when (val registration = registrations.registerIfNew(provider.name, article, now, runId, operationRunId)) {
@@ -130,8 +131,8 @@ class IngestionService(
                         if (firstErrorCode == null) firstErrorCode = "PROCESSING_FAILURE"
                         metrics.documentIngested(provider.name, "failed")
                         log.warn(
-                            "ingestion run {} skipping failed document provider={} article={}: {}",
-                            runId, provider.name, article.providerArticleId, e.message,
+                            "ingestion run {} skipping failed document provider={} article={}",
+                            runId, provider.name, article.providerArticleId,
                         )
                     }
                 }

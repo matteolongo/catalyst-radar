@@ -53,7 +53,7 @@ class DiscoveryStore(private val jdbc: JdbcClient) {
     fun discover(query: DiscoveryQuery): DiscoveryPage {
         require(query.limit in 1..100) { "limit must be within 1..100" }
         require(query.offset >= 0) { "offset must be non-negative" }
-        val conditions = mutableListOf("1 = 1")
+        val conditions = mutableListOf("c.active")
         val params = mutableMapOf<String, Any>()
         query.states?.takeIf { it.isNotEmpty() }?.let {
             conditions += "s.state IN (:states)"

@@ -4,6 +4,7 @@ import com.catalystradar.api.dto.*
 import com.catalystradar.application.ingestion.IngestionStatus
 import com.catalystradar.application.operations.*
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.context.annotation.Profile
 import org.springframework.http.CacheControl
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -16,6 +17,7 @@ import java.time.Instant
 import java.util.UUID
 
 @RestController
+@Profile("!production")
 @RequestMapping("/internal/operations")
 class InternalOperationsController(
     private val operations: OperationsService,

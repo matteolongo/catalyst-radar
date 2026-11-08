@@ -29,6 +29,8 @@ sealed interface ApiKeyAuthResult {
 @Service
 class ApiKeyService(private val clients: ApiClientStore) {
 
+    fun revoke(clientId: UUID) = clients.setActive(clientId, false)
+
     fun create(name: String): CreatedApiKey {
         val generated = ApiKeyGenerator.generate()
         val record = clients.save(

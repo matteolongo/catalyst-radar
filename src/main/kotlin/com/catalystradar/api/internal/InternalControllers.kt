@@ -17,14 +17,17 @@ import com.catalystradar.application.replay.ReplayService
 import com.catalystradar.ports.EventExtractionProvider
 import com.catalystradar.security.ApiKeyService
 import kotlinx.coroutines.runBlocking
+import org.springframework.context.annotation.Profile
 import org.springframework.http.CacheControl
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
+import java.util.UUID
 
 /**
  * Protected operations. Every route here requires the admin key (see
@@ -40,6 +43,7 @@ class InternalPipelineController(private val pipeline: PipelineService) {
 }
 
 @RestController
+@Profile("!production")
 @RequestMapping("/internal/replays")
 class InternalReplayController(
     private val replay: ReplayService,
@@ -60,6 +64,7 @@ class InternalReplayController(
 }
 
 @RestController
+@Profile("!production")
 @RequestMapping("/internal/companies/{ticker}")
 class InternalCompanyController(
     private val companies: CompanyService,
@@ -85,5 +90,11 @@ class InternalApiClientController(private val keys: ApiKeyService) {
         return ResponseEntity.ok()
             .cacheControl(CacheControl.noStore())
             .body(keys.create(request.name.trim()).toResponse())
+    }
+
+    @DeleteMapping("/{id}")
+    fun revoke(@PathVariable id: UUID): ResponseEntity<Void> {
+        keys.revoke(id)
+        return ResponseEntity.noContent().build()
     }
 }

@@ -4,7 +4,8 @@ This explicitly requested optional extension adds `/ops/index.html` to the
 existing Spring Boot deployable and PostgreSQL database. The v0.1 intelligence
 domain remains API-first. Run one application instance: pipeline/daily guards
 and active operation observations are in memory, not distributed locks/leases.
-See [startup](../README.md#run-the-poc) and the [UI walkthrough](../ui/README.md).
+The backoffice is available in development. See the [local demo](../README.md#local-demo)
+and the [UI walkthrough](../ui/README.md).
 
 ## Access and routes
 
