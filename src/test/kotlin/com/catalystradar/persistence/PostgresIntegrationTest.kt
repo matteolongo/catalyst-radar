@@ -26,6 +26,7 @@ import org.testcontainers.utility.DockerImageName
     properties = [
         "catalyst.ingestion.enabled=false",
         "catalyst.snapshots.enabled=false",
+        "spring.datasource.hikari.maximum-pool-size=4",
     ],
 )
 abstract class PostgresIntegrationTest {

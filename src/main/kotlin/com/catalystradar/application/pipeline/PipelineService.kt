@@ -81,11 +81,13 @@ class PipelineService(
             require(properties.maxAttempts >= 1) { "pipeline maxAttempts must be positive" }
             require(!properties.retryDelay.isNegative && !properties.retryDelay.isZero) { "pipeline retryDelay must be positive" }
             var firstErrorCode: String? = null
+            var ingestionFailed = false
             val ingestionResult = try {
                 ingestion.ingestCycle(now, id)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: RuntimeException) {
+                ingestionFailed = true
                 firstErrorCode = "INGESTION_FAILURE"
                 recorder.issue(id, phase, firstErrorCode)
                 log.warn("pipeline ingestion failed for run {}", id)
@@ -137,11 +139,11 @@ class PipelineService(
                 recorder.progress(id, counts)
             }
             val providerIssue = ingestionResult.runs.any { it.status != IngestionStatus.SUCCESS }
-            val noProviderSucceeded = ingestionResult.runs.isNotEmpty() && ingestionResult.runs.all {
+            val allProvidersFailed = ingestionResult.runs.isNotEmpty() && ingestionResult.runs.all {
                 it.status == IngestionStatus.FAILED || (it.status == IngestionStatus.PARTIAL && it.fetched == 0)
             }
             val status = when {
-                noProviderSucceeded && counts.documentsCompleted == 0 -> "FAILED"
+                (ingestionFailed || allProvidersFailed) && counts.documentsCompleted == 0 -> "FAILED"
                 providerIssue || firstErrorCode != null || counts.documentsRetryScheduled > 0 || counts.documentsTerminalFailures > 0 -> "PARTIAL"
                 else -> "SUCCESS"
             }
@@ -213,6 +215,9 @@ class PipelineService(
             val extractionResult = extraction.extract(ExtractionRequest(document, resolved, attempt.id))
             finish(extractionResult.events.size)
             start(DocumentStage.EVENT_VALIDATION, extractionResult.events.size)
+            if (extractionResult.events.size > properties.maxEventsPerDocument) {
+                throw ProviderException.InvalidResponse("extraction exceeded the per-document event limit")
+            }
             val validated = normalization.validateDocument(extractionResult)
             finish(validated.events.size)
             start(DocumentStage.EVENT_NORMALIZATION, validated.events.size)

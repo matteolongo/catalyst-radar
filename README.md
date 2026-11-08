@@ -75,7 +75,9 @@ See the [API design](docs/architecture.md#16-public-api-v01).
 - **Coverage.** Each cycle fetches one page of up to 20 articles per ticker
   from the previous two hours and processes up to 20 queued documents.
   A truncated news page reports `NEWS_WINDOW_TRUNCATED` in ingestion history.
-  News older than the lookback needs a separate historical import.
+  Extraction results over five candidate events per article are recorded as
+  invalid, with the source retained. News older than the lookback needs a
+  separate historical import.
 - **Watchlist changes.** Edit `CATALYST_TICKERS` and recreate the app with the
   startup command. Removed companies leave discovery and daily scoring.
   Stored events and histories stay queryable, and work queued solely for an
@@ -89,7 +91,8 @@ See the [API design](docs/architecture.md#16-public-api-v01).
 - **Key rotation.** Issue a replacement, update the client, then call
   `DELETE /internal/api-clients/{clientId}` with the admin key to revoke
   the old key. Rotate the admin key by updating the environment file and
-  recreating the app.
+  recreating the app. Change database passwords in PostgreSQL before
+  updating the environment file on an existing volume.
 
 Back up PostgreSQL before updating the app and keep regular copies off the
 host. On the deployment host, run the following with a protected backup

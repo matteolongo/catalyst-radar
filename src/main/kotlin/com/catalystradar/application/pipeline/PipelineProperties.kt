@@ -10,4 +10,5 @@ data class PipelineProperties(
     var batchSize: Int = 50,
     var maxAttempts: Int = 3,
     var retryDelay: Duration = Duration.ofMinutes(1),
+    var maxEventsPerDocument: Int = Int.MAX_VALUE,
 )

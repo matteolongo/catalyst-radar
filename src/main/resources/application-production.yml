@@ -40,5 +40,6 @@ catalyst:
     page-size: 20
   pipeline:
     batch-size: 20
+    max-events-per-document: 5
   snapshots:
     enabled: true

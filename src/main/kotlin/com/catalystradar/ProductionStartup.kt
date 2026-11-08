@@ -43,8 +43,8 @@ class ProductionStartup(
         require(ingestion.provider == "polygon" && ingestion.fallbackProvider == "none" && ingestion.tickerBatchSize == 1) {
             "Production ingestion requires Polygon, one ticker per request, and no fallback provider."
         }
-        require(ingestion.pageSize in 1..20 && pipeline.batchSize in 1..50) {
-            "Production allows up to 20 articles per ticker and 50 document attempts per cycle."
+        require(ingestion.pageSize in 1..20 && pipeline.batchSize in 1..20 && pipeline.maxEventsPerDocument in 1..5) {
+            "Production allows up to 20 articles per ticker, 20 document attempts per cycle, and 5 events per document."
         }
     }
 

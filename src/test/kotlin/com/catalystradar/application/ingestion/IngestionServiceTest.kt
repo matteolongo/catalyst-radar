@@ -200,6 +200,12 @@ class IngestionServiceTest : PostgresIntegrationTest() {
         assertEquals("NEWS_WINDOW_TRUNCATED", run.errorCode)
         wireMock.verify(2, getRequestedFor(requestPath))
         wireMock.verify(1, getRequestedFor(requestPath).withQueryParam("ticker", equalTo("NVDA")))
+
+        wireMock.stubFor(
+            get(requestPath).withQueryParam("ticker", equalTo("NVDA")).willReturn(aResponse().withStatus(429)),
+        )
+        val limited = service(fallback = "none", tickerBatchSize = 1).ingestCycle().runs.single()
+        assertEquals("RATE_LIMITED", limited.errorCode)
     }
 
     @Test
