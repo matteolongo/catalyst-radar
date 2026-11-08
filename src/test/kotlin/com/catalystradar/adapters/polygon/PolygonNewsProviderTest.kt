@@ -2,6 +2,7 @@ package com.catalystradar.adapters.polygon
 
 import com.catalystradar.ports.NewsFetchRequest
 import com.github.tomakehurst.wiremock.client.WireMock.equalTo
+import com.github.tomakehurst.wiremock.client.WireMock.absent
 import com.github.tomakehurst.wiremock.client.WireMock.get
 import com.github.tomakehurst.wiremock.client.WireMock.okJson
 import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
@@ -27,7 +28,8 @@ class PolygonNewsProviderTest {
         wireMock.stubFor(
             get(urlPathEqualTo("/v2/reference/news"))
                 .withQueryParam("ticker", equalTo("DELL"))
-                .withQueryParam("apiKey", equalTo("test-key"))
+                .withHeader("Authorization", equalTo("Bearer test-key"))
+                .withQueryParam("apiKey", absent())
                 .willReturn(okJson(NEWS_PAGE)),
         )
 
@@ -53,6 +55,7 @@ class PolygonNewsProviderTest {
         wireMock.stubFor(
             get(urlPathEqualTo("/v2/reference/news"))
                 .withQueryParam("cursor", equalTo("abc"))
+                .withHeader("Authorization", equalTo("Bearer test-key"))
                 .willReturn(okJson(EMPTY_PAGE)),
         )
 
@@ -62,6 +65,20 @@ class PolygonNewsProviderTest {
         assertEquals(nextUrl, first.nextCursor)
         assertEquals(0, second.articles.size)
         assertNull(second.nextCursor)
+    }
+
+    @Test
+    fun `provider cursor cannot redirect requests to a different host`() = runTest {
+        wireMock.stubFor(
+            get(urlPathEqualTo("/v2/reference/news"))
+                .withQueryParam("cursor", equalTo("abc"))
+                .withHeader("Authorization", equalTo("Bearer test-key"))
+                .willReturn(okJson(EMPTY_PAGE)),
+        )
+
+        val result = provider.fetch(NewsFetchRequest(cursor = "https://example.invalid/unrelated?cursor=abc"))
+
+        assertEquals(emptyList(), result.articles)
     }
 
     private fun page(nextUrl: String) = NEWS_PAGE.replace(

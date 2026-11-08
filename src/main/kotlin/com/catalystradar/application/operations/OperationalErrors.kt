@@ -13,6 +13,7 @@ object OperationalErrors {
         "PROCESSING_FAILURE" to "Local document processing failed.",
         "SCORING_FAILURE" to "Company recalculation failed.",
         "INGESTION_FAILURE" to "Ingestion could not complete.",
+        "NEWS_WINDOW_TRUNCATED" to "News coverage reached the per-request limit.",
         "UNFINISHED_PREVIOUS_RUN" to "Earlier work did not record a final outcome.",
         "CANCELLED" to "Operation was interrupted by cancellation.",
         "UNKNOWN_FAILURE" to "Failure recorded without a classified reason.",

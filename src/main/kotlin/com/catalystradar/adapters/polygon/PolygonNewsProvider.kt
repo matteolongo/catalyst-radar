@@ -11,9 +11,12 @@ import kotlinx.coroutines.withContext
 import org.springframework.stereotype.Component
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.HttpServerErrorException
+import org.springframework.web.client.ResourceAccessException
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
+import org.springframework.web.util.UriComponentsBuilder
+import org.springframework.web.util.UriUtils
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 import java.time.Instant
@@ -44,37 +47,43 @@ class PolygonNewsProvider(
             } catch (e: HttpClientErrorException) {
                 throw mapHttpClientError("polygon", e)
             } catch (e: HttpServerErrorException) {
-                throw ProviderException.TemporaryUnavailable("polygon: ${e.statusCode}")
-            } catch (e: RestClientException) {
-                throw ProviderException.InvalidResponse("polygon: ${e.message}")
+                throw ProviderException.TemporaryUnavailable("polygon: ${e.statusCode}", provider = "polygon")
+            } catch (_: ResourceAccessException) {
+                throw ProviderException.TemporaryUnavailable("polygon: connection failed or timed out", provider = "polygon")
+            } catch (_: RestClientException) {
+                throw ProviderException.InvalidResponse("polygon: invalid news response", provider = "polygon")
             }
         }
 
     private fun getPage(request: NewsFetchRequest): PolygonNewsPage {
-        if (request.cursor != null && request.cursor.startsWith("http")) {
-            return get(request.cursor)
-        }
+        // Provider continuation URLs are only a source of cursor tokens.
+        val cursor = request.cursor?.let(::cursorToken)
         val response = client.get().uri { uri ->
             uri.path("/v2/reference/news")
+            if (cursor != null) return@uri uri.queryParam("cursor", "{cursor}").build(cursor)
             if (request.tickers.isNotEmpty()) {
                 uri.queryParam("ticker", request.tickers.joinToString(","))
             }
             request.from?.let { uri.queryParam("published_utc.gte", it.toString()) }
             request.to?.let { uri.queryParam("published_utc.lte", it.toString()) }
-            request.cursor?.let { uri.queryParam("cursor", it) }
             uri.queryParam("limit", request.pageSize)
             uri.queryParam("order", "descending")
             uri.queryParam("sort", "published_utc")
-            uri.queryParam("apiKey", properties.apiKey)
             uri.build()
-        }.retrieve()
+        }.headers { it.setBearerAuth(properties.apiKey) }.retrieve()
         return response.body<PolygonNewsPage>()
-            ?: throw ProviderException.InvalidResponse("polygon: empty news page")
+            ?: throw ProviderException.InvalidResponse("polygon: empty news page", provider = "polygon")
     }
 
-    private fun get(url: String): PolygonNewsPage =
-        client.get().uri(url).retrieve().body<PolygonNewsPage>()
-            ?: throw ProviderException.InvalidResponse("polygon: empty news page")
+    private fun cursorToken(cursor: String): String {
+        if (!cursor.startsWith("http")) return cursor
+        return try {
+            val token = UriComponentsBuilder.fromUriString(cursor).build().queryParams.getFirst("cursor")
+            UriUtils.decode(requireNotNull(token), Charsets.UTF_8)
+        } catch (_: IllegalArgumentException) {
+            throw ProviderException.InvalidResponse("polygon: invalid news cursor", provider = "polygon")
+        }
+    }
 }
 
 @JsonIgnoreProperties(ignoreUnknown = true)

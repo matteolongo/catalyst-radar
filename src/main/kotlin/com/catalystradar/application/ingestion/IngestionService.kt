@@ -94,9 +94,10 @@ class IngestionService(
         var duplicates = 0
         var unresolved = 0
         var firstErrorCode: String? = null
+        var windowTruncated = false
         val fresh = mutableListOf<NewDocument>()
         try {
-            for (chunk in tickers.chunked(TICKER_CHUNK_SIZE)) {
+            for (chunk in tickers.sorted().chunked(properties.tickerBatchSize)) {
                 val page = provider.fetch(
                     NewsFetchRequest(
                         tickers = chunk,
@@ -106,6 +107,7 @@ class IngestionService(
                     ),
                 )
                 fetched += page.articles.size
+                windowTruncated = windowTruncated || page.nextCursor != null
                 for (article in page.articles) {
                     try {
                         when (val registration = registrations.registerIfNew(provider.name, article, now, runId, operationRunId)) {
@@ -130,8 +132,8 @@ class IngestionService(
                         if (firstErrorCode == null) firstErrorCode = "PROCESSING_FAILURE"
                         metrics.documentIngested(provider.name, "failed")
                         log.warn(
-                            "ingestion run {} skipping failed document provider={} article={}: {}",
-                            runId, provider.name, article.providerArticleId, e.message,
+                            "ingestion run {} skipping failed document provider={} article={}",
+                            runId, provider.name, article.providerArticleId,
                         )
                     }
                 }
@@ -154,10 +156,11 @@ class IngestionService(
             finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, firstErrorCode ?: "INGESTION_FAILURE")
             throw e
         }
-        val status = if (firstErrorCode != null) IngestionStatus.PARTIAL else IngestionStatus.SUCCESS
+        val errorCode = firstErrorCode ?: "NEWS_WINDOW_TRUNCATED".takeIf { windowTruncated }
+        val status = if (errorCode != null) IngestionStatus.PARTIAL else IngestionStatus.SUCCESS
         metrics.ingestionRun(provider.name, elapsedMs(started))
         reportUnresolved(runId, provider.name, unresolved)
-        return ProviderOutcome(finish(runId, status, fetched, added, duplicates, firstErrorCode), fresh)
+        return ProviderOutcome(finish(runId, status, fetched, added, duplicates, errorCode), fresh)
     }
 
     /**

@@ -1,7 +1,7 @@
 # CatalystRadar operations backoffice
 
 The optional backoffice is packaged at `/ops/index.html` in the Spring Boot
-application. Follow the [local startup steps](../README.md#operator-dashboard-poc).
+application. Follow the [local startup steps](../README.md#local-demo).
 It uses the API's origin, HTML/CSS and vanilla JavaScript, with no separate
 frontend build. See the [operator/API reference](../docs/operations-backoffice.md).
 

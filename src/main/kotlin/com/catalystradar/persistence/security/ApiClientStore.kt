@@ -3,6 +3,7 @@ package com.catalystradar.persistence.security
 import org.springframework.data.jdbc.core.JdbcAggregateTemplate
 import org.springframework.stereotype.Repository
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 
 @Repository
@@ -26,13 +27,7 @@ class ApiClientStore(
     fun findByPrefix(keyPrefix: String): ApiClientRecord? =
         repository.findByKeyPrefix(keyPrefix)?.toRecord()
 
-    fun setActive(id: UUID, active: Boolean) {
-        val row = repository.findById(id).orElseThrow()
-        repository.save(row.copy(active = active))
-    }
+    fun setActive(id: UUID, active: Boolean) = repository.setActive(id, active)
 
-    fun updateLastUsed(id: UUID, at: Instant) {
-        val row = repository.findById(id).orElseThrow()
-        repository.save(row.copy(lastUsedAt = at))
-    }
+    fun updateLastUsed(id: UUID, at: Instant) = repository.updateLastUsed(id, at.atOffset(ZoneOffset.UTC))
 }

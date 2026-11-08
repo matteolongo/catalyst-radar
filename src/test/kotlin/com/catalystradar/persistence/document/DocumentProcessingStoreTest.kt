@@ -80,6 +80,21 @@ class DocumentProcessingStoreTest : PostgresIntegrationTest() {
         assertEquals(1, due.attemptCount)
     }
 
+    @Test
+    fun `pauses documents for inactive companies without changing the queue record`() {
+        val document = documents.save(newDocument())
+        val dell = companies.save(Company(ticker = "DELL", name = "Dell Technologies"))
+        val hp = companies.save(Company(ticker = "HPQ", name = "HP"))
+        documentCompanies.link(document.id, listOf(dell.id))
+        val pending = processing.ensurePending(document.id, NOW)
+
+        companies.setActiveUniverse(setOf(hp.ticker))
+        assertEquals(emptyList(), processing.findDue(NOW, limit = 10))
+
+        companies.setActiveUniverse(setOf(dell.ticker))
+        assertEquals(listOf(pending), processing.findDue(NOW, limit = 10))
+    }
+
     private fun newDocument() = SourceDocument(
         provider = "polygon",
         title = "Dell raises guidance",

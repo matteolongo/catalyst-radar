@@ -22,4 +22,6 @@ class CompanyStore(
 
     fun findAllActive(): List<Company> =
         repository.findByActiveTrue().map { it.toDomain() }
+
+    fun setActiveUniverse(tickers: Set<String>) = repository.setActiveUniverse(tickers)
 }

@@ -16,6 +16,8 @@ import com.catalystradar.operations.OperationsFixtures
 import org.springframework.jdbc.core.simple.JdbcClient
 import java.time.Instant
 import com.github.tomakehurst.wiremock.client.WireMock.aResponse
+import com.github.tomakehurst.wiremock.client.WireMock.equalTo
+import com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor
 import com.github.tomakehurst.wiremock.client.WireMock.get
 import com.github.tomakehurst.wiremock.client.WireMock.okJson
 import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
@@ -71,9 +73,10 @@ class IngestionServiceTest : PostgresIntegrationTest() {
     private fun service(
         provider: String = "polygon",
         fallback: String = "finnhub",
+        tickerBatchSize: Int = IngestionService.TICKER_CHUNK_SIZE,
     ) = IngestionService(
         providers = listOf(polygon, finnhub),
-        properties = IngestionProperties(provider = provider, fallbackProvider = fallback),
+        properties = IngestionProperties(provider = provider, fallbackProvider = fallback, tickerBatchSize = tickerBatchSize),
         companies = companies,
         registrations = registrations,
         runs = runs,
@@ -174,6 +177,35 @@ class IngestionServiceTest : PostgresIntegrationTest() {
         assertEquals(1, result.runs.size)
         assertEquals(IngestionStatus.PARTIAL, result.runs[0].status)
         assertEquals("RATE_LIMITED", result.runs[0].errorCode)
+    }
+
+    @Test
+    fun `bounded ingestion queries watched tickers separately and reports truncated coverage`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        companies.save(Company(ticker = "NVDA", name = "Nvidia"))
+        companies.save(Company(ticker = "MSFT", name = "Microsoft", active = false))
+        val requestPath = urlPathEqualTo("/v2/reference/news")
+        wireMock.stubFor(
+            get(requestPath).withQueryParam("ticker", equalTo("DELL"))
+                .willReturn(okJson("""{"results":[],"next_url":"https://api.polygon.io/v2/reference/news?cursor=next"}""")),
+        )
+        wireMock.stubFor(
+            get(requestPath).withQueryParam("ticker", equalTo("NVDA"))
+                .willReturn(okJson("""{"results":[]}""")),
+        )
+
+        val run = service(fallback = "none", tickerBatchSize = 1).ingestCycle().runs.single()
+
+        assertEquals(IngestionStatus.PARTIAL, run.status)
+        assertEquals("NEWS_WINDOW_TRUNCATED", run.errorCode)
+        wireMock.verify(2, getRequestedFor(requestPath))
+        wireMock.verify(1, getRequestedFor(requestPath).withQueryParam("ticker", equalTo("NVDA")))
+
+        wireMock.stubFor(
+            get(requestPath).withQueryParam("ticker", equalTo("NVDA")).willReturn(aResponse().withStatus(429)),
+        )
+        val limited = service(fallback = "none", tickerBatchSize = 1).ingestCycle().runs.single()
+        assertEquals("RATE_LIMITED", limited.errorCode)
     }
 
     @Test

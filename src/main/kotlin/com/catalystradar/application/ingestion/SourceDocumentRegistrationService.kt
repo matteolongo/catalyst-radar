@@ -83,14 +83,14 @@ class SourceDocumentRegistrationService(
                 outputCount = 1, finishedAt = registrationFinished)
         }
         val resolution = operationRunId?.let { steps.start(it, document.id, null, DocumentStage.COMPANY_RESOLUTION, inputCount = article.tickers.size) }
-        val companyIds = article.tickers.mapNotNull { ticker ->
+        val resolved = article.tickers.mapNotNull { ticker ->
             runCatching { normalizeTicker(ticker) }.getOrNull()
                 ?.let(companies::findByTicker)
-                ?.id
-        }.toSet()
+        }.distinctBy { it.id }
+        val companyIds = resolved.map { it.id }.toSet()
         documentCompanies.link(document.id, companyIds)
         resolution?.let { steps.finish(it, outputCount = companyIds.size) }
-        if (companyIds.isEmpty()) return DocumentRegistration.Unresolved(document.id)
+        if (resolved.none { it.active }) return DocumentRegistration.Unresolved(document.id)
         processing.ensurePending(document.id, now)
         return DocumentRegistration.Queued(document.id)
     }

@@ -1,0 +1,55 @@
+name: catalyst-radar-production
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: catalyst_radar
+      POSTGRES_PASSWORD: ${CATALYST_POSTGRES_PASSWORD:?Set the PostgreSQL admin password}
+      CATALYST_DB_PASSWORD: ${CATALYST_DB_PASSWORD:?Set the application database password}
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./deploy/init-postgres.sh:/docker-entrypoint-initdb.d/10-catalyst.sh:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "catalyst_radar"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  app:
+    build: .
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+      CATALYST_DB_URL: jdbc:postgresql://postgres:5432/catalyst_radar
+      CATALYST_DB_USER: catalyst
+      CATALYST_DB_PASSWORD: ${CATALYST_DB_PASSWORD:?Set the application database password}
+      CATALYST_INTERNAL_ADMIN_KEY: ${CATALYST_INTERNAL_ADMIN_KEY:?Set the admin key}
+      CATALYST_TICKERS: ${CATALYST_TICKERS:?Set the watchlist}
+      POLYGON_API_KEY: ${POLYGON_API_KEY:?Set the Polygon API key}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set the OpenAI API key}
+      CATALYST_INGESTION_ENABLED: ${CATALYST_INGESTION_ENABLED:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  pgdata:

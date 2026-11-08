@@ -4,6 +4,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
 
 /**
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Component
  * Off by default so deployments never mutate reference data implicitly.
  */
 @Component
+@Profile("!production")
 @ConditionalOnProperty(name = ["catalyst.universe.seed-on-startup"], havingValue = "true")
 class UniverseSeedRunner(private val loader: UsUniverseLoader) : ApplicationRunner {
 

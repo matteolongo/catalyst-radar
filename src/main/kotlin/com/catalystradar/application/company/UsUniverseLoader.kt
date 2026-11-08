@@ -4,6 +4,7 @@ import com.catalystradar.domain.company.Company
 import com.catalystradar.persistence.company.CompanyStore
 import org.springframework.core.io.ResourceLoader
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import tools.jackson.core.type.TypeReference
 import tools.jackson.databind.ObjectMapper
 
@@ -22,11 +23,26 @@ class UsUniverseLoader(
     private val resources: ResourceLoader,
 ) {
 
-    fun load(): UniverseLoadResult {
-        val entries = resources.getResource("classpath:universe/us-equities-v1.json").inputStream.use {
+    fun load(): UniverseLoadResult = insertMissing(readEntries())
+
+    @Transactional
+    fun loadWatchlist(tickers: Set<String>): UniverseLoadResult {
+        require(tickers.isNotEmpty()) { "The watchlist must contain at least one ticker." }
+        val entries = readEntries().filter { it.ticker in tickers }
+        val unknown = tickers - entries.map { it.ticker }.toSet()
+        require(unknown.isEmpty()) { "Watchlist tickers missing from the bundled US universe: ${unknown.joinToString(", ")}" }
+
+        val result = insertMissing(entries)
+        companies.setActiveUniverse(tickers)
+        return result
+    }
+
+    private fun readEntries(): List<UniverseEntry> =
+        resources.getResource("classpath:universe/us-equities-v1.json").inputStream.use {
             objectMapper.readValue(it, object : TypeReference<List<UniverseEntry>>() {})
         }
 
+    private fun insertMissing(entries: List<UniverseEntry>): UniverseLoadResult {
         var loaded = 0
         var skipped = 0
         entries.forEach { entry ->

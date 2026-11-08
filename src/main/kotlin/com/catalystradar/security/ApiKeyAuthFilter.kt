@@ -8,6 +8,8 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
+import org.springframework.web.util.ServletRequestPathUtils
+import org.springframework.web.util.pattern.PathPatternParser
 import tools.jackson.databind.ObjectMapper
 
 /**
@@ -23,6 +25,10 @@ class ApiKeyAuthFilter(
     private val mapper: ObjectMapper,
 ) : OncePerRequestFilter() {
 
+    private val internal = PathPatternParser.defaultInstance.parse("/internal/**")
+    private val operations = PathPatternParser.defaultInstance.parse("/internal/operations/**")
+    private val publicApi = PathPatternParser.defaultInstance.parse("/v1/**")
+
     private val authEnabled: Boolean
         get() = environment.getProperty("catalyst.api.auth-enabled", Boolean::class.java, false)
 
@@ -34,14 +40,14 @@ class ApiKeyAuthFilter(
         response: HttpServletResponse,
         chain: FilterChain,
     ) {
-        val path = request.requestURI
-        if (path == "/internal/operations" || path.startsWith("/internal/operations/")) {
+        // Use the same parsed path semantics as Spring MVC, including decoded segments.
+        val path = ServletRequestPathUtils.parseAndCache(request).pathWithinApplication()
+        if (operations.matches(path)) {
             response.setHeader("Cache-Control", "no-store")
         }
         when {
-            path == "/actuator" || path.startsWith("/actuator/") -> chain.doFilter(request, response)
-            path.startsWith("/internal/") -> checkAdmin(request, response, chain)
-            path.startsWith("/v1/") && authEnabled -> checkApiKey(request, response, chain)
+            internal.matches(path) -> checkAdmin(request, response, chain)
+            authEnabled && publicApi.matches(path) -> checkApiKey(request, response, chain)
             else -> chain.doFilter(request, response)
         }
     }

@@ -6,6 +6,8 @@ _Status: design baseline — September 2026_
 
 The explicitly requested optional [operations backoffice](operations-backoffice.md) extends this API-only baseline within the same deployable; its operator contract and historical limits are documented separately.
 
+The [production release](../README.md#production-quickstart) runs one instance with an explicit watchlist of up to five US stocks, Polygon news and OpenAI extraction. The dashboard, detailed operations reads, manual recalculation and replay routes are development tools.
+
 # 1. Purpose
 
 CatalystRadar continuously ingests company-related information, converts unstructured source material into normalized catalyst events, maintains a point-in-time catalyst state for each company, and exposes discovery and history through a stable REST API.

@@ -10,13 +10,20 @@ interface DocumentProcessingRepository : ListCrudRepository<DocumentProcessingRo
     @Query(
         """
         SELECT *
-        FROM document_processing
+        FROM document_processing p
         -- PipelineService uses an in-process single-flight guard. Retrying a
         -- PROCESSING row therefore recovers work interrupted by a restart
         -- without allowing local overlap.
-        WHERE status IN ('PENDING', 'PROCESSING')
-           OR (status = 'RETRYABLE_ERROR' AND next_attempt_at <= :now)
-        ORDER BY COALESCE(next_attempt_at, created_at), source_document_id
+        WHERE (p.status IN ('PENDING', 'PROCESSING')
+            OR (p.status = 'RETRYABLE_ERROR' AND p.next_attempt_at <= :now))
+          -- Pause work linked only to inactive companies. Orphaned rows still need cleanup.
+          AND COALESCE((
+            SELECT bool_or(c.active)
+            FROM source_document_companies dc
+            JOIN companies c ON c.id = dc.company_id
+            WHERE dc.source_document_id = p.source_document_id
+          ), true)
+        ORDER BY COALESCE(p.next_attempt_at, p.created_at), p.source_document_id
         LIMIT :limit
         """,
     )

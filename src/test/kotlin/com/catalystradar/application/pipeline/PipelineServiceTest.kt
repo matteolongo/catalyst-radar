@@ -412,6 +412,45 @@ class PipelineServiceTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `an unexpected ingestion failure with no completed work fails the cycle`() = runTest {
+        companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val provider = object : NewsProvider {
+            override val name = "polygon"
+            override suspend fun fetch(request: NewsFetchRequest): NewsFetchResult =
+                error("unexpected provider failure")
+        }
+
+        val result = pipeline(providers = listOf(provider)).runCycle()
+
+        assertEquals("FAILED", result.status)
+        assertEquals(0, result.documentsCompleted)
+    }
+
+    @Test
+    fun `oversized extraction is rejected before clustering`() = runTest {
+        val company = companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val now = Instant.now()
+        val document = queuedDocument(company, now)
+        val extraction = object : EventExtractionProvider {
+            override suspend fun extract(request: ExtractionRequest): ExtractionResult {
+                val result = TitleExtraction.extract(request)
+                return result.copy(events = List(6) { result.events.single() })
+            }
+        }
+
+        val result = pipeline(
+            providers = listOf(NoNewsProvider),
+            extraction = extraction,
+            ingestionProperties = IngestionProperties(provider = NoNewsProvider.name, fallbackProvider = "none"),
+            pipelineProperties = PipelineProperties(maxEventsPerDocument = 5),
+        ).runCycle(now)
+
+        assertEquals(1, result.documentsTerminalFailures)
+        assertEquals(0, result.eventsInserted)
+        assertEquals("INVALID_RESPONSE", processing.findBySourceDocumentId(document.id)?.lastErrorCode)
+    }
+
+    @Test
     fun `counts a first processing as inserted events and a completed document`() = runTest {
         val company = companyStore.save(Company(ticker = "DELL", name = "Dell"))
         val now = Instant.parse("2026-09-16T10:00:00Z")

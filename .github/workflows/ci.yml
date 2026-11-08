@@ -29,3 +29,54 @@ jobs:
         # Integration tests use Testcontainers (Docker is available on
         # GitHub runners). No live provider keys are ever needed.
         run: ./gradlew clean test --console=plain
+
+  production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify the production stack
+        run: |
+          export CATALYST_POSTGRES_PASSWORD="$(openssl rand -hex 32)"
+          export CATALYST_DB_PASSWORD="$(openssl rand -hex 32)"
+          export CATALYST_INTERNAL_ADMIN_KEY="$(openssl rand -hex 32)"
+          export CATALYST_TICKERS=DELL
+          export CATALYST_INGESTION_ENABLED=false
+          export POLYGON_API_KEY=ci-fixture
+          export OPENAI_API_KEY=ci-fixture
+
+          compose() { docker compose -p catalyst-ci -f compose.production.yaml "$@"; }
+          trap 'if [ "$?" -ne 0 ]; then compose logs; fi; compose down --volumes --remove-orphans' EXIT
+          compose up --build --detach --wait --wait-timeout 120
+
+          base=http://127.0.0.1:8080
+          admin="X-Admin-Key: $CATALYST_INTERNAL_ADMIN_KEY"
+          status() { curl -sS -o /dev/null -w '%{http_code}' "$@"; }
+          curl -fsS "$base/actuator/health/readiness" | jq -e '.status == "UP"'
+          test "$(status "$base/v1/companies/DELL")" = 401
+          test "$(status --path-as-is "$base/v1;scope=ci/companies/DELL")" = 401
+          test "$(status "$base/internal/ingestion/runs")" = 403
+          test "$(status "$base/ops/index.html")" = 404
+          test "$(status -H "$admin" "$base/internal/operations/overview")" = 404
+          curl -fsS "$base/v3/api-docs" | jq -e '.paths | has("/v1/companies/{ticker}") and (keys | all(startswith("/v1/")))'
+
+          client="$(curl -fsS -H "$admin" -H 'Content-Type: application/json' -d '{"name":"ci"}' "$base/internal/api-clients")"
+          auth="Authorization: Bearer $(jq -er '.rawKey' <<< "$client")"
+          id="$(jq -er '.clientId' <<< "$client")"
+          curl -fsS -H "$auth" "$base/v1/companies/DELL" | jq -e '.ticker == "DELL" and .active'
+          test "$(status -H "$auth" "$base/v1/companies/AAPL")" = 404
+
+          export CATALYST_TICKERS=AAPL
+          compose up --detach --wait --wait-timeout 90
+          curl -fsS -H "$auth" "$base/v1/companies/DELL" | jq -e '.ticker == "DELL" and (.active | not)'
+          curl -fsS -H "$auth" "$base/v1/companies/AAPL" | jq -e '.ticker == "AAPL" and .active'
+          test "$(status -X DELETE -H "$admin" "$base/internal/api-clients/$id")" = 204
+          test "$(status -H "$auth" "$base/v1/companies/DELL")" = 403
+
+          if timeout 45s docker compose -p catalyst-ci -f compose.production.yaml run --rm --no-deps app \
+              --catalyst.api.auth-enabled=false > "$RUNNER_TEMP/unsafe-start.log" 2>&1; then
+            echo "Production started with authentication disabled"
+            exit 1
+          fi
+          grep -F 'API-key authentication is required in production' "$RUNNER_TEMP/unsafe-start.log"
