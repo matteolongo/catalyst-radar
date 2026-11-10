@@ -8,7 +8,9 @@
   var credentialRevision = 0;
   var publicRequests = new Set();
   var operations;
-  var currentView = 'overview';
+  var currentView = 'discover';
+  var DEFAULT_RADAR_SORT = 'VELOCITY';
+  var companySectionTitles = { history: 'historyTitle', evidence: 'explanationTitle' };
   var discoveryOffset = 0;
   var discoveryTotal = 0;
   var discoveryLimit = 20;
@@ -16,8 +18,7 @@
   var discoveryRequest = 0;
   var discoveryLoading = false;
   var renderedDiscoveryPath = null;
-  var overviewLeaderboardRequest = 0;
-  var overviewLeaderboardQuery = null;
+  var discoveryPage = null;
   var companyRequest = 0;
   var historyRequest = 0;
   var currentCompany = '';
@@ -100,9 +101,9 @@
             button('confirm-pipeline', 'Confirm and run pipeline') + button('cancel-pipeline', 'Cancel');
         } else {
           content += '<p role="status">' + (disclosure.status === 'missing' ?
-            'OpenAI and both extraction and embedding models must be configured. Review Settings, then choose Run pipeline now to retry.' :
-            'Unable to read model configuration. Choose Run pipeline now to retry or review Settings.') + '</p>' +
-            button('pipeline-settings', 'Open Settings');
+            'OpenAI and both extraction and embedding models must be configured. Review Access, then choose Run pipeline now to retry.' :
+            'Unable to read model configuration. Choose Run pipeline now to retry or review Access.') + '</p>' +
+            button('pipeline-settings', 'Open Access');
         }
         panel.innerHTML = content;
         return;
@@ -227,9 +228,9 @@
   function invalidatePublicCredentials() {
     abortPublicReads();
     discoveryRequest++;
-    overviewLeaderboardRequest++;
-    overviewLeaderboardQuery = null;
-    ['overviewLeaderboardResults', 'overviewLeaderboardAsOf', 'overviewLeaderboardStatus'].forEach(function (id) { $(id).innerHTML = ''; $(id).textContent = ''; });
+    renderedDiscoveryPath = null;
+    discoveryPage = null;
+    renderRadarPreview();
     companyRequest++;
     historyRequest++;
     eventRequest++;
@@ -270,7 +271,7 @@
     return window.CatalystLeaderboard.query({
       states: Array.from($('discoveryStates').selectedOptions || []).map(function (option) { return option.value; }),
       minScore: $('minScore').value, minVelocity7d: $('minVelocity7d').value, sector: $('sector').value,
-      sort: $('discoverySort').value || 'SCORE', limit: Number($('pageSize').value) || 20
+      sort: $('discoverySort').value || DEFAULT_RADAR_SORT, limit: Number($('pageSize').value) || 20
     });
   }
 
@@ -282,6 +283,11 @@
   function discoveryValidation(error) {
     discoveryRequest++;
     discoveryLoading = false;
+    appliedDiscoveryFilters = null;
+    renderedDiscoveryPath = null;
+    discoveryPage = null;
+    renderRadarPreview();
+    $('radarFilters').open = true;
     $('discoveryFilterError').textContent = error.message;
     if (error.field) $(error.field).setAttribute('aria-invalid', 'true');
     $('discoveryResults').innerHTML = '';
@@ -296,13 +302,15 @@
   function restoreDiscovery(route) {
     clearDiscoveryValidation();
     var states = route.getAll('state');
+    showDiscoveryFilterCount(route);
     Array.from($('discoveryStates').options).forEach(function (option) { option.selected = states.includes(option.value); });
     ['minScore', 'minVelocity7d', 'sector'].forEach(function (id) { $(id).value = route.get(id) || ''; });
-    $('discoverySort').value = route.get('sort') || 'SCORE';
+    var sort = route.get('sort') || DEFAULT_RADAR_SORT;
+    $('discoverySort').value = sort;
     $('pageSize').value = route.get('limit') || '20';
     try {
       appliedDiscoveryFilters = window.CatalystLeaderboard.query({ states: states, minScore: route.get('minScore'),
-        minVelocity7d: route.get('minVelocity7d'), sector: route.get('sector'), sort: route.get('sort') || 'SCORE',
+        minVelocity7d: route.get('minVelocity7d'), sector: route.get('sector'), sort: sort,
         limit: route.get('limit') || 20, offset: route.get('offset') || 0 });
       if (![20, 50, 100].includes(Number(appliedDiscoveryFilters.get('limit')))) {
         var error = new Error('Choose 20, 50, or 100 results per page.'); error.field = 'pageSize'; throw error;
@@ -313,10 +321,16 @@
     } catch (error) { discoveryValidation(error); return false; }
   }
 
+  function showDiscoveryFilterCount(query) {
+    var count = ['state', 'minScore', 'minVelocity7d', 'sector'].filter(function (name) { return query.has(name); }).length;
+    $('radarFilterCount').textContent = count ? ' · ' + count + ' applied' : '';
+  }
+
   function updateDiscoveryRoute() {
     var query = new URLSearchParams(appliedDiscoveryFilters);
     query.set('offset', String(discoveryOffset));
     window.history.pushState({}, '', '?view=discover&' + query.toString());
+    showDiscoveryFilterCount(query);
     return refreshDiscovery();
   }
 
@@ -422,16 +436,17 @@
       '<div><dt>Direct summary</dt><dd>' + esc(fmtScore(data.directScore)) + '</dd></div>' +
       '<div><dt>Inferred summary</dt><dd>' + esc(fmtScore(data.inferredScore)) + '</dd></div></dl>';
     var drivers = (data.topDrivers || []).map(function (driver) {
-      return '<article class="driver"><h4>' + esc(driver.direction) + ' · ' + esc(driver.family || 'Unclassified') + ' / ' + esc(driver.type) + '</h4>' +
-        '<p>Raw event contribution: ' + esc(fmtScore(driver.contribution)) + '</p>' +
+      return '<details class="driver"><summary><strong>' + esc(String(driver.type || 'Unknown event').replace(/_/g, ' ').toLowerCase()) + '</strong>' +
+        '<span>' + esc(driver.direction) + ' · Raw contribution ' + esc(fmtChange(driver.contribution)) + '</span></summary>' +
+        '<div class="driver-evidence" data-event-type="' + esc(driver.type) + '">' +
         '<p>Event date: ' + timeLabel(driver.eventTimestamp) + ' · First captured: ' + timeLabel(driver.discoveredAt) + '</p>' +
         evidenceList(driver.evidence) + '<p>' + sourceLabel(driver.source) + '</p><p>' + sourceInspection(driver) + '</p>' +
-        '<details><summary>Scoring details</summary><p>Score version: ' + esc(data.scoreVersion) + '</p>' + factorDetails(driver) + '</details></article>';
+        '<details><summary>Scoring details</summary><p>Score version: ' + esc(data.scoreVersion) + '</p>' + factorDetails(driver) + '</details></div></details>';
     }).join('');
     var calcFields = ['contributionSum', 'familyCount', 'convergenceMultiplier', 'rawScore', 'normalizationScale', 'contributionCutoff'];
-    $('companyExplanation').innerHTML = '<p class="muted">Reconstructed current explanation: matching score and versions do not prove original driver membership. Use Recorded calculations for the exact inputs retained by captured cycles.</p>' +
-      summary + (drivers || '<p>No reconstructed drivers available.</p>') +
-      '<details><summary>Scoring details</summary><p>Score version: ' + esc(data.scoreVersion) + '</p><dl class="fact-grid">' +
+    $('companyExplanation').innerHTML = '<p class="muted small">Reconstructed current explanation: matching score and versions do not prove original driver membership. Use Recorded calculations for the exact inputs retained by captured cycles.</p>' +
+      (drivers || '<p>No reconstructed drivers available.</p>') +
+      '<details><summary>Scoring details</summary>' + summary + '<p>Score version: ' + esc(data.scoreVersion) + '</p><dl class="fact-grid">' +
       calcFields.map(function (key) { return '<div><dt>' + esc(key) + '</dt><dd>' + esc(fmtFactor(calculation[key])) + '</dd></div>'; }).join('') + '</dl></details>';
   }
 
@@ -469,12 +484,18 @@
     var y = function (score) { return 130 - Math.max(0, Math.min(100, Number(score))) * 1.1; };
     var chart = (snapshots.length === 1 ? '<p>Insufficient history for a trend chart. One stored snapshot is available.</p>' : '') +
       '<p class="muted small">Only stored snapshot points are shown; gaps have no implied values.</p><svg viewBox="0 0 600 150" role="img" aria-label="Stored catalyst score snapshot points and state transitions; data table follows">' +
-      '<line x1="30" y1="130" x2="570" y2="130" class="axis"/><line x1="30" y1="20" x2="30" y2="130" class="axis"/>' +
+      [100, 50, 0].map(function (score) {
+        return '<line x1="30" y1="' + y(score) + '" x2="570" y2="' + y(score) + '" class="axis"/>' +
+          '<text x="23" y="' + (y(score) + 4) + '" text-anchor="end" class="axis-label">' + score + '</text>';
+      }).join('') +
       snapshots.map(function (s) { return '<circle class="score-point" cx="' + x(s.asOf) + '" cy="' + y(s.score) + '" r="4"><title>' + esc(fmtTime(s.asOf)) + ' UTC · ' + esc(fmtScore(s.score)) + ' · ' + esc(s.state) + '</title></circle>'; }).join('') +
-      transitions.map(function (t) { return '<path class="transition-mark" d="M' + x(t.at) + ' 20V130"><title>' + esc(fmtTime(t.at)) + ' UTC · ' + esc(t.from) + ' → ' + esc(t.to) + '</title></path>'; }).join('') + '</svg>';
-    $('companyHistory').innerHTML = chart + '<div class="history-table"><table><caption>Stored score snapshots</caption><thead><tr><th>Date</th><th>Score</th><th>State</th><th>As of</th></tr></thead><tbody>' +
+      transitions.map(function (t) { return '<path class="transition-mark" d="M' + x(t.at) + ' 20V130"><title>' + esc(fmtTime(t.at)) + ' UTC · ' + esc(t.from) + ' → ' + esc(t.to) + '</title></path>'; }).join('') +
+      (minTime === maxTime ? '' : '<text x="30" y="147" class="axis-label">' + new Date(minTime).toISOString().slice(0, 10) + '</text>' +
+        '<text x="570" y="147" text-anchor="end" class="axis-label">' + new Date(maxTime).toISOString().slice(0, 10) + '</text>') + '</svg>';
+    $('companyHistory').innerHTML = chart + transitionList + '<details><summary>View saved snapshots (' + snapshots.length + ')</summary>' +
+      '<div class="history-table"><table><caption>Stored score snapshots</caption><thead><tr><th>Date</th><th>Score</th><th>State</th><th>As of</th></tr></thead><tbody>' +
       snapshots.map(function (s) { return '<tr><td data-label="Date">' + esc(s.asOf && !isNaN(new Date(s.asOf)) ? new Date(s.asOf).toISOString().slice(0, 10) : '–') + '</td><td data-label="Score">' + esc(fmtScore(s.score)) + '</td><td data-label="State">' + esc(s.state) + '</td><td data-label="As of">' + timeLabel(s.asOf) + '</td></tr>'; }).join('') +
-      '</tbody></table></div>' + transitionList;
+      '</tbody></table></div></details>';
   }
 
   function eventTable(items, container, showCompany) {
@@ -490,18 +511,18 @@
       var key = entry[0], group = entry[1], first = group[0];
       var company = first.ticker ? '<a href="?view=company&amp;ticker=' + encodeURIComponent(first.ticker) + '" data-ticker="' + esc(first.ticker) + '">' + esc(first.ticker) + '</a>' : 'Ticker unavailable';
       return '<tr class="event-cluster">' + (showCompany ? '<td>' + company + '<span class="cell-secondary">' + esc(first.companyName || 'Company name unavailable') + '</span></td>' : '') +
-        '<td>' + esc(first.type) + '<span class="cell-secondary">' + esc(first.family) + '</span></td><td>' + esc(first.direction) + '</td>' +
-        '<td>' + timeLabel(first.eventTimestamp) + '</td><td>' + timeLabel(first.discoveredAt) + '</td>' +
-        '<td>' + esc(first.source && first.source.provider || 'Unavailable') + '</td><td class="record-id">' + esc(first.clusterId || 'Unclustered') + '</td></tr>' +
-        '<tr class="event-evidence-row"><td colspan="' + (showCompany ? 7 : 6) + '"><details data-event-group="' + esc(key) + '"' + (expanded.has(key) ? ' open' : '') + '><summary>Evidence and sources · Loaded reports: ' + group.length + '</summary>' +
-        '<p class="muted small">Reports about one underlying event. Only loaded reports are shown; additional coverage does not multiply its catalyst contribution.</p>' + group.map(function (event) {
+        '<td><strong>' + esc(String(first.type || 'Unknown event').replace(/_/g, ' ').toLowerCase()) + '</strong><span class="cell-secondary">' + esc(first.family) +
+        '</span></td><td><span class="pill direction-' + esc(String(first.direction || 'unknown').toLowerCase()) + '">' + esc(first.direction || 'Unknown') + '</span></td>' +
+        '<td>' + timeLabel(first.eventTimestamp) + '</td><td>' + timeLabel(first.discoveredAt) + '</td></tr>' +
+        '<tr class="event-evidence-row"><td colspan="' + (showCompany ? 5 : 4) + '"><details data-event-group="' + esc(key) + '"' + (expanded.has(key) ? ' open' : '') + '><summary>Evidence and sources · Loaded reports: ' + group.length + '</summary>' +
+        '<p class="muted small">Cluster reference: <span class="record-id">' + esc(first.clusterId || 'Unclustered') + '</span>. Counts reflect the reports loaded so far.</p>' + group.map(function (event) {
         return '<div class="event-report"><strong>' + esc(event.direction) + ' · ' + esc(event.family) + ' / ' + esc(event.type) + '</strong>' +
           '<p>Event date: ' + timeLabel(event.eventTimestamp) + ' · First captured: ' + timeLabel(event.discoveredAt) + '</p>' +
           evidenceList(event.evidence) + '<p>' + sourceLabel(event.source) + '</p><p>' + sourceInspection(event) + '</p></div>';
       }).join('') + '</details></td></tr>';
     }).join('');
     return '<div class="table-scroll" tabindex="0" role="region" aria-label="Event reports and evidence"><table class="events-table"><caption class="sr-only">Loaded event reports grouped by stored cluster</caption><thead><tr>' +
-      (showCompany ? '<th scope="col">Company</th>' : '') + '<th scope="col">Family / type</th><th scope="col">Direction</th><th scope="col">Event time</th><th scope="col">Discovered at</th><th scope="col">Source</th><th scope="col">Cluster reference</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+      (showCompany ? '<th scope="col">Company</th>' : '') + '<th scope="col">Event</th><th scope="col">Direction</th><th scope="col">Event time</th><th scope="col">First captured</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
   function renderCompanyEvents() {
@@ -635,13 +656,20 @@
       if (revision === credentialRevision && request === companyRequest && currentView === 'company') renderCompanyOverview(company);
     }).catch(function (error) {
       if (revision !== credentialRevision || request !== companyRequest || currentView !== 'company') return;
-      if (error.code === 'COMPANY_NOT_FOUND') $('companyOverview').textContent = 'No company is stored for ticker ' + ticker + '. Return to Discover and try another ticker.';
+      if (error.code === 'COMPANY_NOT_FOUND') $('companyOverview').textContent = 'No company is stored for ticker ' + ticker + '. Return to Radar and try another ticker.';
       else companyPanelError('companyOverview', 'company');
     });
     api(companyPath(ticker, '/catalyst')).then(function (data) {
       if (revision === credentialRevision && request === companyRequest && currentView === 'company') renderCatalyst(data);
-    }).catch(function () {
-      if (revision === credentialRevision && request === companyRequest && currentView === 'company') { companyPanelError('companyScore', 'current score'); companyPanelError('companyExplanation', 'explanation'); }
+    }).catch(function (error) {
+      if (revision !== credentialRevision || request !== companyRequest || currentView !== 'company') return;
+      if (error.code === 'CATALYST_NOT_FOUND') {
+        $('companyScore').textContent = 'No saved catalyst score for this company yet.';
+        $('companyExplanation').textContent = 'Score evidence appears after a catalyst score is saved.';
+      } else {
+        companyPanelError('companyScore', 'current score');
+        companyPanelError('companyExplanation', 'explanation');
+      }
     });
     loadCompanyHistory(ticker, request);
     loadCompanyEvents(ticker, request, true);
@@ -653,35 +681,34 @@
     return '/v1/discovery/catalyzed?' + query.toString();
   }
 
-  async function refreshOverviewLeaderboard() {
-    var sort = $('overviewLeaderboardSort').value || 'SCORE';
-    var request = ++overviewLeaderboardRequest;
-    var revision = credentialRevision;
-    if (overviewLeaderboardQuery !== sort) {
-      $('overviewLeaderboardResults').innerHTML = '';
-      $('overviewLeaderboardAsOf').textContent = '';
+  function renderRadarPreview() {
+    var ticker = new URLSearchParams(window.location.search).get('preview');
+    var entries = discoveryPage ? discoveryPage.results : [];
+    var entry = entries.find(function (row) { return row.ticker === ticker; }) || entries[0];
+    var panel = $('radarPreview');
+    panel.classList.toggle('hidden', !entry);
+    if (!entry) {
+      panel.innerHTML = '';
+      panel.setAttribute('aria-label', 'Selected company snapshot');
+      return;
     }
-    overviewLeaderboardQuery = sort;
-    $('overviewLeaderboardStatus').textContent = 'Loading companies…';
-    $('overviewLeaderboardRetry').classList.add('hidden');
-    $('overviewLeaderboardAll').href = '?view=discover&sort=' + sort;
-    try {
-      var page = await api('/v1/discovery/catalyzed?' + window.CatalystLeaderboard.query({ sort: sort, limit: 5, offset: 0 }));
-      if (request !== overviewLeaderboardRequest || revision !== credentialRevision || currentView !== 'overview') return;
-      $('overviewLeaderboardResults').innerHTML = page.results.length ? window.CatalystLeaderboard.render(page, { compact: true, sort: sort }) : '';
-      $('overviewLeaderboardAsOf').textContent = 'Query as of ' + fmtTime(page.asOf) + ' UTC';
-      $('overviewLeaderboardStatus').textContent = page.results.length ? 'Latest stored company snapshots' : 'No company snapshots are available.';
-    } catch (error) {
-      if (request !== overviewLeaderboardRequest || revision !== credentialRevision || currentView !== 'overview') return;
-      if (error.status === 401 || error.status === 403) {
-        $('overviewLeaderboardResults').innerHTML = '';
-        $('overviewLeaderboardAsOf').textContent = '';
-        $('overviewLeaderboardStatus').innerHTML = 'Company access denied. <a href="?view=settings">Open Settings to update the public API key.</a>';
-      } else {
-        $('overviewLeaderboardStatus').textContent = 'Unable to refresh company rankings. Any displayed rows reflect the last successful read.';
-        $('overviewLeaderboardRetry').classList.remove('hidden');
-      }
-    }
+    document.querySelectorAll('#discoveryResults [data-ticker]').forEach(function (link) {
+      if (link.dataset.ticker === entry.ticker) link.setAttribute('data-preview-selected', '');
+      else link.removeAttribute('data-preview-selected');
+    });
+    var route = '?view=company&amp;ticker=' + encodeURIComponent(entry.ticker);
+    panel.setAttribute('aria-label', entry.ticker + ' saved company snapshot');
+    panel.innerHTML = '<p class="eyebrow">Company snapshot</p><h2>' + esc(entry.ticker) + '</h2>' +
+      '<p class="muted">' + esc(entry.name) + '</p><div class="preview-score"><strong class="score-number">' + esc(fmtScore(entry.score)) +
+      '</strong><span class="muted small">/ 100</span>' + statusPill(entry.state) + '</div>' +
+      '<dl class="preview-facts"><div><dt>7-day change (points)</dt><dd>' + esc(fmtChange(entry.velocity7d)) + '</dd></div>' +
+      '<div><dt>Events discovered · 7d</dt><dd>' + esc(fmtInt(entry.events7d)) + '</dd></div>' +
+      '<div><dt>Saved at</dt><dd>' + timeLabel(entry.asOf) + '</dd></div></dl>' +
+      '<p class="muted small preview-versions">' + esc(entry.scoreVersion || 'Score version unavailable') +
+      ' · ' + esc(entry.taxonomyVersion || 'Taxonomy version unavailable') + '</p>' +
+      '<div class="preview-links"><a data-radar-company href="' + route + '&amp;section=history">Score history</a>' +
+      '<a data-radar-company href="' + route + '&amp;section=evidence">Score evidence</a></div>' +
+      '<a data-radar-company class="button-link" href="' + route + '">Open company record <span aria-hidden="true">→</span></a>';
   }
 
   async function refreshDiscovery() {
@@ -694,11 +721,14 @@
     var retainRows = renderedDiscoveryPath === path && $('discoveryResults').innerHTML !== '';
     discoveryLoading = true;
     if (!retainRows) {
+      discoveryPage = null;
+      renderRadarPreview();
       $('discoveryResults').innerHTML = '';
       $('pageSummary').textContent = '';
       $('discoveryAsOf').textContent = '';
     }
     $('discoveryStatus').textContent = 'Loading companies…';
+    $('firstPage').classList.add('hidden');
     $('previousPage').disabled = true;
     $('nextPage').disabled = true;
     try {
@@ -710,19 +740,26 @@
         $('discoveryStatus').textContent = 'Unable to refresh companies. Displayed rows reflect the last successful read.';
       } else {
         $('discoveryResults').innerHTML = '';
-        $('discoveryStatus').textContent = 'Unable to load discovery results.';
+        if (err.status === 401 || err.status === 403) {
+          $('discoveryStatus').innerHTML = 'Company access denied. <a href="?view=settings">Set the public API key in Access.</a>';
+        } else $('discoveryStatus').textContent = 'Unable to load discovery results.';
         $('discoveryAsOf').textContent = '';
         $('pageSummary').textContent = '';
         renderedDiscoveryPath = null;
+        discoveryPage = null;
+        renderRadarPreview();
       }
       $('previousPage').disabled = true;
       $('nextPage').disabled = true;
-      showError('Discovery: ' + err.message);
+      if (err.status === 401 || err.status === 403) clearError();
+      else showError('Radar: ' + err.message);
       return;
     }
     if (revision !== credentialRevision || request !== discoveryRequest || currentView !== 'discover') return;
     discoveryLoading = false;
+    clearError();
     renderedDiscoveryPath = path;
+    discoveryPage = page;
     discoveryTotal = page.total;
     $('discoveryAsOf').textContent = 'Discovery query as of ' + fmtTime(page.asOf) + (page.asOf ? ' UTC' : '');
     $('pageSummary').textContent = page.total ?
@@ -731,16 +768,19 @@
     $('nextPage').disabled = requestOffset + requestLimit >= discoveryTotal;
     $('firstPage').classList.toggle('hidden', requestOffset === 0 || page.results.length > 0);
     if (!page.results.length) {
-      $('discoveryStatus').textContent = 'No companies match these filters.';
+      var hasFilters = ['state', 'minScore', 'minVelocity7d', 'sector'].some(function (name) { return appliedDiscoveryFilters.has(name); });
+      $('discoveryStatus').textContent = hasFilters || requestOffset > 0 ? 'No companies match these filters.' : 'No company scores have been saved yet.';
       $('discoveryResults').innerHTML = '';
+      renderRadarPreview();
       return;
     }
     $('discoveryStatus').textContent = page.total + ' matching companies';
-    $('discoveryResults').innerHTML = window.CatalystLeaderboard.render(page, { sort: appliedDiscoveryFilters.get('sort') });
+    $('discoveryResults').innerHTML = window.CatalystLeaderboard.render(page, { compact: true, sort: appliedDiscoveryFilters.get('sort') });
+    renderRadarPreview();
   }
 
   function routeView(route) {
-    var requested = route.get('view') || 'overview';
+    var requested = route.get('view') || 'discover';
     if (requested === 'operations') return 'pipeline';
     return requested;
   }
@@ -753,7 +793,7 @@
 
   function safeReturnSearch(value) {
     if (typeof value !== 'string' || !value.startsWith('?') || value.startsWith('??') || value.indexOf('#') >= 0 || value.indexOf('\\') >= 0) return null;
-    var view = new URLSearchParams(value.slice(1)).get('view') || 'overview';
+    var view = new URLSearchParams(value.slice(1)).get('view') || 'discover';
     if (view === 'operations') view = 'pipeline';
     return ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view) ? value : null;
   }
@@ -778,7 +818,7 @@
     var chapter = modules[view] || ['companies', 'Start with the complete process'];
     var ticker = new URLSearchParams(window.location.search).get('ticker');
     var href = '?view=notebooks&module=' + chapter[0] + (validTicker(ticker) ? '&ticker=' + encodeURIComponent(ticker.toUpperCase()) : '');
-    panel.innerHTML = '<p class="notebook-prompt"><strong>Process notebooks</strong><a data-notebook-link href="' + esc(href) + '">' + chapter[1] + ' →</a><span class="muted small">Inputs, steps and results, explained.</span></p>';
+    panel.innerHTML = '<p class="notebook-prompt"><span class="muted small">How it works</span><a data-notebook-link href="' + esc(href) + '">' + chapter[1] + ' →</a></p>';
   }
 
   function showNotebook(route) {
@@ -808,14 +848,12 @@
   }
 
   function refreshPublicView() {
-    if (currentView === 'overview') return refreshOverviewLeaderboard();
     if (currentView === 'discover' && restoreDiscovery(new URLSearchParams(window.location.search))) return refreshDiscovery();
     if (currentView === 'events') return loadEvents(true);
     if (currentView === 'company') return refreshCompany(new URLSearchParams(window.location.search).get('ticker'));
   }
 
   function showView(moveFocus, fromHistory) {
-    var previousView = currentView;
     var route = new URLSearchParams(window.location.search);
     var view = routeView(route);
     var invalidTicker = false;
@@ -823,7 +861,7 @@
       view = 'discover';
       invalidTicker = true;
     }
-    if (!['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view)) view = 'overview';
+    if (!['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view)) view = 'discover';
     if (currentView !== view) {
       abortPublicReads();
       if (currentView === 'events' && eventLoading) {
@@ -832,7 +870,6 @@
         eventLoaded = false;
       }
       if (currentView === 'discover') { discoveryRequest++; discoveryLoading = false; }
-      if (currentView === 'overview') overviewLeaderboardRequest++;
     }
     currentView = view;
 
@@ -840,33 +877,31 @@
       $(name + 'View').classList.toggle('hidden', name !== view);
     });
 
-    var titles = { overview: 'Overview', pipeline: 'Pipeline', documents: 'Documents', models: 'Models & costs',
-      settings: 'Settings', discover: 'Companies', company: 'Company', events: 'Events', notebooks: 'Process notebooks' };
+    var titles = { overview: 'Operations', pipeline: 'Pipeline', documents: 'Documents', models: 'Models & costs',
+      settings: 'Access', discover: 'Radar', company: 'Company record', events: 'Events', notebooks: 'Process notebooks' };
     $('pageTitle').textContent = titles[view];
-    var researchView = ['discover', 'company', 'events', 'notebooks'].includes(view);
+    var operationsNav = { overview: 'navOperationsHome', pipeline: 'navPipeline', documents: 'navDocuments', models: 'navModels' };
+    var operationView = Object.hasOwn(operationsNav, view);
     $('refresh').classList.toggle('hidden', view === 'notebooks');
-    $('lastRefresh').classList.toggle('hidden', researchView);
-    $('operationsPolling').classList.toggle('hidden', researchView);
+    $('lastRefresh').classList.toggle('hidden', !operationView);
+    $('operationsPolling').classList.toggle('hidden', !operationView);
     $('activityRangeLabel').classList.toggle('hidden', !['overview', 'pipeline', 'models'].includes(view));
     $('activityRange').value = route.get('range') === '7d' ? '7d' : '24h';
     if (view === 'notebooks') showNotebook(route);
-    if (view === 'overview') {
-      var leaderboardSort = route.get('leaderboardSort') === 'VELOCITY' ? 'VELOCITY' : 'SCORE';
-      $('overviewLeaderboardSort').value = leaderboardSort;
-      if (previousView !== 'overview' || overviewLeaderboardQuery !== leaderboardSort) refreshOverviewLeaderboard();
-    }
-
-    var topNavigation = { overview: 'navOverview', pipeline: 'navPipeline', documents: 'navDocuments',
-      models: 'navModels', settings: 'navSettings', discover: 'navDiscover', company: 'navDiscover', events: 'navEvents', notebooks: 'navNotebooks' };
-    ['navOverview', 'navPipeline', 'navDocuments', 'navModels', 'navSettings', 'navDiscover', 'navEvents', 'navNotebooks'].forEach(function (id) {
+    var topNavigation = { settings: 'navSettings', discover: 'navDiscover', company: 'navDiscover', events: 'navEvents' };
+    ['navOverview', 'navSettings', 'navDiscover', 'navEvents'].concat(Object.values(operationsNav)).forEach(function (id) {
       $(id).removeAttribute('aria-current');
     });
-    $(topNavigation[view]).setAttribute('aria-current', 'page');
+    $('operationsNavigation').classList.toggle('hidden', !operationView);
+    if (operationView) {
+      $('navOverview').setAttribute('aria-current', 'true');
+      $(operationsNav[view]).setAttribute('aria-current', 'page');
+    } else if (Object.hasOwn(topNavigation, view)) $(topNavigation[view]).setAttribute('aria-current', 'page');
 
     if (view === 'company') {
       var returnSearch = safeReturnSearch(window.history.state && window.history.state.returnSearch) || '?view=discover';
       var returnView = routeView(new URLSearchParams(returnSearch));
-      $('backToResults').textContent = 'Back to ' + (titles[returnView] || 'Companies');
+      $('backToResults').textContent = 'Back to ' + (Object.hasOwn(titles, returnView) ? titles[returnView] : 'Radar');
       if (route.get('ticker').toUpperCase() !== currentCompany) refreshCompany(route.get('ticker').toUpperCase());
     } else {
       companyRequest++;
@@ -887,11 +922,9 @@
     if (operations) operations.show({ view: view, params: route, fromHistory: !!fromHistory });
     onboarding.show(view);
 
-    if (moveFocus) {
-      if (view === 'company') $('companyTitle').focus();
-      else if (view === 'discover') $('discoverTitle').focus();
-      else $('pageTitle').focus();
-    }
+    var section = route.get('section');
+    if (view === 'company' && Object.hasOwn(companySectionTitles, section)) $(companySectionTitles[section]).focus();
+    else if (moveFocus) $(view === 'company' ? 'companyTitle' : view === 'discover' ? 'discoverTitle' : 'pageTitle').focus();
   }
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -927,7 +960,7 @@
       if (apiKey) window.sessionStorage.setItem(API_KEY_NAME, apiKey);
       else window.sessionStorage.removeItem(API_KEY_NAME);
       if (operations) operations.credentialsChanged();
-      if (['overview', 'discover', 'company', 'events'].includes(currentView)) refreshPublicView();
+      refreshPublicView();
       var returnSearch = safeReturnSearch(window.history.state && window.history.state.returnSearch);
       if (adminKey && returnSearch && currentView === 'settings') navigate(returnSearch);
     });
@@ -939,31 +972,11 @@
       $('adminKey').value = '';
       $('apiKey').value = '';
       if (operations) operations.credentialsChanged();
-      if (['overview', 'discover', 'company', 'events'].includes(currentView)) refreshPublicView();
+      refreshPublicView();
     });
     $('refresh').addEventListener('click', function () {
       if (operations) operations.refresh();
-      if (['overview', 'discover', 'company', 'events'].includes(currentView)) refreshPublicView();
-    });
-    $('overviewLeaderboardSort').addEventListener('change', function () {
-      var route = new URLSearchParams(window.location.search);
-      route.set('view', 'overview');
-      route.set('leaderboardSort', $('overviewLeaderboardSort').value);
-      window.history.pushState({}, '', '?' + route.toString());
-      refreshOverviewLeaderboard();
-    });
-    $('overviewLeaderboardRetry').addEventListener('click', refreshOverviewLeaderboard);
-    $('overviewLeaderboardAll').addEventListener('click', function (event) {
-      if (!ordinaryClick(event)) return;
-      event.preventDefault();
-      navigate('?view=discover&sort=' + ($('overviewLeaderboardSort').value || 'SCORE'));
-    });
-    $('overviewLeaderboardResults').addEventListener('click', function (event) {
-      if (!ordinaryClick(event)) return;
-      var link = event.target.closest('[data-ticker]');
-      if (!link) return;
-      event.preventDefault();
-      navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker), { returnSearch: window.location.search || '?view=overview' });
+      refreshPublicView();
     });
     $('activityRange').addEventListener('change', function (event) {
       var route = new URLSearchParams(window.location.search);
@@ -996,6 +1009,14 @@
       clearError();
       return updateDiscoveryRoute();
     });
+    $('discoverySort').addEventListener('change', function (event) {
+      var sort = event.target.value;
+      if (!appliedDiscoveryFilters) return;
+      appliedDiscoveryFilters.set('sort', sort);
+      discoveryOffset = 0;
+      clearError();
+      return updateDiscoveryRoute();
+    });
     $('resetDiscovery').addEventListener('click', function () { navigate('?view=discover'); });
     $('firstPage').addEventListener('click', function () { discoveryOffset = 0; return updateDiscoveryRoute(); });
     $('previousPage').addEventListener('click', function () {
@@ -1013,7 +1034,25 @@
       var link = event.target.closest('[data-ticker]');
       if (!link) return;
       if (event.preventDefault) event.preventDefault();
+      if (window.matchMedia('(min-width: 1050px)').matches && discoveryPage) {
+        var route = new URLSearchParams(window.location.search);
+        route.set('view', 'discover');
+        if (route.get('preview') !== link.dataset.ticker) {
+          route.set('preview', link.dataset.ticker);
+          window.history.pushState({}, '', '?' + route.toString());
+        }
+        renderRadarPreview();
+        $('radarPreview').focus({ preventScroll: true });
+        return;
+      }
       navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker), { returnSearch: window.location.search || '?view=discover' });
+    });
+    $('radarPreview').addEventListener('click', function (event) {
+      if (!ordinaryClick(event)) return;
+      var link = event.target.closest('[data-radar-company]');
+      if (!link) return;
+      event.preventDefault();
+      navigate(link.getAttribute('href'), { returnSearch: window.location.search || '?view=discover' });
     });
     $('backToResults').addEventListener('click', function () {
       navigate(safeReturnSearch(window.history.state && window.history.state.returnSearch) || '?view=discover');
@@ -1047,8 +1086,7 @@
       navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker), { returnSearch: window.location.search || '?view=events' });
     });
     [
-      ['navNotebooks', '?view=notebooks&module=companies'],
-      ['navOverview', '?view=overview'], ['navPipeline', '?view=pipeline'], ['navDocuments', '?view=documents'],
+      ['navOverview', '?view=overview'], ['navOperationsHome', '?view=overview'], ['navPipeline', '?view=pipeline'], ['navDocuments', '?view=documents'],
       ['navModels', '?view=models'], ['navDiscover', '?view=discover'],
       ['navEvents', '?view=events'], ['navSettings', '?view=settings'],
     ].forEach(function (item) {

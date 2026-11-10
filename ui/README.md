@@ -5,9 +5,16 @@ application. Follow the [local startup steps](../README.md#operator-dashboard-po
 It uses the API's origin, HTML/CSS and vanilla JavaScript, with no separate
 frontend build. See the [operator/API reference](../docs/operations-backoffice.md).
 
-## Record views and process notebooks
+## Radar, Events and Operations
 
-**Process notebooks** is the first navigation entry. Open
+**Radar** opens first with companies ranked by highest 7-day score change.
+Choose **Highest score** to rank by current score. Each row shows the saved
+score, state, signed change and snapshot time. On wide screens, selecting a
+ticker previews that snapshot beside the ranking, with links to the company
+record, score history and evidence. On narrow screens the ticker opens the
+company record directly. The preview uses the returned ranking data.
+
+**How it works** links open the relevant process notebook. Open
 `/ops/index.html?view=notebooks&module=companies` to follow six pages:
 Companies, Collect news, Extract events, Group reports, Calculate scores and Track
 changes. Each explains inputs, processing, outputs, missing results and the next
@@ -20,38 +27,32 @@ ingestion. Model links select extraction or embedding calls; other list links
 retain their stated scope. Company detail has a named return action; browser Back
 returns from the other record views. Notebooks need no keys, make no domain reads,
 do not poll, and cannot run individual stages. Linked records retain normal access
-rules. Overview remains the default route.
+rules.
 
-- **Overview** opens first: ingestion freshness, current queue, recorded activity,
+- **Operations → Overview** shows ingestion freshness, current queue, recorded activity,
   estimated model cost, inspection signals and observed dependencies. Document
   coverage has separate counts and inspection links for missing company
   associations and missing processing state, across all capture dates. These
   categories are not counted as terminal failures. Dependency labels describe
-  recent recorded observations; they are not live provider health checks. A separate
-  five-company leaderboard ranks latest saved snapshots by highest score or highest
-  7-day score change. It refreshes on entry, sort changes and explicit Refresh;
-  operations polling and the activity period do not change this ranking.
+  recent recorded observations. The API health indicator is separate from these observations.
 - **Pipeline** shows pipeline and daily-snapshot cycles, provider ingestion runs,
   issues, cycle documents, and frozen company valuations with explicit associations. **Run pipeline now** uses the existing POST.
 - **Documents** opens a chronological Timeline by default, with Overview,
   Valuations, Attempts, Model calls, Events and Source tabs. Source text loads only when requested.
 - **Models & costs** shows full server period totals, coverage and bounded calls.
   Detail shows safe errors and recorded source/attempt/run IDs.
-- **Companies** (`?view=discover`) presents a bounded table with server-side ranking
-  by highest score or highest 7-day change. Applied state, score, signed change,
+- **Radar** (`?view=discover`) uses the server ranking and bounded pagination.
+  Applied state, score, signed change,
   exact-sector, page-size and offset filters live in the URL. Reset returns to the
-  first page. The UI does not sort only the loaded rows or offer unsupported
-  declining/1-day/3-day rankings. **Open company** accepts a known ticker
-  directly in Companies, normalizes it, and uses the existing company route while
-  retaining the return destination. It does not change discovery filters or
-  fetch external company data. Company analysis retains its named return destination.
+  first page. **Open company** accepts a known ticker and opens its saved record
+  while retaining the ranking filters and return destination.
 - **Events** groups loaded reports by stored company/cluster into expandable evidence
   rows. Counts describe loaded reports, not total coverage or independent catalysts.
   Events has an inclusive UTC through
   date; Documents uses next-day exclusive `to`. Event types are selected by a
   readable name, grouped by their taxonomy-v1 family; invalid filters show an
   inline correction message rather than an internal conversion error.
-- **Settings** stores access keys and shows safe read-only configuration,
+- **Access** stores access keys and shows safe read-only configuration,
   versions, provider-configured booleans and scheduler settings.
 
 The activity picker (24h/7d) applies to Overview, Pipeline and Models, independently
@@ -73,9 +74,9 @@ Administrative reads require `X-Admin-Key`. The local profile uses
 `local-dev-secret`; other profiles use `CATALYST_INTERNAL_ADMIN_KEY`. With public
 API authentication enabled, company and event reads require a separately issued public
 API key. Admin keys go only to `/internal/*`; public keys only to `/v1/*`.
-Settings keeps them in this tab's `sessionStorage`. Changing/clearing keys
+Access keeps them in this tab's `sessionStorage`. Changing/clearing keys
 clears protected data and invalidates obsolete reads. Source inspection needs
-admin access even with a public key; Settings can return to the selected source.
+admin access even with a public key. Access can return to the selected source.
 
 **Run pipeline now** is the only UI execution control, using
 `POST /internal/ingestion/runs`. Its caption warns that configured provider/LLM
@@ -87,15 +88,15 @@ paid work. Use HTTPS and restricted remote access; do not expose the local profi
 ## Guided process and pipeline execution
 
 A compact contextual link on record screens opens the relevant notebook. This
-replaces the large acknowledgement guide; there is no completion checklist to
-maintain. Settings also links to the notebooks. Existing acknowledgement of the
+replaces the large acknowledgement guide. Access also links to the notebooks.
+Existing acknowledgement of the
 first-run model disclosure is preserved independently of notebook navigation.
 
 On the first manual **Run pipeline now**, the backoffice reads the existing safe
 configuration view and explains the configured models: extraction turns articles
 into structured catalyst events; embeddings group and deduplicate semantically
 similar reports. Starting the pipeline requires **Confirm and run pipeline**.
-Missing configuration offers **Open Settings**; after correcting it, or if the
+Missing configuration offers **Open Access**. After correcting it, or if the
 configuration check fails, choose **Run pipeline now** again to retry the check.
 
 ## Investigation walkthrough
@@ -119,9 +120,9 @@ and real interrupted finish times can be absent.
 Company labels its snapshot **Saved as of ... UTC**. Its explanation is a current
 reconstruction when score/versions match the saved snapshot; raw contributions
 are not normalized score points.
-The section links at the top provide direct access to **Recorded calculations**,
-which appears immediately after the current snapshot, before history and the
-reconstructed explanation. These links read existing content and do not rescore.
+The company record pairs **Score history** with **Score evidence**. Expand a
+driver to see its supporting quote or fact and source. Use the section links
+to jump to **Recorded calculations** for the inputs captured with a saved score.
 History contains stored points only, without interpolated lines: at most
 200 snapshots and 200 transitions per range. Contextual events do not establish
 original historical scoring drivers or causes. Active artifacts are `taxonomy-v1`,
@@ -132,7 +133,7 @@ HIGH 80–100. A threshold enters the higher band.
 
 ## Recorded pipeline and valuation investigation
 
-The shared dark shell remains dark independently of the operating-system theme.
+The shared light interface keeps separate navigation for research and operations.
 Document lists use full width until a detail is selected, then split on wide
 screens and stack on narrow screens. Pipeline detail opens above the full-width
 cycle table, keeping outcomes readable at desktop sizes. Its outcome summary

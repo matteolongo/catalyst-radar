@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 
-function startDashboard({ search = '', stored = {}, origin = 'https://ops.example', discovery, events, company = {},
+function startDashboard({ search = '?view=overview', wideRadar = false, stored = {}, origin = 'https://ops.example', discovery, events, company = {},
   overview, config, health = { status: 'UP' }, deferDiscovery = false, deferAdmin = false,
   deferTimeline = false, deferOverview = false, deferConfig = false, documents, documentDetail,
   documentBody, documentAttempts, documentEvents, documentModelRuns,
@@ -103,6 +103,7 @@ function startDashboard({ search = '', stored = {}, origin = 'https://ops.exampl
   };
   const window = {
     location: { origin, search, reload() { reloads++; } },
+    matchMedia() { return { matches: wideRadar }; },
     history: { pushState(state, _title, url) { historyState = state || {}; historyEntries.push(url); window.location.search = new URL(url, origin).search; }, get state() { return historyState; } },
     addEventListener(name, handler) { windowHandlers[name] = handler; },
     sessionStorage: {

@@ -1196,7 +1196,7 @@ test('unauthenticated Overview loads health but no protected data or fake metric
   assert.equal(dashboard.requests.some((request) => new URL(request.url).pathname.startsWith('/internal/')), false);
   assert.match(dashboard.html('overviewStatus'), /Admin access required/);
   assert.doesNotMatch(dashboard.html('overviewMetrics'), />0</);
-  assert.match(dashboard.html('overviewStatus'), /Settings/);
+  assert.match(dashboard.html('overviewStatus'), /Access/);
 });
 
 test('protected reads use only the admin key and health uses no credential', async () => {

@@ -243,7 +243,7 @@
     function accessRequired() {
       if (credentials().hasAdmin) invalidate();
       clearProtectedData();
-      var link = 'Admin access required. <a href="?view=settings" data-settings-access>Open Settings to add an admin key</a>.';
+      var link = 'Admin access required. <a href="?view=settings" data-settings-access>Open Access to add an admin key</a>.';
       if (screen === 'overview') {
         el('overviewStatus').innerHTML = link;
       } else if (screen === 'settings') {
@@ -2595,11 +2595,11 @@
       if (OPERATIONAL.includes(screen)) {
         accessRequired();
         var id = { pipeline: 'pipelineStatus', documents: 'documentStatus', models: 'modelStatus', overview: 'overviewStatus', settings: 'settingsStatus' }[screen];
-        el(id).innerHTML = 'Admin access denied. ' + traceLink('?view=settings', 'Open Settings to update the admin key') + '.';
+        el(id).innerHTML = 'Admin access denied. ' + traceLink('?view=settings', 'Open Access to update the admin key') + '.';
       } else {
         invalidate();
         clearProtectedData();
-        el('companyValuations').innerHTML = '<p class="panel-error">Admin access denied. ' + traceLink('?view=settings', 'Open Settings to update the admin key') + '.</p>';
+        el('companyValuations').innerHTML = '<p class="panel-error">Admin access denied. ' + traceLink('?view=settings', 'Open Access to update the admin key') + '.</p>';
       }
     }
     function configureTrace() {
@@ -2774,7 +2774,7 @@
     function loadTraceScreen(force) {
       if (!credentials().hasAdmin) {
         clearTraceData();
-        if (screen === 'company') el('companyValuations').innerHTML = '<p class="muted">Admin access required for recorded calculations. ' + traceLink('?view=settings', 'Open Settings') + '</p>';
+        if (screen === 'company') el('companyValuations').innerHTML = '<p class="muted">Admin access required for recorded calculations. ' + traceLink('?view=settings', 'Open Access') + '</p>';
         return Promise.resolve();
       }
       var tasks = [];
