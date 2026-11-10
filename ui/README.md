@@ -12,7 +12,8 @@ Choose **Highest score** to rank by current score. Each row shows the saved
 score, state, signed change and snapshot time. On wide screens, selecting a
 ticker previews that snapshot beside the ranking, with links to the company
 record, score history and evidence. On narrow screens the ticker opens the
-company record directly. The preview uses the returned ranking data.
+company record directly. The preview uses the returned ranking data. If a
+linked ticker is outside the current results, Radar offers to open its record.
 
 **How it works** links open the relevant process notebook. Open
 `/ops/index.html?view=notebooks&module=companies` to follow six pages:
@@ -43,11 +44,13 @@ rules.
   Detail shows safe errors and recorded source/attempt/run IDs.
 - **Radar** (`?view=discover`) uses the server ranking and bounded pagination.
   Applied state, score, signed change,
-  exact-sector, page-size and offset filters live in the URL. Reset returns to the
-  first page. **Open company** accepts a known ticker and opens its saved record
+  exact-sector, page-size and offset filters live in the URL. Invalid edits
+  leave the last applied ranking available. Reset returns to the first page.
+  **Open company** accepts a known ticker and opens its saved record
   while retaining the ranking filters and return destination.
 - **Events** groups loaded reports by stored company/cluster into expandable evidence
   rows. Counts describe loaded reports, not total coverage or independent catalysts.
+  Applied filters live in the URL and are restored by Back and Forward.
   Events has an inclusive UTC through
   date; Documents uses next-day exclusive `to`. Event types are selected by a
   readable name, grouped by their taxonomy-v1 family; invalid filters show an
@@ -76,7 +79,9 @@ API authentication enabled, company and event reads require a separately issued 
 API key. Admin keys go only to `/internal/*`; public keys only to `/v1/*`.
 Access keeps them in this tab's `sessionStorage`. Changing/clearing keys
 clears protected data and invalidates obsolete reads. Source inspection needs
-admin access even with a public key. Access can return to the selected source.
+admin access even with a public key. Access returns to the selected source after
+an admin key is saved, or to the same ranking after a public key is saved from
+Radar's access prompt.
 
 **Run pipeline now** is the only UI execution control, using
 `POST /internal/ingestion/runs`. Its caption warns that configured provider/LLM
@@ -121,7 +126,8 @@ Company labels its snapshot **Saved as of ... UTC**. Its explanation is a curren
 reconstruction when score/versions match the saved snapshot; raw contributions
 are not normalized score points.
 The company record pairs **Score history** with **Score evidence**. Expand a
-driver to see its supporting quote or fact and source. Use the section links
+driver to see its supporting quote or fact and source. Refresh keeps the same
+driver expanded if it remains in the results. Use the section links
 to jump to **Recorded calculations** for the inputs captured with a saved score.
 History contains stored points only, without interpolated lines: at most
 200 snapshots and 200 transitions per range. Contextual events do not establish

@@ -199,6 +199,8 @@ footer { padding: 0 var(--gutter) 24px; }
 .direction-negative { background: var(--failure-soft); }
 .direction-neutral, .direction-mixed { color: var(--muted); background: var(--panel-raised); }
 .radar-preview { display: none; padding: 20px; overflow-wrap: anywhere; }
+.radar-preview-missing { display: block; }
+.radar-preview-missing .button-link { margin-top: 12px; }
 .radar-preview:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .radar-preview h2 { margin: 8px 0 0; font-size: 26px; line-height: 1.2; }
 .radar-preview p { margin: 4px 0 0; }

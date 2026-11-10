@@ -40,6 +40,15 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
   let nextInterval = 1;
   let historyState = {};
   const historyEntries = [];
+  const historyStack = [{ search, state: historyState }];
+  let historyIndex = 0;
+  function visitHistory(index) {
+    if (index < 0 || index >= historyStack.length) return;
+    historyIndex = index;
+    window.location.search = historyStack[index].search;
+    historyState = historyStack[index].state;
+    windowHandlers.popstate();
+  }
   function elementFor(id) {
     if (!ids.has(id)) throw new Error('Unknown static DOM id: ' + id);
     if (!elements.has(id)) {
@@ -92,6 +101,10 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
     removeEventListener(name, handler) { if (documentHandlers[name] === handler) delete documentHandlers[name]; },
     querySelectorAll(selector) {
       if (selector === '[data-ticker]') return Array.from(elements.values()).filter((element) => element.dataset.ticker);
+      if (selector === '#companyExplanation details[data-driver-id][open]') {
+        return Array.from(elementFor('companyExplanation').innerHTML.matchAll(/<details\b[^>]*data-driver-id="([^"]+)" open>/g),
+          (match) => ({ dataset: { driverId: match[1] } }));
+      }
       if (selector === '[data-attempt-id]') {
         const source = elementFor('documentAttempts').innerHTML;
         return Array.from(source.matchAll(/data-attempt-id="([^"]+)"/g), (match) => ({
@@ -104,7 +117,23 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
   const window = {
     location: { origin, search, reload() { reloads++; } },
     matchMedia() { return { matches: wideRadar }; },
-    history: { pushState(state, _title, url) { historyState = state || {}; historyEntries.push(url); window.location.search = new URL(url, origin).search; }, get state() { return historyState; } },
+    history: {
+      pushState(state, _title, url) {
+        historyEntries.push(url);
+        historyIndex++;
+        historyStack.length = historyIndex;
+        this.replaceState(state, _title, url);
+      },
+      replaceState(state, _title, url) {
+        historyState = state || {};
+        window.location.search = new URL(url, origin).search;
+        historyStack[historyIndex] = { search: window.location.search, state: historyState };
+      },
+      back() { visitHistory(historyIndex - 1); },
+      forward() { visitHistory(historyIndex + 1); },
+      go(delta) { visitHistory(historyIndex + delta); },
+      get state() { return historyState; },
+    },
     addEventListener(name, handler) { windowHandlers[name] = handler; },
     sessionStorage: {
       getItem(key) { return values.get(key) || null; },

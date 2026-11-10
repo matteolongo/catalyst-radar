@@ -378,7 +378,6 @@ test('company return controls preserve Discover and Events openers and reject un
     await dashboard.flush();
     dashboard.click(container, { target: { closest: (selector) => selector === '[data-ticker]' ? { dataset: { ticker: 'DELL' } } : null } });
     assert.equal(dashboard.historyState.returnSearch, origin);
-    assert.deepEqual(Object.keys(dashboard.historyState), ['returnSearch']);
     assert.equal(dashboard.element('navDiscover').getAttribute('aria-current'), 'page');
     dashboard.click('backToResults');
     assert.equal(dashboard.window.location.search, origin);
@@ -588,6 +587,26 @@ test('wide Radar previews a returned snapshot and opens its evidence with rankin
   assert.match(dashboard.html('radarPreview'), /ABNB/);
 });
 
+test('a missing Radar preview identifies the requested ticker instead of selecting another company', async () => {
+  const dashboard = startDashboard({ search: '?view=discover&preview=ABNB', wideRadar: true });
+  await dashboard.flush();
+  const preview = dashboard.html('radarPreview');
+  assert.match(preview, /ABNB.*outside the current results/s);
+  assert.match(preview, /ticker=ABNB/);
+  assert.doesNotMatch(preview, /DELL/);
+});
+
+test('Back to Radar uses the opener entry so browser Back continues past the company', async () => {
+  const dashboard = startDashboard({ search: '?view=events' });
+  dashboard.click('navDiscover');
+  await dashboard.flush();
+  dashboard.click('discoveryResults', { target: { closest: () => ({ dataset: { ticker: 'DELL' } }) } });
+  dashboard.click('backToResults');
+  assert.equal(dashboard.window.location.search, '?view=discover');
+  dashboard.window.history.back();
+  assert.equal(dashboard.window.location.search, '?view=events');
+});
+
 test('desktop navigation highlights Companies on company detail and preserves modified clicks', async () => {
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL' });
   await dashboard.flush();
@@ -659,6 +678,22 @@ test('desktop companies rejects incomplete native number input instead of removi
   assert.equal(reads(), before);
   assert.equal(dashboard.element('minScore').getAttribute('aria-invalid'), 'true');
   assert.match(dashboard.text('discoveryFilterError'), /complete number/);
+});
+
+test('a rejected Radar filter leaves the applied ranking available to change sort', async () => {
+  const dashboard = startDashboard({ search: '?view=discover&sector=Technology' });
+  await dashboard.flush();
+  dashboard.element('minScore').value = '101';
+  dashboard.element('discoveryFilters').trigger('submit');
+  assert.match(dashboard.html('discoveryResults'), /DELL/);
+  dashboard.element('discoverySort').value = 'SCORE';
+  dashboard.element('discoverySort').trigger('change');
+  await dashboard.flush();
+  const query = new URLSearchParams(dashboard.window.location.search);
+  assert.equal(query.get('sort'), 'SCORE');
+  assert.equal(query.get('sector'), 'Technology');
+  assert.equal(query.has('minScore'), false);
+  assert.match(dashboard.text('discoveryFilterError'), /between 0 and 100/);
 });
 
 test('desktop companies applies signed change without sorting the returned page locally', async () => {
@@ -737,6 +772,22 @@ test('Radar key clearing prevents an obsolete snapshot preview from returning', 
   await dashboard.flush();
   assert.doesNotMatch(dashboard.html('discoveryResults'), /SECRET/);
   assert.equal(dashboard.html('radarPreview'), '');
+});
+
+test('saving a public key resumes the exact Radar route after access denial', async () => {
+  const search = '?view=discover&sector=Technology&sort=SCORE&preview=DELL';
+  const dashboard = startDashboard({ search, deferDiscovery: true });
+  dashboard.resolveDiscovery(0, 'forbidden');
+  await dashboard.flush();
+  assert.match(dashboard.html('discoveryStatus'), /data-radar-access/);
+  dashboard.click('discoveryStatus', { target: { closest: selector => selector === '[data-radar-access]' ? {} : null } });
+  assert.equal(dashboard.window.location.search, '?view=settings');
+  dashboard.element('apiKey').value = 'public-key';
+  dashboard.click('saveKey');
+  assert.equal(dashboard.window.location.search, search);
+  const read = dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').at(-1);
+  assert.equal(read.headers.Authorization, 'Bearer public-key');
+  assert.equal(new URL(read.url).searchParams.get('sector'), 'Technology');
 });
 
 test('desktop company keeps returned negative drivers visible and labels changes in points', async () => {
@@ -934,6 +985,25 @@ test('one failed company endpoint leaves the other panels usable', async () => {
   assert.match(dashboard.elements.get('companyEvents').innerHTML, /GUIDANCE_RAISE/);
 });
 
+test('company refresh keeps evidence visible and reopens the same driver by event ID', async () => {
+  const path = '/v1/companies/DELL/catalyst';
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', deferPublicPaths: [path] });
+  const catalyst = companyFixture['/catalyst'];
+  dashboard.resolvePublic(path, 0, catalyst);
+  await dashboard.flush();
+  const evidence = dashboard.element('companyExplanation');
+  evidence.innerHTML = evidence.innerHTML.replace('data-driver-id="event-1">', 'data-driver-id="event-1" open>');
+  assert.match(evidence.innerHTML, /data-driver-id="event-1" open/);
+  dashboard.click('refresh');
+  assert.match(evidence.innerHTML, /data-driver-id="event-1" open/);
+  dashboard.resolvePublic(path, 1, { ...catalyst, topDrivers: [
+    { ...catalyst.topDrivers[0], eventId: 'event-2' }, ...catalyst.topDrivers,
+  ] });
+  await dashboard.flush();
+  assert.match(evidence.innerHTML, /data-driver-id="event-1" open/);
+  assert.doesNotMatch(evidence.innerHTML, /data-driver-id="event-2" open/);
+});
+
 test('history shows zero and one snapshot without inventing a line', async () => {
   for (const snapshots of [[], [{ score: 44, state: 'WATCH', asOf: '2026-09-30T12:00:00Z' }]]) {
     const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/timeline': { ticker: 'DELL', snapshots, transitions: [] } } });
@@ -1069,6 +1139,27 @@ test('event search sends only bounded API filters and labels discovery time', as
   assert.match(rendered, /Event date:/);
   assert.match(rendered, /Source publication date:/);
   assert.match(rendered, /First captured:/);
+});
+
+test('Events shares applied filters and restores them with browser Back and Forward', async () => {
+  const dashboard = startDashboard({ search: '?view=events&ticker=ABNB&from=2026-10-01' });
+  const lastQuery = () => new URL(dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/events').at(-1).url).searchParams;
+  await dashboard.flush();
+  assert.equal(lastQuery().get('ticker'), 'ABNB');
+  assert.equal(lastQuery().get('from'), '2026-10-01T00:00:00Z');
+  assert.equal(dashboard.element('eventTicker').value, 'ABNB');
+  dashboard.element('eventTicker').value = 'DELL';
+  dashboard.element('eventFilters').trigger('submit');
+  await dashboard.flush();
+  assert.equal(new URLSearchParams(dashboard.window.location.search).get('ticker'), 'DELL');
+  dashboard.window.history.back();
+  await dashboard.flush();
+  assert.equal(lastQuery().get('ticker'), 'ABNB');
+  assert.equal(dashboard.element('eventTicker').value, 'ABNB');
+  dashboard.window.history.forward();
+  await dashboard.flush();
+  assert.equal(lastQuery().get('ticker'), 'DELL');
+  assert.equal(dashboard.element('eventTicker').value, 'DELL');
 });
 
 test('event cursor appends reports and preserves source evidence when returning from company', async () => {
