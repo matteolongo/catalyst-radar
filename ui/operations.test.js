@@ -258,7 +258,7 @@ test('Documents opens company Intelligence and the return control restores the d
   await dashboard.flush();
   assert.equal(dashboard.window.location.search, '?view=company&ticker=DELL');
   assert.equal(dashboard.historyState.returnSearch, origin);
-  assert.deepEqual(Object.keys(dashboard.historyState), ['returnSearch']);
+  assert.equal(dashboard.historyState.returnSteps, 1);
   assert.equal(dashboard.element('navDiscover').getAttribute('aria-current'), 'page');
   assert.equal(dashboard.element('navDocuments').getAttribute('aria-current'), null);
   dashboard.click('backToResults');
