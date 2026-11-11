@@ -258,7 +258,7 @@ test('Documents opens company Intelligence and the return control restores the d
   await dashboard.flush();
   assert.equal(dashboard.window.location.search, '?view=company&ticker=DELL');
   assert.equal(dashboard.historyState.returnSearch, origin);
-  assert.deepEqual(Object.keys(dashboard.historyState), ['returnSearch']);
+  assert.equal(dashboard.historyState.returnSteps, 1);
   assert.equal(dashboard.element('navDiscover').getAttribute('aria-current'), 'page');
   assert.equal(dashboard.element('navDocuments').getAttribute('aria-current'), null);
   dashboard.click('backToResults');
@@ -1196,7 +1196,7 @@ test('unauthenticated Overview loads health but no protected data or fake metric
   assert.equal(dashboard.requests.some((request) => new URL(request.url).pathname.startsWith('/internal/')), false);
   assert.match(dashboard.html('overviewStatus'), /Admin access required/);
   assert.doesNotMatch(dashboard.html('overviewMetrics'), />0</);
-  assert.match(dashboard.html('overviewStatus'), /Settings/);
+  assert.match(dashboard.html('overviewStatus'), /Access/);
 });
 
 test('protected reads use only the admin key and health uses no credential', async () => {

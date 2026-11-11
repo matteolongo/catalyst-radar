@@ -58,18 +58,23 @@
     var compact = !!options.compact;
     var sort = options.sort || 'SCORE';
     var columns = '<th scope="col">Company</th>' + (compact ? '' : '<th scope="col">Sector</th>') +
-      '<th scope="col">State</th><th scope="col" class="num"' + (sort === 'SCORE' ? ' aria-sort="descending"' : '') + '>Score</th>' +
+      '<th scope="col" class="num"' + (sort === 'SCORE' ? ' aria-sort="descending"' : '') + '>Score</th><th scope="col">State</th>' +
       '<th scope="col" class="num"' + (sort === 'VELOCITY' ? ' aria-sort="descending"' : '') + '>7-day change <span class="muted">(points)</span></th>' +
-      (compact ? '' : '<th scope="col" class="num">Events discovered · 7d</th>') + '<th scope="col">Saved at</th>' + (compact ? '' : '<th scope="col">Versions</th>');
+      (compact ? '' : '<th scope="col" class="num">Events discovered · 7d</th>') + '<th scope="col" class="saved-heading">Saved at</th>' + (compact ? '' : '<th scope="col">Versions</th>');
     var rows = (page.results || []).map(function (entry) {
       var stateClass = STATES.includes(entry.state) ? entry.state.toLowerCase() : 'unknown';
+      var changeClass = entry.velocity7d > 0 ? ' change-positive' : entry.velocity7d < 0 ? ' change-negative' : '';
+      var savedAt = time(entry.asOf);
       return '<tr><td><a href="?view=company&amp;ticker=' + encodeURIComponent(entry.ticker) + '" data-ticker="' + esc(entry.ticker) + '">' + esc(entry.ticker) + '</a>' +
-        '<span class="cell-secondary">' + esc(entry.name) + '</span></td>' +
+        '<span class="cell-secondary">' + esc(entry.name) + '</span>' +
+        (compact && entry.sector ? '<span class="cell-secondary ranking-sector">' + esc(entry.sector) + '</span>' : '') +
+        (compact ? '<span class="cell-secondary ranking-saved-inline">Saved ' + savedAt + '</span>' : '') + '</td>' +
         (compact ? '' : '<td>' + esc(entry.sector || 'Unavailable') + '</td>') +
+        '<td class="num score-value">' + number(entry.score) + '</td>' +
         '<td><span class="pill catalyst-state ' + stateClass + '">' + esc(entry.state) + '</span></td>' +
-        '<td class="num">' + number(entry.score) + '</td><td class="num">' + number(entry.velocity7d, true) + '</td>' +
+        '<td class="num' + changeClass + '">' + number(entry.velocity7d, true) + '</td>' +
         (compact ? '' : '<td class="num">' + esc(entry.events7d) + '</td>') +
-        '<td class="saved-time">' + time(entry.asOf) + '</td>' +
+        '<td class="saved-time">' + savedAt + '</td>' +
         (compact ? '' : '<td class="small">' + esc(entry.scoreVersion) + '<span class="cell-secondary">' + esc(entry.taxonomyVersion) + '</span></td>') + '</tr>';
     }).join('');
     return '<div class="table-scroll" tabindex="0" role="region" aria-label="Company leaderboard"><table class="leaderboard-table' + (compact ? ' compact' : '') + '">' +
