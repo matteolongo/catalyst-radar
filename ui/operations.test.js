@@ -882,6 +882,24 @@ test('unfinished ingestion rows disclose that no final outcome was recorded', as
   assert.match(dashboard.html('ingestionDetailContent'), /Status<\/dt><dd>No final outcome recorded/);
 });
 
+test('provider runs separate stored documents that name no tracked company', async () => {
+  const run = ingestionRunFixture(ingestionRunIdFixture, { added: 5, unresolved: 2 });
+  const plain = ingestionRunFixture('bbbbbbbb-cccc-4ddd-8eee-000000000099', { added: 4, unresolved: 0 });
+  const dashboard = startOperations({ storedAdmin: 'admin-secret',
+    ingestionRuns: () => ingestionRunsPageFixture(2, { items: [run, plain] }),
+  });
+  await dashboard.openPipeline('?view=pipeline');
+
+  assert.match(dashboard.html('ingestionRows'), /8 fetched · 5 stored \(2 without a tracked company\) · 3 duplicates/);
+  assert.match(dashboard.html('ingestionRows'), /8 fetched · 4 stored · 3 duplicates/);
+  assert.doesNotMatch(dashboard.html('ingestionRows'), / new /);
+  dashboard.click('ingestionRows', { target: { closest(selector) {
+    return selector === '[data-ingestion-select-id]' ? { dataset: { ingestionSelectId: ingestionRunIdFixture } } : null;
+  } } });
+  await dashboard.flush();
+  assert.match(dashboard.html('ingestionDetailContent'), /Fetched \/ stored \/ duplicates<\/dt><dd>8 fetched · 5 stored \(2 without a tracked company\)/);
+});
+
 test('document detail reads do not advance freshness when the primary queue refresh fails', async () => {
   const support = require('./test-support');
   let failDocumentFeed = false;

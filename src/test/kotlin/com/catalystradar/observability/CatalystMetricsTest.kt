@@ -23,9 +23,9 @@ class CatalystMetricsTest {
 
     @Test
     fun `times ingestion runs`() {
-        metrics.ingestionRun("polygon", 1500L)
+        metrics.ingestionRun("polygon", 1500L, "success")
 
-        val timer = registry.timer("catalyst_ingestion_run_duration_seconds", "provider", "polygon")
+        val timer = registry.timer("catalyst_ingestion_run_duration_seconds", "provider", "polygon", "status", "success")
         assertEquals(1, timer.count())
         assertEquals(1.5, timer.totalTime(java.util.concurrent.TimeUnit.SECONDS), 1e-9)
     }

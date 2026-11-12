@@ -1838,6 +1838,10 @@
       if (run.durationMs == null) return 'Not recorded';
       return integer(run.durationMs) + ' ms';
     }
+    function storedLabel(run) {
+      var stored = integer(run.added) + ' stored';
+      return Number(run.unresolved) > 0 ? stored + ' (' + integer(run.unresolved) + ' without a tracked company)' : stored;
+    }
     function ingestionOutcomeLabel(run) {
       return run.status === 'RUNNING' && !run.finishedAt ? 'No final outcome recorded' : run.status;
     }
@@ -1912,7 +1916,7 @@
         ' recorded provider runs loaded.</caption><thead><tr><th scope="col">Provider run</th><th scope="col">Started / finished</th>' +
         '<th scope="col">Outcome</th><th scope="col">Source / operation</th></tr></thead><tbody>' + ingestionItems.map(function (run) {
         var outcome = ingestionOutcomeLabel(run) + ' · ' + integer(run.fetched) +
-          ' fetched · ' + integer(run.added) + ' new · ' + integer(run.duplicates) + ' duplicates';
+          ' fetched · ' + storedLabel(run) + ' · ' + integer(run.duplicates) + ' duplicates';
         if (run.errorCode) outcome += ' · ' + run.errorCode;
         var links = '<a href="?view=documents&amp;ingestionRunId=' + encodeURIComponent(run.id) + '" data-ingestion-source-id="' +
           esc(run.id) + '">First-source documents</a>';
@@ -2096,7 +2100,7 @@
         ['Started at (UTC)', run.startedAt ? time(run.startedAt) : 'Unknown'],
         ['Finished at (UTC)', run.finishedAt ? time(run.finishedAt) : 'Not finished'],
         ['Duration', run.durationMs == null ? 'Not recorded' : integer(run.durationMs) + ' ms'],
-        ['Fetched / new / duplicates', integer(run.fetched) + ' / ' + integer(run.added) + ' / ' + integer(run.duplicates)],
+        ['Fetched / stored / duplicates', integer(run.fetched) + ' fetched · ' + storedLabel(run) + ' · ' + integer(run.duplicates) + ' duplicates'],
         ['Safe error category', run.errorCode], ['Safe error message', run.error]];
       var links = '<a href="?view=documents&amp;ingestionRunId=' + encodeURIComponent(run.id) + '" data-ingestion-source-id="' +
         esc(run.id) + '">First-source documents</a>';

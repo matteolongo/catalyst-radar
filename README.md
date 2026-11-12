@@ -368,6 +368,10 @@ many documents are extracted in parallel. The Micrometer registry records bounde
 document-processing, retry, daily-snapshot, replay, provider, and LLM metrics.
 No metric tags include a ticker, company ID, document body, prompt, or secret.
 
+`catalyst_ingestion_run_duration_seconds{provider,status}` records one sample
+per provider run, including failed and cancelled runs (`status` is `success`,
+`partial`, `failed` or `cancelled`).
+
 Provider HTTP calls (Polygon, Finnhub, OpenAI) are measured as
 `http_client_requests_seconds{client_name,method,uri,status,outcome,exception}`.
 The `uri` tag is the request path or its template (for example

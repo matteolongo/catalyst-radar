@@ -46,6 +46,12 @@ class OperationRunStore(private val jdbc: NamedParameterJdbcTemplate, transactio
             updated_at=:now,error_code='UNFINISHED_PREVIOUS_RUN',error_message=:message
             WHERE status='RUNNING' AND operation_run_id IN
                 (SELECT id FROM operation_runs WHERE $parents)""", params)
+        // A provider run left RUNNING by a crash would otherwise stay RUNNING
+        // forever. It has no final outcome, so finished_at stays NULL.
+        val ingestionScope = if (kind == null) "TRUE" else
+            "operation_run_id IN (SELECT id FROM operation_runs WHERE kind=:kind AND status='RUNNING')"
+        jdbc.update("""UPDATE ingestion_runs SET status='FAILED',error_code='UNFINISHED_PREVIOUS_RUN',error_summary=:message
+            WHERE status='RUNNING' AND $ingestionScope""", params)
         jdbc.update("""UPDATE operation_runs SET status='INTERRUPTED',finished_at=NULL,capture_complete=FALSE,
             updated_at=:now,error_code='UNFINISHED_PREVIOUS_RUN',error_message=:message
             WHERE status='RUNNING' AND $parents""", params)
@@ -184,7 +190,7 @@ class OperationRunStore(private val jdbc: NamedParameterJdbcTemplate, transactio
         }
         val rows = jdbc.query(
             """SELECT i.id,i.provider,i.status,i.documents_fetched,i.documents_new,i.documents_duplicate,
-                i.error_code,i.started_at,i.finished_at,i.operation_run_id FROM ingestion_runs i
+                i.error_code,i.started_at,i.finished_at,i.operation_run_id,i.documents_unresolved FROM ingestion_runs i
                 WHERE ${clauses.joinToString(" AND ")} ORDER BY i.started_at DESC,i.id DESC LIMIT :limit""", params,
         ) { rs, _ ->
             val status = IngestionStatus.valueOf(rs.getString("status"))
@@ -193,7 +199,8 @@ class OperationRunStore(private val jdbc: NamedParameterJdbcTemplate, transactio
             val finish = rs.getTimestamp("finished_at")?.toInstant()
             IngestionRunInspection(rs.getObject("id", UUID::class.java), rs.getString("provider"), status,
                 rs.getInt("documents_fetched"), rs.getInt("documents_new"), rs.getInt("documents_duplicate"),
-                code?.let(OperationalErrors::message), finish, start, duration(start, finish), rs.getObject("operation_run_id", UUID::class.java), code)
+                code?.let(OperationalErrors::message), finish, start, duration(start, finish), rs.getObject("operation_run_id", UUID::class.java), code,
+                rs.getInt("documents_unresolved"))
         }
         val items = rows.take(query.page.limit)
         val next = if (rows.size > query.page.limit) items.last().let { cursor.encode("ingestion", CursorPosition(it.startedAt, it.id), filters) } else null

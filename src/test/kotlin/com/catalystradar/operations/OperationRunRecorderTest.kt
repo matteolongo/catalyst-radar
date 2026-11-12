@@ -56,6 +56,40 @@ class OperationRunRecorderTest : PostgresIntegrationTest() {
         assertEquals("COMPLETED", fixtures.attemptStatus(completed))
     }
 
+    private fun ingestionRun(operationRunId: UUID?, status: String = "RUNNING"): UUID {
+        val id = UUID.randomUUID()
+        jdbc.sql("INSERT INTO ingestion_runs(id,provider,status,started_at,operation_run_id) VALUES(:id,'polygon',:status,:at::timestamptz,:run)")
+            .param("id", id).param("status", status).param("at", t0.minusSeconds(590).toString()).param("run", operationRunId).update()
+        return id
+    }
+
+    private fun ingestionState(id: UUID): List<Any?> =
+        jdbc.sql("SELECT status,error_code,finished_at FROM ingestion_runs WHERE id=:id").param("id", id)
+            .query { rs, _ -> listOf(rs.getString("status"), rs.getString("error_code"), rs.getTimestamp("finished_at")) }.single()
+
+    @Test
+    fun `the next guarded cycle closes its kind's orphaned provider runs`() {
+        val earlier = fixtures.run(t0.minusSeconds(600), status = "RUNNING")
+        val orphan = ingestionRun(earlier)
+        val unrelated = ingestionRun(null)
+
+        recorder.begin(OperationKind.PIPELINE, OperationTrigger.MANUAL, t0)
+
+        assertEquals(listOf("FAILED", "UNFINISHED_PREVIOUS_RUN", null), ingestionState(orphan))
+        assertEquals("RUNNING", ingestionState(unrelated)[0])
+    }
+
+    @Test
+    fun `startup recovery closes every provider run left running`() {
+        val orphan = ingestionRun(null)
+        val finished = ingestionRun(null, status = "SUCCESS")
+
+        recorder.recoverUnfinishedRuns()
+
+        assertEquals(listOf("FAILED", "UNFINISHED_PREVIOUS_RUN", null), ingestionState(orphan))
+        assertEquals("SUCCESS", ingestionState(finished)[0])
+    }
+
     @Test
     fun `pipeline records phase boundaries progress and final counts on wall clock`() {
         val recorder = recorder
