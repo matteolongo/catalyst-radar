@@ -71,17 +71,20 @@ class IngestionServiceTest : PostgresIntegrationTest() {
         FinnhubProperties(baseUrl = wireMock.baseUrl(), apiKey = "test-key"),
     )
 
+    private val meters = SimpleMeterRegistry()
+
     private fun service(
         provider: String = "polygon",
         fallback: String = "finnhub",
         maxPagesPerChunk: Int = 10,
+        providers: List<NewsProvider> = listOf(polygon, finnhub),
     ) = IngestionService(
-        providers = listOf(polygon, finnhub),
+        providers = providers,
         properties = IngestionProperties(provider = provider, fallbackProvider = fallback, maxPagesPerChunk = maxPagesPerChunk),
         companies = companies,
         registrations = registrations,
         runs = runs,
-        metrics = CatalystMetrics(SimpleMeterRegistry()),
+        metrics = CatalystMetrics(meters),
     )
 
     @Test
@@ -155,6 +158,30 @@ class IngestionServiceTest : PostgresIntegrationTest() {
 
         assertEquals(IngestionService.WINDOW_TRUNCATED, run.errorCode)
         wireMock.verify(2, getRequestedFor(urlPathEqualTo("/v2/reference/news")))
+    }
+
+    @Test
+    fun `an unexpected provider failure still records one failed duration sample`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        val broken = object : NewsProvider {
+            override val name = "polygon"
+            override suspend fun fetch(request: NewsFetchRequest): NewsFetchResult = throw IllegalStateException("adapter bug")
+        }
+
+        assertFailsWith<IllegalStateException> { service(providers = listOf(broken)).ingestCycle() }
+
+        assertEquals(1L, meters.timer("catalyst_ingestion_run_duration_seconds", "provider", "polygon", "status", "failed").count())
+        assertEquals(1, meters.find("catalyst_ingestion_run_duration_seconds").timers().sumOf { it.count() }.toInt())
+    }
+
+    @Test
+    fun `a successful run records its duration under its status`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        wireMock.stubFor(get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson(NEWS_PAGE)))
+
+        service().ingestCycle()
+
+        assertEquals(1L, meters.timer("catalyst_ingestion_run_duration_seconds", "provider", "polygon", "status", "success").count())
     }
 
     @Test

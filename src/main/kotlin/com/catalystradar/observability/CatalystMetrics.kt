@@ -21,10 +21,11 @@ class CatalystMetrics(private val registry: MeterRegistry) {
         ).increment()
     }
 
-    fun ingestionRun(provider: String, durationMs: Long) {
+    /** One sample per provider run; status is success, partial, failed or cancelled. */
+    fun ingestionRun(provider: String, durationMs: Long, status: String) {
         registry.timer(
             "catalyst_ingestion_run_duration_seconds",
-            listOf(Tag.of("provider", provider)),
+            listOf(Tag.of("provider", provider), Tag.of("status", status)),
         ).record(durationMs, TimeUnit.MILLISECONDS)
     }
 

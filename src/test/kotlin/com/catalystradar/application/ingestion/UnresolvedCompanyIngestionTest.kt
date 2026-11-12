@@ -80,6 +80,8 @@ class UnresolvedCompanyIngestionTest : PostgresIntegrationTest() {
         val stored = documents.findByProviderAndProviderDocumentId("polygon", "poly-unrelated")
         assertNotNull(stored, "the article stays available for audit")
         assertEquals(1, result.runs[0].added)
+        assertEquals(1, result.runs[0].unresolved)
+        assertEquals(1, runs.findById(result.runs[0].id)?.unresolved)
         assertEquals(emptyList(), documentCompanies.findCompanyIds(stored.id))
         assertNull(processing.findBySourceDocumentId(stored.id), "an unresolvable document is not queued")
         assertEquals(

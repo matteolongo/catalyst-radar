@@ -85,14 +85,33 @@ class IngestionService(
         val newDocuments: List<NewDocument>,
     )
 
+    /** Exactly one duration sample per provider run, whichever way it ends. */
     private suspend fun runProvider(
         provider: NewsProvider,
         tickers: List<String>,
         now: Instant,
         operationRunId: UUID?,
     ): ProviderOutcome {
-        val runId = runs.startRun(provider.name, operationRunId)
         val started = System.nanoTime()
+        var outcome = "failed"
+        try {
+            return fetchProvider(provider, tickers, now, operationRunId)
+                .also { outcome = it.record.status.name.lowercase() }
+        } catch (e: CancellationException) {
+            outcome = "cancelled"
+            throw e
+        } finally {
+            metrics.ingestionRun(provider.name, elapsedMs(started), outcome)
+        }
+    }
+
+    private suspend fun fetchProvider(
+        provider: NewsProvider,
+        tickers: List<String>,
+        now: Instant,
+        operationRunId: UUID?,
+    ): ProviderOutcome {
+        val runId = runs.startRun(provider.name, operationRunId)
         var fetched = 0
         var added = 0
         var duplicates = 0
@@ -156,20 +175,18 @@ class IngestionService(
             }
         } catch (e: CancellationException) {
             runCatching {
-                finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, "CANCELLED")
+                finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, "CANCELLED", unresolved)
             }.onFailure { log.warn("ingestion cancellation recording failed for run {}", runId) }
             throw e
         } catch (e: ProviderException.RateLimited) {
             // Preserve the window: a later cycle re-fetches it idempotently.
-            metrics.ingestionRun(provider.name, elapsedMs(started))
             reportUnresolved(runId, provider.name, unresolved)
-            return ProviderOutcome(finish(runId, IngestionStatus.PARTIAL, fetched, added, duplicates, firstErrorCode ?: OperationalErrors.code(e)), fresh)
+            return ProviderOutcome(finish(runId, IngestionStatus.PARTIAL, fetched, added, duplicates, firstErrorCode ?: OperationalErrors.code(e), unresolved), fresh)
         } catch (e: ProviderException) {
-            metrics.ingestionRun(provider.name, elapsedMs(started))
             reportUnresolved(runId, provider.name, unresolved)
-            return ProviderOutcome(finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, firstErrorCode ?: OperationalErrors.code(e)), fresh)
+            return ProviderOutcome(finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, firstErrorCode ?: OperationalErrors.code(e), unresolved), fresh)
         } catch (e: RuntimeException) {
-            finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, firstErrorCode ?: "INGESTION_FAILURE")
+            finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, firstErrorCode ?: "INGESTION_FAILURE", unresolved)
             throw e
         }
         if (truncated) {
@@ -178,9 +195,8 @@ class IngestionService(
             if (firstErrorCode == null) firstErrorCode = WINDOW_TRUNCATED
         }
         val status = if (firstErrorCode != null) IngestionStatus.PARTIAL else IngestionStatus.SUCCESS
-        metrics.ingestionRun(provider.name, elapsedMs(started))
         reportUnresolved(runId, provider.name, unresolved)
-        return ProviderOutcome(finish(runId, status, fetched, added, duplicates, firstErrorCode), fresh)
+        return ProviderOutcome(finish(runId, status, fetched, added, duplicates, firstErrorCode, unresolved), fresh)
     }
 
     /**
@@ -205,8 +221,9 @@ class IngestionService(
         added: Int,
         duplicates: Int,
         errorCode: String?,
+        unresolved: Int,
     ): IngestionRunRecord {
-        runs.finishRun(runId, status, fetched, added, duplicates, errorCode?.let(OperationalErrors::message), errorCode)
+        runs.finishRun(runId, status, fetched, added, duplicates, errorCode?.let(OperationalErrors::message), errorCode, unresolved)
         return requireNotNull(runs.findById(runId)) { "ingestion run vanished: $runId" }
     }
 

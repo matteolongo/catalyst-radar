@@ -41,6 +41,7 @@ class IngestionRunStore(
         duplicates: Int,
         error: String?,
         errorCode: String? = null,
+        unresolved: Int = 0,
     ) {
         val current = repository.findById(id).orElseThrow()
         repository.save(
@@ -51,6 +52,7 @@ class IngestionRunStore(
                 duplicates = duplicates,
                 error = error,
                 errorCode = errorCode,
+                unresolved = unresolved,
                 finishedAt = Instant.now(),
             ),
         )

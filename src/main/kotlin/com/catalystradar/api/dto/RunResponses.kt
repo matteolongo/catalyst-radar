@@ -19,6 +19,8 @@ data class IngestionRunResponse(
     val durationMs: Long? = null,
     val runId: UUID? = null,
     val errorCode: String? = null,
+    /** Of [added], documents naming no configured company; stored but never queued. */
+    val unresolved: Int = 0,
 )
 
 data class IngestionRunsResponse(val runs: List<IngestionRunResponse>)
@@ -36,6 +38,7 @@ fun IngestionRunRecord.toResponse() = IngestionRunResponse(
     durationMs = durationMs,
     runId = runId,
     errorCode = errorCode,
+    unresolved = unresolved,
 )
 
 fun com.catalystradar.application.operations.IngestionRunInspection.toResponse() = IngestionRunResponse(
@@ -51,6 +54,7 @@ fun com.catalystradar.application.operations.IngestionRunInspection.toResponse()
     durationMs = durationMs,
     runId = runId,
     errorCode = errorCode,
+    unresolved = unresolved,
 )
 
 data class ModelRunResponse(

@@ -22,6 +22,7 @@ data class IngestionRunRow(
     @Column("finished_at") val finishedAt: Instant?,
     @Column("operation_run_id") val runId: UUID? = null,
     @Column("error_code") val errorCode: String? = null,
+    @Column("documents_unresolved") val unresolved: Int = 0,
 )
 
 data class IngestionRunRecord(
@@ -37,6 +38,8 @@ data class IngestionRunRecord(
     val durationMs: Long? = null,
     val runId: UUID? = null,
     val errorCode: String? = null,
+    /** Of [added], documents naming no configured company; stored but never queued. */
+    val unresolved: Int = 0,
 )
 
 fun IngestionRunRow.toRecord() = IngestionRunRecord(
@@ -52,4 +55,5 @@ fun IngestionRunRow.toRecord() = IngestionRunRecord(
     durationMs = finishedAt?.let { Duration.between(startedAt, it).toMillis() },
     runId = runId,
     errorCode = errorCode ?: if (status == "FAILED" || status == "PARTIAL") "UNKNOWN_FAILURE" else null,
+    unresolved = unresolved,
 )

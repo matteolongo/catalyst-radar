@@ -119,7 +119,7 @@ data class OperationIssue(
 )
 data class StartedAttempt(val id: UUID, val documentId: UUID, val runId: UUID, val number: Int)
 class OperationsResourceNotFoundException(val resource: OperationsResource, val id: UUID) : RuntimeException()
-data class IngestionRunInspection(val id: UUID, val provider: String, val status: IngestionStatus, val fetched: Int, val added: Int, val duplicates: Int, val error: String?, val finishedAt: Instant?, val startedAt: Instant, val durationMs: Long?, val runId: UUID?, val errorCode: String?)
+data class IngestionRunInspection(val id: UUID, val provider: String, val status: IngestionStatus, val fetched: Int, val added: Int, val duplicates: Int, val error: String?, val finishedAt: Instant?, val startedAt: Instant, val durationMs: Long?, val runId: UUID?, val errorCode: String?, val unresolved: Int = 0)
 data class ProviderObservation(val provider: String, val lastObservedAt: Instant?, val lastSuccessAt: Instant?, val latestSucceeded: Boolean?, val failedObservations: Long, val lastErrorCode: String?)
 data class ActiveAttemptObservation(val documentId: UUID, val runId: UUID, val startedAt: Instant)
 data class OverviewInputs(

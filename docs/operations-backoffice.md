@@ -93,6 +93,13 @@ cycle-scoped feed is paginated and may also filter by `provider` or `status`;
 resend the same run ID and filters with each returned cursor. Both all-date
 modes return a null `window`. Normal feeds use resolved windows.
 
+Each ingestion run reports `fetched`, `added` (documents stored by the run),
+`unresolved` (of those, documents naming no tracked company, stored for audit
+but never queued) and `duplicates`. A provider run left `RUNNING` by a crash is
+closed at the next startup, or when the next cycle of its kind begins, as
+`FAILED` with `UNFINISHED_PREVIOUS_RUN` and no finish time. Such runs are not
+counted as provider failure observations.
+
 Examples (keys come from the environment):
 
 ```bash
