@@ -207,7 +207,8 @@ class PipelineService(
             }
             val providerIssue = ingestionResult.runs.any { it.status != IngestionStatus.SUCCESS }
             val noProviderSucceeded = ingestionResult.runs.isNotEmpty() && ingestionResult.runs.all {
-                it.status == IngestionStatus.FAILED || (it.status == IngestionStatus.PARTIAL && it.added == 0)
+                it.status == IngestionStatus.FAILED ||
+                    (it.status == IngestionStatus.PARTIAL && it.added == 0 && it.errorCode != IngestionService.WINDOW_TRUNCATED)
             }
             val status = when {
                 noProviderSucceeded && counts.documentsCompleted == 0 -> "FAILED"

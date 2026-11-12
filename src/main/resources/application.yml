@@ -72,6 +72,7 @@ catalyst:
     provider: polygon
     fallback-provider: finnhub
     page-size: 50
+    max-pages-per-chunk: 10
   pipeline:
     # Bounded durable-queue draining and retry behavior.
     batch-size: 50

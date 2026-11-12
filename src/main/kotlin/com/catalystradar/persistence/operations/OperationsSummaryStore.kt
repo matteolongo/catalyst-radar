@@ -79,8 +79,10 @@ class OperationsSummaryStore(
 
     private fun observations(params: Map<String, Any?>): List<ProviderObservation> = jdbc.query(
         """WITH observations AS (
-            SELECT id,provider,finished_at AS observed_at,status='SUCCESS' AS succeeded,
-                CASE WHEN status='SUCCESS' THEN NULL ELSE COALESCE(error_code,'UNKNOWN_FAILURE') END AS error_code
+            SELECT id,provider,finished_at AS observed_at,
+                -- A truncated window means the provider answered every request.
+                (status='SUCCESS' OR error_code='WINDOW_TRUNCATED') AS succeeded,
+                CASE WHEN status='SUCCESS' OR error_code='WINDOW_TRUNCATED' THEN NULL ELSE COALESCE(error_code,'UNKNOWN_FAILURE') END AS error_code
             FROM ingestion_runs WHERE provider IN ('polygon','finnhub') AND finished_at <= :now
                 AND status IN ('SUCCESS','PARTIAL','FAILED') AND error_code IS DISTINCT FROM 'CANCELLED'
             UNION ALL

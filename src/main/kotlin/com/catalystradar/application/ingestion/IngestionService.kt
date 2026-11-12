@@ -48,6 +48,7 @@ class IngestionService(
     private val providersByName = providers.associateBy { it.name }
 
     suspend fun ingestCycle(now: Instant = Instant.now(), operationRunId: UUID? = null): IngestionCycleResult {
+        require(properties.maxPagesPerChunk in 1..100) { "ingestion maxPagesPerChunk must be within 1..100" }
         val tickers = companies.findAllActive().map { it.ticker }
         if (tickers.isEmpty()) {
             log.info("ingestion cycle skipped: no active companies")
@@ -65,7 +66,10 @@ class IngestionService(
         }
         val outcomes = mutableListOf(runProvider(primary, tickers, now, operationRunId))
         val last = outcomes.last()
+        // A truncated window is not a provider failure, and the fallback
+        // costs one call per ticker, so truncation alone does not use it.
         if ((last.record.status == IngestionStatus.FAILED || last.record.status == IngestionStatus.PARTIAL) &&
+            last.record.errorCode != WINDOW_TRUNCATED &&
             properties.fallbackProvider != primary.name
         ) {
             providersByName[properties.fallbackProvider]?.let { outcomes += runProvider(it, tickers, now, operationRunId) }
@@ -94,47 +98,61 @@ class IngestionService(
         var duplicates = 0
         var unresolved = 0
         var firstErrorCode: String? = null
+        var truncated = false
         val fresh = mutableListOf<NewDocument>()
         try {
             for (chunk in tickers.chunked(TICKER_CHUNK_SIZE)) {
-                val page = provider.fetch(
-                    NewsFetchRequest(
-                        tickers = chunk,
-                        from = now.minus(properties.lookback),
-                        to = now,
-                        pageSize = properties.pageSize,
-                    ),
-                )
-                fetched += page.articles.size
-                for (article in page.articles) {
-                    try {
-                        when (val registration = registrations.registerIfNew(provider.name, article, now, runId, operationRunId)) {
-                            is DocumentRegistration.Queued -> {
-                                added++
-                                fresh += NewDocument(registration.documentId, article.tickers)
-                                metrics.documentIngested(provider.name, "new")
+                var cursor: String? = null
+                val seenCursors = mutableSetOf<String>()
+                var pages = 0
+                do {
+                    val page = provider.fetch(
+                        NewsFetchRequest(
+                            tickers = chunk,
+                            from = now.minus(properties.lookback),
+                            to = now,
+                            pageSize = properties.pageSize,
+                            cursor = cursor,
+                        ),
+                    )
+                    pages++
+                    fetched += page.articles.size
+                    for (article in page.articles) {
+                        try {
+                            when (val registration = registrations.registerIfNew(provider.name, article, now, runId, operationRunId)) {
+                                is DocumentRegistration.Queued -> {
+                                    added++
+                                    fresh += NewDocument(registration.documentId, article.tickers)
+                                    metrics.documentIngested(provider.name, "new")
+                                }
+                                is DocumentRegistration.Unresolved -> {
+                                    added++
+                                    unresolved++
+                                    metrics.documentIngested(provider.name, UNRESOLVED_COMPANY_STATUS)
+                                }
+                                DocumentRegistration.Duplicate -> {
+                                    duplicates++
+                                    metrics.documentIngested(provider.name, "duplicate")
+                                }
                             }
-                            is DocumentRegistration.Unresolved -> {
-                                added++
-                                unresolved++
-                                metrics.documentIngested(provider.name, UNRESOLVED_COMPANY_STATUS)
-                            }
-                            DocumentRegistration.Duplicate -> {
-                                duplicates++
-                                metrics.documentIngested(provider.name, "duplicate")
-                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: RuntimeException) {
+                            if (firstErrorCode == null) firstErrorCode = "PROCESSING_FAILURE"
+                            metrics.documentIngested(provider.name, "failed")
+                            log.warn(
+                                "ingestion run {} skipping failed document provider={} article={}: {}",
+                                runId, provider.name, article.providerArticleId, e.message,
+                            )
                         }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: RuntimeException) {
-                        if (firstErrorCode == null) firstErrorCode = "PROCESSING_FAILURE"
-                        metrics.documentIngested(provider.name, "failed")
-                        log.warn(
-                            "ingestion run {} skipping failed document provider={} article={}: {}",
-                            runId, provider.name, article.providerArticleId, e.message,
-                        )
                     }
-                }
+                    cursor = page.nextCursor
+                    // Stop at the page bound, or if a provider repeats a cursor.
+                    if (cursor != null && (pages >= properties.maxPagesPerChunk || !seenCursors.add(cursor))) {
+                        truncated = true
+                        cursor = null
+                    }
+                } while (cursor != null)
             }
         } catch (e: CancellationException) {
             runCatching {
@@ -153,6 +171,11 @@ class IngestionService(
         } catch (e: RuntimeException) {
             finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, firstErrorCode ?: "INGESTION_FAILURE")
             throw e
+        }
+        if (truncated) {
+            metrics.ingestionWindowTruncated(provider.name)
+            log.warn("ingestion run {} provider={} stopped after {} pages per chunk; window truncated", runId, provider.name, properties.maxPagesPerChunk)
+            if (firstErrorCode == null) firstErrorCode = WINDOW_TRUNCATED
         }
         val status = if (firstErrorCode != null) IngestionStatus.PARTIAL else IngestionStatus.SUCCESS
         metrics.ingestionRun(provider.name, elapsedMs(started))
@@ -192,6 +215,9 @@ class IngestionService(
 
         /** Why a stored document was kept without being queued. */
         const val NO_CONFIGURED_COMPANY = "NO_CONFIGURED_COMPANY"
+
+        /** More provider pages existed than the configured bound; the window was not fully read. */
+        const val WINDOW_TRUNCATED = "WINDOW_TRUNCATED"
 
         /** Bounded metric status for the same outcome. */
         const val UNRESOLVED_COMPANY_STATUS = "unresolved_company"
