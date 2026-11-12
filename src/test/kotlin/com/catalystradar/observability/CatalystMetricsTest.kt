@@ -51,6 +51,15 @@ class CatalystMetricsTest {
     }
 
     @Test
+    fun `accumulates estimated LLM cost only when it is known`() {
+        metrics.llmCall("extract", "gpt-4o-mini", true, 100, 50, 10L, estimatedCostUsd = 0.25)
+        metrics.llmCall("extract", "gpt-4o-mini", true, 100, 50, 10L, estimatedCostUsd = null)
+        metrics.llmCall("extract", "gpt-4o-mini", true, 100, 50, 10L, estimatedCostUsd = 0.5)
+
+        assertEquals(0.75, registry.counter("catalyst_llm_estimated_cost_usd_total", "operation", "extract", "model", "gpt-4o-mini").count())
+    }
+
+    @Test
     fun `counts events and transitions`() {
         metrics.eventExtracted("GUIDANCE", "GUIDANCE_RAISE", "POSITIVE")
         metrics.stateTransition("WATCH", "BUILDING")

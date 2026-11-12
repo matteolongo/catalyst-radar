@@ -202,6 +202,17 @@ class OperationsSummaryStoreTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `a cancelled model call is not an OpenAI failure observation`() {
+        val now = Instant.parse("2041-10-04T12:00:00Z")
+        fixtures.model(now.minusSeconds(120), null, null, null)
+        fixtures.model(now.minusSeconds(60), null, null, null, success = false, code = "CANCELLED")
+        val openai = store.read(ActivityWindow(now.minusSeconds(1), now), now, emptySet()).dependencyObservations[2]
+        assertEquals(0L, openai.failedObservations)
+        assertEquals(true, openai.latestSucceeded)
+        assertEquals(now.minusSeconds(120), openai.lastObservedAt)
+    }
+
+    @Test
     fun `freshness retains source specific success when disabled and excludes later successes`() {
         ingestion(now.minusSeconds(90), now.minusSeconds(60), "SUCCESS")
         ingestion(now, now.plusSeconds(1), "SUCCESS")

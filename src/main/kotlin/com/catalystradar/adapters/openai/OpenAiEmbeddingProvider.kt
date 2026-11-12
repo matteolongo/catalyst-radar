@@ -126,6 +126,9 @@ class OpenAiEmbeddingProvider(
         error: String?,
         errorCode: String? = null,
     ) {
+        val estimatedCost = response?.usage?.promptTokens?.let {
+            OpenAiPricing.estimateUsd(properties.embeddingModel, it, 0)
+        }
         metrics.llmCall(
             operation = "embed",
             model = properties.embeddingModel,
@@ -133,6 +136,7 @@ class OpenAiEmbeddingProvider(
             inputTokens = response?.usage?.promptTokens ?: 0,
             outputTokens = 0,
             latencyMs = latencyMs,
+            estimatedCostUsd = estimatedCost?.toDouble(),
         )
         runCatching {
             modelRuns.record(
@@ -145,9 +149,7 @@ class OpenAiEmbeddingProvider(
                     inputTokens = response?.usage?.promptTokens,
                     outputTokens = null,
                     latencyMs = latencyMs,
-                    estimatedCost = response?.usage?.promptTokens?.let {
-                        OpenAiPricing.estimateUsd(properties.embeddingModel, it, 0)
-                    },
+                    estimatedCost = estimatedCost,
                     success = success,
                     error = error,
                     errorCode = errorCode,

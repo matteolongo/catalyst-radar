@@ -32,9 +32,11 @@ dependencies {
 	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("tools.jackson.module:jackson-module-kotlin")
-	// OTLP trace export to LangSmith: Micrometer tracing bridge satisfies
-	// Spring Boot's OtlpTracingAutoConfiguration without the OTLP metrics
-	// registry or log appender, so only traces leave the process.
+	// OTLP trace export to LangSmith. Spring Boot 4 ships the OpenTelemetry
+	// SDK and OTLP tracing auto-configuration in this module; without it no
+	// OpenTelemetry bean exists and every LLM trace is a no-op. The full
+	// starter is avoided because it adds the OTLP metrics registry.
+	implementation("org.springframework.boot:spring-boot-micrometer-tracing-opentelemetry")
 	implementation("io.micrometer:micrometer-tracing-bridge-otel")
 	implementation("io.opentelemetry:opentelemetry-exporter-otlp")
 	testImplementation("org.springframework.boot:spring-boot-starter-actuator-test")
