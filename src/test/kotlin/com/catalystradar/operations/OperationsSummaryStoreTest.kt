@@ -310,7 +310,7 @@ class OperationsSummaryStoreTest : PostgresIntegrationTest() {
         assertEquals(listOf(ProviderConfig("polygon", true), ProviderConfig("finnhub", false), ProviderConfig("openai", true)), config.providers)
         assertEquals(ArtifactVersions("score-v1", "taxonomy-v1", "event-extractor-v1", "event-extractor-v1", "extract-model", "embed-model"), config.versions)
         val json = mapper.readTree(mapper.writeValueAsString(config))
-        assertEquals(setOf("generatedAt", "publicApiAuthEnabled", "singleInstance", "ingestion", "snapshots", "primaryNewsProvider", "fallbackNewsProvider", "pipelineBatchSize", "pipelineMaxAttempts", "pipelineRetryDelaySeconds", "providers", "versions"), json.propertyNames().toSet())
+        assertEquals(setOf("generatedAt", "publicApiAuthEnabled", "singleInstance", "ingestion", "snapshots", "primaryNewsProvider", "fallbackNewsProvider", "pipelineBatchSize", "pipelineMaxAttempts", "pipelineRetryDelaySeconds", "providers", "versions", "pipelineConcurrency"), json.propertyNames().toSet())
         assertFalse(json.toString().contains("secret"))
         assertEquals(7, service.document(fixtures.document(now)).maxAttempts)
     }

@@ -83,6 +83,10 @@
     var ingestionStatus = '';
     var pipelineRouteValid = true;
     var pipelineOutcomeText = null;
+    // The run a "started" outcome describes; the text clears once that run is no longer active.
+    var pipelineOutcomeRunId = null;
+    // Outcomes without a run survive the reload they trigger, then clear on the next one.
+    var pipelineOutcomeLoadsLeft = 0;
     var lastPipelineAt = null;
     var pipelineGeneration = 0;
     var pipelineRuns = [];
@@ -203,8 +207,8 @@
       el('overviewMetrics').innerHTML =
         '<article class="metric"><h2>Last successful ingestion</h2><p class="metric-value">—</p></article>' +
         '<article class="metric"><h2>Waiting documents</h2><p class="metric-value">—</p></article>' +
-        '<article class="metric"><h2>Terminal documents</h2><p class="metric-value">—</p></article>' +
-        '<article class="metric"><h2>Estimated recorded model cost</h2><p class="metric-value">—</p></article>';
+        '<article class="metric"><h2>Processing documents</h2><p class="metric-value">—</p></article>' +
+        '<article class="metric"><h2>Terminal documents</h2><p class="metric-value">—</p></article>';
       el('overviewActivity').textContent = 'Waiting for an authorized operational read.';
       el('overviewCoverage').innerHTML = '<p class="muted">Waiting for an authorized operational read.</p>';
       el('overviewSignals').textContent = 'Waiting for an authorized operational read.';
@@ -301,12 +305,14 @@
         ? integer(a.successfulRecalculations) + ' successful recalculations · ' + integer(a.recalculationFailures) + ' failed'
         : 'History capture not available yet';
       el('overviewActivity').innerHTML = '<dl class="activity-list">' +
+        '<div><dt>Fetched from providers</dt><dd>' + esc(integer(a.documentsFetched)) + ' articles</dd></div>' +
+        '<div><dt>Duplicates skipped</dt><dd>' + esc(integer(a.documentsDuplicate)) + ' articles</dd></div>' +
         '<div><dt>New source documents</dt><dd>' + esc(integer(a.documentsNew)) + ' documents</dd></div>' +
         '<div><dt>Inserted event reports</dt><dd>' + esc(integer(a.eventsInserted)) + ' reports</dd></div>' +
         '<div><dt>New canonical clusters</dt><dd>' + esc(integer(a.clustersCreated)) + ' clusters</dd></div>' +
-        '<div><dt>Recalculations</dt><dd>' + esc(recalculation) + '</dd></div>' +
+        '<div><dt>Recalculations</dt><dd>' + esc(recalculation) + '<span class="muted small cell-secondary">Recorded complete cycles only · captured since ' +
+          esc(captured) + '.</span></dd></div>' +
         '<div><dt>Estimated recorded model cost</dt><dd>' + esc(cost(m.estimatedCostUsd, m.costKnownCalls, m.calls)) + ' · ' + esc(costCoverage) + '</dd></div></dl>' +
-        '<p class="muted small">Recorded complete cycles only · captured since ' + esc(captured) + '.</p>' +
         '<p class="muted small">Daily snapshot freshness: ' + esc(freshness(s)) + '.</p>';
       var signals = Array.isArray(data.signals) ? data.signals : [];
       el('overviewSignals').innerHTML = signals.length ? '<ul class="signal-list">' + signals.map(function (signal) {
@@ -342,10 +348,11 @@
         '<div><dt>Daily snapshots</dt><dd>' + (config.snapshots && config.snapshots.enabled ? 'Enabled' : 'Disabled') + ' · every ' +
           esc(integer(config.snapshots && config.snapshots.intervalSeconds)) + ' seconds</dd></div>' +
         '<div><dt>News providers</dt><dd>Primary ' + esc(config.primaryNewsProvider) + ' · fallback ' + esc(config.fallbackNewsProvider) + '</dd></div>' +
-        '<div><dt>Pipeline limits</dt><dd>Batch ' + esc(integer(config.pipelineBatchSize)) + ' · ' +
+        '<div><dt>Pipeline limits</dt><dd>Batch ' + esc(integer(config.pipelineBatchSize)) + ' · concurrency ' +
+          esc(integer(config.pipelineConcurrency)) + ' · ' +
           esc(integer(config.pipelineMaxAttempts)) + ' attempts · retry delay ' + esc(integer(config.pipelineRetryDelaySeconds)) + ' seconds</dd></div>' +
         '<div><dt>Public API authentication</dt><dd>' + (config.publicApiAuthEnabled ? 'Required' : 'Not required') + '</dd></div>' +
-        '<div><dt>Deployment</dt><dd>' + (config.singleInstance ? 'Single application instance' : 'Multiple instances') + '</dd></div>' +
+        '<div><dt>Deployment</dt><dd>' + (config.singleInstance ? 'Configured for a single application instance' : 'Configured for multiple instances') + '</dd></div>' +
         '<div><dt>Artifact versions</dt><dd>Score ' + esc(v.score) + ' · taxonomy ' + esc(v.taxonomy) + ' · prompt ' +
           esc(v.prompt) + ' · extractor ' + esc(v.extractor) + '</dd></div>' +
         '<div><dt>Models</dt><dd>Extraction ' + esc(v.extractionModel) + ' · embedding ' + esc(v.embeddingModel) + '</dd></div>' +
@@ -1721,7 +1728,7 @@
       snapshotScheduleEnabled = null;
       snapshotScheduleLoaded = false;
       snapshotScheduleLoading = false;
-      pipelineOutcomeText = null;
+      clearPipelineOutcome();
       lastPipelineAt = null;
       el('runRows').innerHTML = '';
       el('runDetailContent').innerHTML = '';
@@ -1767,6 +1774,7 @@
       var runFiltersChanged = nextRange !== pipelineRange || nextKind !== pipelineKind || nextStatus !== pipelineRunStatus;
       var ingestionFiltersChanged = nextRange !== pipelineRange || nextProvider !== ingestionProvider || nextIngestionStatus !== ingestionStatus;
       var selectionChanged = nextRunId !== selectedRunId;
+      if (pipelineOutcomeRunId && !sameId(nextRunId, pipelineOutcomeRunId)) clearPipelineOutcome();
       var ingestionSelectionChanged = nextIngestionId !== selectedIngestionRunId;
       if (runFiltersChanged || ingestionFiltersChanged) {
         pipelineGeneration++;
@@ -1891,10 +1899,21 @@
       renderPipelineStatus();
       updateRunNowButton();
     }
+    function clearPipelineOutcome() {
+      pipelineOutcomeText = null;
+      pipelineOutcomeRunId = null;
+      pipelineOutcomeLoadsLeft = 0;
+    }
+    function setPipelineOutcome(text, runId) {
+      pipelineOutcomeText = text;
+      pipelineOutcomeRunId = runId || null;
+      pipelineOutcomeLoadsLeft = runId ? 0 : 1;
+    }
     function renderPipelineStatus() {
       if (!pipelineRouteValid) return;
       if (lastPipelineAt) el('lastRefresh').textContent = 'Last loaded ' + lastPipelineAt;
-      if (pipelineOutcomeText) {
+      // A failing read is current information; a trigger outcome is not allowed to hide it.
+      if (pipelineOutcomeText && !pipelineRunError && !ingestionError) {
         pipelineStatus(pipelineOutcomeText);
         return;
       }
@@ -2119,7 +2138,10 @@
       runs.forEach(function (run) {
         if (!run || run.kind !== 'PIPELINE' || !validUuid(run.id)) return;
         if (run.active === true) knownActivePipelineIds.add(run.id);
-        else if (run.active === false) knownActivePipelineIds.delete(run.id);
+        else if (run.active === false) {
+          knownActivePipelineIds.delete(run.id);
+          if (pipelineOutcomeRunId && sameId(run.id, pipelineOutcomeRunId)) clearPipelineOutcome();
+        }
       });
     }
     function pipelineWindowParameters(query) {
@@ -2389,6 +2411,10 @@
         if (!current(revision, requestSequence, 'pipeline') || generation !== pipelineGeneration) return;
         if (pipelineRunsLoaded && ingestionLoaded && !pipelineRunError && !ingestionError) {
           lastPipelineAt = time(pipelineGeneratedAt || ingestionGeneratedAt);
+          if (pipelineOutcomeText && !pipelineOutcomeRunId) {
+            if (pipelineOutcomeLoadsLeft > 0) pipelineOutcomeLoadsLeft--;
+            else clearPipelineOutcome();
+          }
         }
         renderPipelineStatus();
         updateRunNowButton();
@@ -2406,29 +2432,29 @@
       var revision = credentials().revision;
       var requestSequence = sequence;
       pendingPost = true;
-      pipelineOutcomeText = null;
+      clearPipelineOutcome();
       updateRunNowButton();
       pipelineStatus('Starting pipeline…');
       api('/internal/ingestion/runs', { method: 'POST', async: true }).then(function (result) {
         if (revision !== credentials().revision || !current(revision, requestSequence, 'pipeline')) return;
         if (result && result.alreadyRunning) {
-          pipelineOutcomeText = 'A pipeline cycle is already running';
+          setPipelineOutcome('A pipeline cycle is already running');
           pipelineStatus(pipelineOutcomeText);
           loadPipelineScreen(true);
           return;
         }
         if (result && validUuid(result.runId)) {
-          pipelineOutcomeText = pipelineOutcome(result);
+          setPipelineOutcome(pipelineOutcome(result), result.status === 'RUNNING' ? result.runId : null);
           options.navigate(pipelineSearch({ runId: result.runId }));
           return;
         }
-        pipelineOutcomeText = pipelineOutcome(result || {});
+        setPipelineOutcome(pipelineOutcome(result || {}));
         pipelineStatus(pipelineOutcomeText);
         loadPipelineScreen(true);
       }).catch(function (error) {
         if (revision !== credentials().revision || !current(revision, requestSequence, 'pipeline')) return;
         if (error.status === 403 || error.code === 'FORBIDDEN') return accessRequired();
-        pipelineOutcomeText = 'The pipeline response was unavailable. The server may still be running; the request was not retried.';
+        setPipelineOutcome('The pipeline response was unavailable. The server may still be running; the request was not retried.');
         pipelineStatus(pipelineOutcomeText);
       }).finally(function () {
         pendingPost = false;

@@ -18,7 +18,7 @@ Errors use safe bounded categories/messages rather than arbitrary provider text.
 
 | GET suffix | Parameters / purpose |
 | --- | --- |
-| `/config` | Read-only provider roles, schedules, limits, versions, access requirement |
+| `/config` | Read-only provider roles, schedules, limits (including `pipelineConcurrency`), versions, access requirement |
 | `/overview` | Activity window; queue, freshness, activity, usage, signals, dependencies |
 | `/documents` | `status`, `provider`, `ticker`, `q`, `dueOnly`, `runId`, `ingestionRunId`, optional capture `from`/`to`, `limit`, `cursor` |
 | `/documents/{id}` | Metadata, latest processing state and bounded associations; no body |

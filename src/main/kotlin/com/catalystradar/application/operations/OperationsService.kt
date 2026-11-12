@@ -53,6 +53,7 @@ class OperationsService(
         primaryNewsProvider = ingestion.provider, fallbackNewsProvider = ingestion.fallbackProvider, pipelineBatchSize = pipeline.batchSize,
         pipelineMaxAttempts = pipeline.maxAttempts, pipelineRetryDelaySeconds = pipeline.retryDelay.seconds, providers = providerConfig(),
         versions = ArtifactVersions(Versions.SCORE_V1, Versions.TAXONOMY_V1, Versions.PROMPT_V1, Versions.EXTRACTOR_V1, openai.extractionModel, openai.embeddingModel),
+        pipelineConcurrency = pipeline.concurrency,
     )
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)

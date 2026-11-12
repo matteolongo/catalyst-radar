@@ -40,6 +40,7 @@ class InternalOperationsControllerTest {
                 pipelineRetryDelaySeconds = 60,
                 providers = listOf(ProviderConfig("polygon", true), ProviderConfig("finnhub", false), ProviderConfig("openai", true)),
                 versions = ArtifactVersions("score-v1", "taxonomy-v1", "prompt-v1", "extractor-v1", "gpt-test", "embed-test"),
+                pipelineConcurrency = 4,
             ),
         )
 
@@ -50,6 +51,7 @@ class InternalOperationsControllerTest {
             jsonPath("$.providers[0].configured") { value(true) }
             jsonPath("$.providers[1].configured") { value(false) }
             jsonPath("$.versions.score") { value("score-v1") }
+            jsonPath("$.pipelineConcurrency") { value(4) }
             jsonPath("$.providers[0].apiKey") { doesNotExist() }
         }
     }

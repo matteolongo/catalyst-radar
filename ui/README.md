@@ -35,7 +35,9 @@ returns from the other record views. Notebooks need no keys, make no domain read
 do not poll, and cannot run individual stages. Linked records retain normal access
 rules.
 
-- **Operations → Overview** shows ingestion freshness, current queue, recorded activity,
+- **Operations → Overview** shows ingestion freshness, current queue, recorded activity
+  (articles fetched from providers, duplicates skipped, new documents, events,
+  clusters and recalculations),
   estimated model cost, inspection signals and observed dependencies. Document
   coverage has separate counts and inspection links for missing company
   associations and missing processing state, across all capture dates. These
@@ -43,6 +45,10 @@ rules.
   recent recorded observations. The API health indicator is separate from these observations.
 - **Pipeline** shows pipeline and daily-snapshot cycles, provider ingestion runs,
   issues, cycle documents, and frozen company valuations with explicit associations. **Run pipeline now** uses the existing POST.
+  Its status message clears once the started cycle is no longer active, or when
+  another cycle or filter is selected; a failing history read is always shown
+  instead of it. "Already running" and "response unavailable" messages clear on
+  the next successful refresh after the one they trigger.
 - **Documents** opens a chronological Timeline by default, with Overview,
   Valuations, Attempts, Model calls, Events and Source tabs. Source text loads only when requested.
 - **Models & costs** shows full server period totals, coverage and bounded calls.
@@ -61,7 +67,8 @@ rules.
   readable name, grouped by their taxonomy-v1 family; invalid filters show an
   inline correction message rather than an internal conversion error.
 - **Access** stores access keys and shows safe read-only configuration,
-  versions, provider-configured booleans and scheduler settings.
+  versions, provider-configured booleans, scheduler settings and pipeline limits
+  (batch size, concurrency, attempts, retry delay).
 
 The activity picker (24h/7d) applies to Overview, Pipeline and Models, independently
 of the current queue and Documents. All times display UTC. Refresh updates the
