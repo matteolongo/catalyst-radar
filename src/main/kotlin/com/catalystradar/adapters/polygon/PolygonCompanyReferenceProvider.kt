@@ -1,6 +1,8 @@
 package com.catalystradar.adapters.polygon
 
 import com.catalystradar.adapters.http.mapHttpClientError
+import com.catalystradar.adapters.http.mapTransportError
+import com.catalystradar.adapters.http.timeouts
 import com.catalystradar.ports.CompanyPage
 import com.catalystradar.ports.CompanyReference
 import com.catalystradar.ports.CompanyReferenceProvider
@@ -28,7 +30,9 @@ class PolygonCompanyReferenceProvider(
     private val properties: PolygonProperties,
 ) : CompanyReferenceProvider {
 
-    private val client = builder.baseUrl(properties.baseUrl).build()
+    private val client = builder.baseUrl(properties.baseUrl)
+        .requestFactory(timeouts(properties.connectTimeout, properties.readTimeout))
+        .build()
 
     override suspend fun listUsEquities(cursor: String?): CompanyPage =
         withContext(Dispatchers.IO) {
@@ -41,9 +45,9 @@ class PolygonCompanyReferenceProvider(
             } catch (e: HttpClientErrorException) {
                 throw mapHttpClientError("polygon", e)
             } catch (e: HttpServerErrorException) {
-                throw ProviderException.TemporaryUnavailable("polygon: ${e.statusCode}")
+                throw ProviderException.TemporaryUnavailable("polygon: ${e.statusCode}", provider = "polygon")
             } catch (e: RestClientException) {
-                throw ProviderException.InvalidResponse("polygon: ${e.message}")
+                throw mapTransportError("polygon", e)
             }
         }
 
@@ -63,12 +67,12 @@ class PolygonCompanyReferenceProvider(
             uri.build()
         }.retrieve()
         return response.body<PolygonTickersPage>()
-            ?: throw ProviderException.InvalidResponse("polygon: empty tickers page")
+            ?: throw ProviderException.InvalidResponse("polygon: empty tickers page", provider = "polygon")
     }
 
     private fun get(url: String): PolygonTickersPage =
-        client.get().uri(url).retrieve().body<PolygonTickersPage>()
-            ?: throw ProviderException.InvalidResponse("polygon: empty tickers page")
+        client.get().uri(polygonNextPage(url, properties)).retrieve().body<PolygonTickersPage>()
+            ?: throw ProviderException.InvalidResponse("polygon: empty tickers page", provider = "polygon")
 }
 
 @JsonIgnoreProperties(ignoreUnknown = true)

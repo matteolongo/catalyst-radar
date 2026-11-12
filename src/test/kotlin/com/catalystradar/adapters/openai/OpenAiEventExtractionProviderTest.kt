@@ -53,9 +53,10 @@ class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
 
     private fun provider(
         tracing: LlmTracing = LlmTracing(mock(), LangSmithProperties(enabled = false)),
+        readTimeout: java.time.Duration = java.time.Duration.ofSeconds(120),
     ) = OpenAiEventExtractionProvider(
         RestClient.builder(),
-        OpenAiProperties(baseUrl = wireMock.baseUrl(), apiKey = "test-key"),
+        OpenAiProperties(baseUrl = wireMock.baseUrl(), apiKey = "test-key", extractionReadTimeout = readTimeout),
         modelRuns,
         DefaultResourceLoader(),
         com.catalystradar.observability.CatalystMetrics(meterRegistry),
@@ -199,6 +200,21 @@ class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
                 .withHeader("Authorization", equalTo("Bearer test-key"))
                 .withRequestBody(containing("\"strict\"")),
         )
+    }
+
+    @Test
+    fun `timeout is a retryable outage recorded as a failed run`() = runTest {
+        val req = request()
+        wireMock.stubFor(post(urlPathEqualTo("/v1/chat/completions"))
+            .willReturn(okJson(CHAT_RESPONSE).withFixedDelay(1500)))
+
+        assertThrows<ProviderException.TemporaryUnavailable> {
+            provider(readTimeout = java.time.Duration.ofMillis(200)).extract(req)
+        }
+
+        val recorded = modelRuns.findByDocument(req.document.id).single()
+        assertEquals(false, recorded.success)
+        assertEquals("TEMPORARY_UNAVAILABLE", recorded.errorCode)
     }
 
     @Test

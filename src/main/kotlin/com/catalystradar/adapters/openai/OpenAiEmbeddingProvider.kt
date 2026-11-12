@@ -1,6 +1,8 @@
 package com.catalystradar.adapters.openai
 
 import com.catalystradar.adapters.http.mapHttpClientError
+import com.catalystradar.adapters.http.mapTransportError
+import com.catalystradar.adapters.http.timeouts
 import com.catalystradar.application.operations.OperationalErrors
 import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.observability.LlmTracing
@@ -16,7 +18,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import org.springframework.http.MediaType
-import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.HttpServerErrorException
@@ -45,12 +46,7 @@ class OpenAiEmbeddingProvider(
     private val log = LoggerFactory.getLogger(OpenAiEmbeddingProvider::class.java)
 
     private val client = builder.baseUrl(properties.baseUrl)
-        .requestFactory(
-            SimpleClientHttpRequestFactory().apply {
-                setConnectTimeout(CONNECT_TIMEOUT_MS)
-                setReadTimeout(READ_TIMEOUT_MS)
-            },
-        )
+        .requestFactory(timeouts(properties.connectTimeout, properties.embeddingReadTimeout))
         .build()
 
     override suspend fun embed(text: String): Embedding =
@@ -93,7 +89,7 @@ class OpenAiEmbeddingProvider(
                 recordFailure(request, response, started, failure)
                 throw failure
             } catch (e: RestClientException) {
-                val failure = ProviderException.InvalidResponse("openai: ${e.message}", provider = "openai")
+                val failure = mapTransportError("openai", e)
                 trace.fail(failure)
                 recordFailure(request, response, started, failure)
                 throw failure
@@ -175,8 +171,6 @@ class OpenAiEmbeddingProvider(
     private fun elapsedMs(started: Long): Long = (System.nanoTime() - started) / 1_000_000
 
     companion object {
-        const val CONNECT_TIMEOUT_MS = 10_000
-        const val READ_TIMEOUT_MS = 60_000
         const val EMBEDDING_CHAR_LIMIT = 8_000
     }
 }

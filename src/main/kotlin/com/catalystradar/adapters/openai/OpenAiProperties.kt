@@ -2,6 +2,7 @@ package com.catalystradar.adapters.openai
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.stereotype.Component
+import java.time.Duration
 
 /**
  * OpenAI API access for structured extraction (and embeddings in
@@ -15,4 +16,8 @@ data class OpenAiProperties(
     var apiKey: String = "",
     var extractionModel: String = "gpt-4o-mini",
     var embeddingModel: String = "text-embedding-3-small",
+    var connectTimeout: Duration = Duration.ofSeconds(10),
+    /** Structured extraction of a long article can legitimately take this long. */
+    var extractionReadTimeout: Duration = Duration.ofSeconds(120),
+    var embeddingReadTimeout: Duration = Duration.ofSeconds(60),
 )

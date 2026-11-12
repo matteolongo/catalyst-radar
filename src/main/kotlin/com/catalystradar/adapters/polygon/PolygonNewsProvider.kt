@@ -1,6 +1,8 @@
 package com.catalystradar.adapters.polygon
 
 import com.catalystradar.adapters.http.mapHttpClientError
+import com.catalystradar.adapters.http.mapTransportError
+import com.catalystradar.adapters.http.timeouts
 import com.catalystradar.ports.NewsFetchRequest
 import com.catalystradar.ports.NewsFetchResult
 import com.catalystradar.ports.NewsProvider
@@ -29,7 +31,9 @@ class PolygonNewsProvider(
     private val properties: PolygonProperties,
 ) : NewsProvider {
 
-    private val client = builder.baseUrl(properties.baseUrl).build()
+    private val client = builder.baseUrl(properties.baseUrl)
+        .requestFactory(timeouts(properties.connectTimeout, properties.readTimeout))
+        .build()
 
     override val name: String = "polygon"
 
@@ -44,9 +48,9 @@ class PolygonNewsProvider(
             } catch (e: HttpClientErrorException) {
                 throw mapHttpClientError("polygon", e)
             } catch (e: HttpServerErrorException) {
-                throw ProviderException.TemporaryUnavailable("polygon: ${e.statusCode}")
+                throw ProviderException.TemporaryUnavailable("polygon: ${e.statusCode}", provider = "polygon")
             } catch (e: RestClientException) {
-                throw ProviderException.InvalidResponse("polygon: ${e.message}")
+                throw mapTransportError("polygon", e)
             }
         }
 
@@ -69,12 +73,12 @@ class PolygonNewsProvider(
             uri.build()
         }.retrieve()
         return response.body<PolygonNewsPage>()
-            ?: throw ProviderException.InvalidResponse("polygon: empty news page")
+            ?: throw ProviderException.InvalidResponse("polygon: empty news page", provider = "polygon")
     }
 
     private fun get(url: String): PolygonNewsPage =
-        client.get().uri(url).retrieve().body<PolygonNewsPage>()
-            ?: throw ProviderException.InvalidResponse("polygon: empty news page")
+        client.get().uri(polygonNextPage(url, properties)).retrieve().body<PolygonNewsPage>()
+            ?: throw ProviderException.InvalidResponse("polygon: empty news page", provider = "polygon")
 }
 
 @JsonIgnoreProperties(ignoreUnknown = true)

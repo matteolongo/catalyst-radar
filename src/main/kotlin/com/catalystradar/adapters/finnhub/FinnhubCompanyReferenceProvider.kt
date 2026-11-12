@@ -1,6 +1,8 @@
 package com.catalystradar.adapters.finnhub
 
 import com.catalystradar.adapters.http.mapHttpClientError
+import com.catalystradar.adapters.http.mapTransportError
+import com.catalystradar.adapters.http.timeouts
 import com.catalystradar.ports.CompanyPage
 import com.catalystradar.ports.CompanyReference
 import com.catalystradar.ports.CompanyReferenceProvider
@@ -28,7 +30,9 @@ class FinnhubCompanyReferenceProvider(
     private val properties: FinnhubProperties,
 ) : CompanyReferenceProvider {
 
-    private val client = builder.baseUrl(properties.baseUrl).build()
+    private val client = builder.baseUrl(properties.baseUrl)
+        .requestFactory(timeouts(properties.connectTimeout, properties.readTimeout))
+        .build()
 
     override suspend fun listUsEquities(cursor: String?): CompanyPage =
         withContext(Dispatchers.IO) {
@@ -43,9 +47,9 @@ class FinnhubCompanyReferenceProvider(
             } catch (e: HttpClientErrorException) {
                 throw mapHttpClientError("finnhub", e)
             } catch (e: HttpServerErrorException) {
-                throw ProviderException.TemporaryUnavailable("finnhub: ${e.statusCode}")
+                throw ProviderException.TemporaryUnavailable("finnhub: ${e.statusCode}", provider = "finnhub")
             } catch (e: RestClientException) {
-                throw ProviderException.InvalidResponse("finnhub: ${e.message}")
+                throw mapTransportError("finnhub", e)
             }
         }
 
@@ -57,7 +61,7 @@ class FinnhubCompanyReferenceProvider(
             uri.build()
         }.retrieve()
         return response.body<List<FinnhubSymbol>>()
-            ?: throw ProviderException.InvalidResponse("finnhub: empty symbol list")
+            ?: throw ProviderException.InvalidResponse("finnhub: empty symbol list", provider = "finnhub")
     }
 
     companion object {
