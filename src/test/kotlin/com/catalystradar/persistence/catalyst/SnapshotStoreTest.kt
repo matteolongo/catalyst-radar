@@ -82,6 +82,20 @@ class SnapshotStoreTest : PostgresIntegrationTest() {
         assertEquals(at, transitions[0].at)
     }
 
+    @Test
+    fun `a bounded transition window keeps the newest transitions in ascending order`() {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell Technologies"))
+        val at = Instant.parse("2026-09-16T10:00:00Z")
+        listOf(CatalystState.NORMAL to CatalystState.WATCH, CatalystState.WATCH to CatalystState.BUILDING,
+            CatalystState.BUILDING to CatalystState.CATALYZED).forEachIndexed { index, (from, to) ->
+            snapshots.recordTransition(company.id, from, to, CatalystScore(50.0, "score-v1"), at.plusSeconds(index * 3_600L))
+        }
+
+        val window = snapshots.findTransitions(company.id, null, null, 2)
+
+        assertEquals(listOf(CatalystState.BUILDING, CatalystState.CATALYZED), window.map { it.to })
+    }
+
     private fun newSnapshot(companyId: java.util.UUID, score: Double, asOf: String) =
         CatalystSnapshot(
             companyId = companyId,

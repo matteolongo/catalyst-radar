@@ -149,6 +149,45 @@ class DiscoveryStoreTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `inactive companies are not ranked or counted`() {
+        seed()
+        companies.save(Company(ticker = "OLD", name = "Delisted", active = false))
+            .also { snapshots.save(snapshot(it.id, 99.0, CatalystState.HIGH, t0)) }
+
+        val page = store.discover(DiscoveryQuery(limit = 10, offset = 0))
+
+        assertEquals(listOf("NVDA", "DELL", "HPQ"), page.results.map { it.ticker })
+        assertEquals(3, page.total)
+    }
+
+    @Test
+    fun `recent events are counted relative to each row's own snapshot`() {
+        val dell = companies.save(Company(ticker = "DELL", name = "Dell"))
+        val snapshotAt = t0.minusSeconds(20 * 86_400)
+        snapshots.save(snapshot(dell.id, 46.6, CatalystState.BUILDING, snapshotAt))
+        events.save(event(dell.id, EventType.GUIDANCE_RAISE, snapshotAt.minusSeconds(86_400)))
+        events.save(event(dell.id, EventType.EARNINGS_BEAT, t0.minusSeconds(3_600)))
+
+        val row = store.discover(DiscoveryQuery(limit = 10, offset = 0, asOf = t0)).results.single()
+
+        assertEquals(1, row.events7d)
+    }
+
+    @Test
+    fun `reports whether a seven day baseline snapshot exists`() {
+        val dell = companies.save(Company(ticker = "DELL", name = "Dell"))
+        val nvda = companies.save(Company(ticker = "NVDA", name = "Nvidia"))
+        snapshots.save(snapshot(dell.id, 40.0, CatalystState.BUILDING, t0.minusSeconds(8 * 86_400)))
+        snapshots.save(snapshot(dell.id, 46.6, CatalystState.BUILDING, t0))
+        snapshots.save(snapshot(nvda.id, 71.4, CatalystState.CATALYZED, t0))
+
+        val rows = store.discover(DiscoveryQuery(limit = 10, offset = 0, asOf = t0)).results.associateBy { it.ticker }
+
+        assertEquals(true, rows.getValue("DELL").velocity7dBaselineAvailable)
+        assertEquals(false, rows.getValue("NVDA").velocity7dBaselineAvailable)
+    }
+
+    @Test
     fun `only the latest snapshot per company counts`() {        val dell = companies.save(Company(ticker = "DELL", name = "Dell", sector = "Industrials"))
         snapshots.save(snapshot(dell.id, 90.0, CatalystState.HIGH, t0.minusSeconds(3600)))
         snapshots.save(snapshot(dell.id, 10.0, CatalystState.NORMAL, t0))

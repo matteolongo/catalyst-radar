@@ -72,8 +72,9 @@ class CatalystSnapshotStore(
         ).id
     }
 
+    /** The newest [limit] transitions in the window, returned oldest first. */
     fun findTransitions(companyId: UUID, from: Instant?, to: Instant?, limit: Int): List<StateTransitionRecord> =
-        transitions.findWindow(companyId, from, to, limit).map { it.toRecord() }
+        transitions.findWindow(companyId, from, to, limit).map { it.toRecord() }.reversed()
 
     fun findTransitions(companyId: UUID): List<StateTransitionRecord> =
         transitions.findByCompanyIdOrderByTransitionedAt(companyId).map { it.toRecord() }

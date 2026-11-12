@@ -41,12 +41,15 @@ class CatalystController(
     ): TimelineResponse {
         requireValidInput(limit in 1..200) { "limit must be within 1..200" }
         val company = companies.findByTicker(ticker) ?: throw CompanyNotFoundException(ticker)
-        val history = snapshots.history(company.id, from, to, limit)
-        val transitions = snapshots.findTransitions(company.id, from, to, limit)
+        // One extra row of each tells whether older entries were cut off.
+        val history = snapshots.history(company.id, from, to, limit + 1)
+        val transitions = snapshots.findTransitions(company.id, from, to, limit + 1)
         return TimelineResponse(
             ticker = company.ticker,
-            snapshots = history.map { it.toResponse() },
-            transitions = transitions.map { it.toResponse() },
+            snapshots = history.take(limit).map { it.toResponse() },
+            transitions = transitions.takeLast(limit).map { it.toResponse() },
+            snapshotsTruncated = history.size > limit,
+            transitionsTruncated = transitions.size > limit,
         )
     }
 }

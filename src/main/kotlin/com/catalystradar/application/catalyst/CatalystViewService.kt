@@ -55,6 +55,8 @@ data class CatalystView(
     val asOf: Instant,
     val scoreCalculation: CalculatedScore? = null,
     val explanationStatus: ExplanationStatus = ExplanationStatus.VERSION_MISMATCH,
+    /** False when no snapshot exists 7 days before [asOf], so a 0 change means "no baseline". */
+    val velocity7dBaselineAvailable: Boolean = true,
 ) {
     val stateBand: StateBand get() = stateBandForScore(score)
 }
@@ -78,7 +80,8 @@ class CatalystViewService(
         val company = companies.findByTicker(ticker) ?: throw CompanyNotFoundException(ticker)
         val snapshot = snapshots.latestSnapshot(company.id) ?: throw CatalystNotFoundException(ticker)
         val detailed = events.findDetailedAvailableByCompanyId(company.id, snapshots.createdAt(snapshot.id))
-        val canonical = selector.select(knownAt(detailed.map { it.event }, snapshot.asOf))
+        val known = knownAt(detailed.map { it.event }, snapshot.asOf)
+        val canonical = selector.select(known)
         val detailsById = detailed.associateBy { it.event.id }
         val calculated = calculator.calculate(canonical, snapshot.asOf)
         val explanationStatus = when {
@@ -127,13 +130,15 @@ class CatalystViewService(
             directScore = calculator.scoreForRaw(rawFor { it.directness == Directness.DIRECT }),
             inferredScore = calculator.scoreForRaw(rawFor { it.directness == Directness.INFERRED }),
             totalEvents = canonical.size,
-            events7d = canonical.count { (it.eventTimestamp ?: it.discoveredAt) >= weekAgo },
+            // Same definition as discovery: distinct clusters discovered in the 7 days ending at asOf.
+            events7d = known.filter { it.discoveredAt.isAfter(weekAgo) }.map { it.clusterId ?: it.id }.distinct().size,
             topDrivers = drivers,
             scoreVersion = snapshot.score.version,
             taxonomyVersion = snapshot.taxonomyVersion,
             asOf = snapshot.asOf,
             scoreCalculation = calculated.takeIf { explanationStatus == ExplanationStatus.RECONSTRUCTED_SCORE_MATCH },
             explanationStatus = explanationStatus,
+            velocity7dBaselineAvailable = snapshots.latestAtOrBefore(company.id, weekAgo) != null,
         )
     }
 }

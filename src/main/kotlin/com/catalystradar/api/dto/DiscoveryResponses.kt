@@ -16,6 +16,8 @@ data class DiscoveryEntryResponse(
     val scoreVersion: String,
     val taxonomyVersion: String,
     val asOf: Instant,
+    /** False when no snapshot exists 7 days before [asOf]; a 0 change then means "no baseline". */
+    val velocity7dBaselineAvailable: Boolean,
 )
 
 data class DiscoveryResponse(
@@ -37,6 +39,7 @@ fun DiscoveryRow.toResponse() = DiscoveryEntryResponse(
     scoreVersion = scoreVersion,
     taxonomyVersion = taxonomyVersion,
     asOf = asOf,
+    velocity7dBaselineAvailable = velocity7dBaselineAvailable,
 )
 
 fun DiscoveryPage.toResponse(limit: Int, offset: Int, asOf: Instant) = DiscoveryResponse(

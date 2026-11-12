@@ -83,6 +83,8 @@ data class CatalystResponse(
     val stateBand: StateBandResponse,
     val scoreCalculation: ScoreCalculationResponse?,
     val explanationStatus: String,
+    /** False when no snapshot exists 7 days before [asOf]; a 0 change then means "no baseline". */
+    val velocity7dBaselineAvailable: Boolean,
 )
 
 fun EventDriver.toResponse() = EventDriverResponse(
@@ -120,6 +122,7 @@ fun CatalystView.toResponse() = CatalystResponse(
         stateBand.state == CatalystState.HIGH),
     scoreCalculation = scoreCalculation?.toResponse(),
     explanationStatus = explanationStatus.name,
+    velocity7dBaselineAvailable = velocity7dBaselineAvailable,
 )
 
 data class SnapshotResponse(
@@ -162,8 +165,11 @@ fun StateTransitionRecord.toResponse() = TransitionResponse(
     at = at,
 )
 
+/** Both lists hold the newest entries in the window; a truncated flag means older ones exist. */
 data class TimelineResponse(
     val ticker: String,
     val snapshots: List<SnapshotResponse>,
     val transitions: List<TransitionResponse>,
+    val snapshotsTruncated: Boolean = false,
+    val transitionsTruncated: Boolean = false,
 )
