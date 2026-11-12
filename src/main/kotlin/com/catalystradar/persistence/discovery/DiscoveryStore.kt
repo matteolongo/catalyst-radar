@@ -34,6 +34,8 @@ data class DiscoveryRow(
     val events7d: Int,
     val taxonomyVersion: String,
     val asOf: Instant,
+    /** False when no snapshot exists 7 days before [asOf], so a 0 change means "no baseline". */
+    val velocity7dBaselineAvailable: Boolean = true,
 )
 
 data class DiscoveryPage(
@@ -42,10 +44,14 @@ data class DiscoveryPage(
 )
 
 /**
- * Primary discovery read: latest snapshot per company, ranked and
+ * Primary discovery read: latest snapshot per active company, ranked and
  * filtered. One bounded page query (with windowed total) plus one
  * grouped recent-events count — never N+1. Offset paging is a
  * deliberate v0.1 choice for a small leaderboard.
+ *
+ * `events7d` is the number of distinct clusters (unclustered events count
+ * individually) discovered in the 7 days ending at each row's own snapshot
+ * time, the same definition the company catalyst view uses.
  */
 @Repository
 class DiscoveryStore(private val jdbc: JdbcClient) {
@@ -53,7 +59,7 @@ class DiscoveryStore(private val jdbc: JdbcClient) {
     fun discover(query: DiscoveryQuery): DiscoveryPage {
         require(query.limit in 1..100) { "limit must be within 1..100" }
         require(query.offset >= 0) { "offset must be non-negative" }
-        val conditions = mutableListOf("1 = 1")
+        val conditions = mutableListOf("c.active")
         val params = mutableMapOf<String, Any>()
         query.states?.takeIf { it.isNotEmpty() }?.let {
             conditions += "s.state IN (:states)"
@@ -82,7 +88,11 @@ class DiscoveryStore(private val jdbc: JdbcClient) {
             SELECT COUNT(*) OVER() AS total,
               c.id AS company_id, c.ticker AS ticker, c.name AS name, c.sector AS sector,
               s.score AS score, s.score_version AS score_version, s.state AS state,
-              s.velocity_7d AS velocity_7d, s.taxonomy_version AS taxonomy_version, s.as_of AS as_of
+              s.velocity_7d AS velocity_7d, s.taxonomy_version AS taxonomy_version, s.as_of AS as_of,
+              EXISTS (
+                SELECT 1 FROM catalyst_snapshots b
+                WHERE b.company_id = s.company_id AND b.as_of <= s.as_of - INTERVAL '7 days'
+              ) AS has_baseline_7d
             FROM (
               SELECT DISTINCT ON (company_id) *
               FROM catalyst_snapshots
@@ -109,31 +119,34 @@ class DiscoveryStore(private val jdbc: JdbcClient) {
                 events7d = 0,
                 taxonomyVersion = rs.getString("taxonomy_version"),
                 asOf = rs.getTimestamp("as_of").toInstant(),
+                velocity7dBaselineAvailable = rs.getBoolean("has_baseline_7d"),
             )
         }.list()
         if (page.isEmpty()) return DiscoveryPage(emptyList(), 0)
-        val counts = recentEventCounts(page.map { it.second.companyId }, query.asOf)
+        val counts = recentEventCounts(page.map { it.second })
         return DiscoveryPage(
             results = page.map { (_, row) -> row.copy(events7d = counts[row.companyId] ?: 0) },
             total = page.first().first,
         )
     }
 
-    private fun recentEventCounts(companyIds: List<UUID>, asOf: Instant): Map<UUID, Int> {
-        if (companyIds.isEmpty()) return emptyMap()
-        val since = java.sql.Timestamp.from(asOf.minusSeconds(7L * 86_400))
-        return jdbc.sql(
+    private fun recentEventCounts(rows: List<DiscoveryRow>): Map<UUID, Int> {
+        if (rows.isEmpty()) return emptyMap()
+        val values = rows.indices.joinToString(", ") { "(CAST(:id$it AS uuid), CAST(:at$it AS timestamptz))" }
+        var statement = jdbc.sql(
             """
-            SELECT company_id, COUNT(DISTINCT COALESCE(cluster_id, id)) AS events FROM events
-            WHERE discovered_at >= :since
-              AND discovered_at <= :asOf
-              AND company_id IN (:ids)
-            GROUP BY company_id
+            SELECT p.company_id, COUNT(DISTINCT COALESCE(e.cluster_id, e.id)) AS events
+            FROM (VALUES $values) AS p(company_id, as_of)
+            JOIN events e ON e.company_id = p.company_id
+              AND e.discovered_at > p.as_of - INTERVAL '7 days'
+              AND e.discovered_at <= p.as_of
+            GROUP BY p.company_id
             """.trimIndent(),
         )
-            .param("since", since)
-            .param("asOf", java.sql.Timestamp.from(asOf))
-            .param("ids", companyIds)
+        rows.forEachIndexed { index, row ->
+            statement = statement.param("id$index", row.companyId).param("at$index", java.sql.Timestamp.from(row.asOf))
+        }
+        return statement
             .query { rs, _ -> rs.getObject("company_id", UUID::class.java) to rs.getInt("events") }
             .list().toMap()
     }

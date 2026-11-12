@@ -68,6 +68,9 @@ class CatalystViewServiceTest : PostgresIntegrationTest() {
     @Autowired
     private lateinit var jdbc: JdbcTemplate
 
+    @Autowired
+    private lateinit var discovery: com.catalystradar.persistence.discovery.DiscoveryStore
+
     private val t0 = Instant.parse("2026-09-16T10:00:00Z")
 
     @Test
@@ -90,6 +93,31 @@ class CatalystViewServiceTest : PostgresIntegrationTest() {
         assertEquals(0.0, view.negativeScore, 1e-9)
         assertTrue(view.topDrivers.size == 2)
         assertEquals(EventType.GUIDANCE_RAISE.name, view.topDrivers[0].type)
+    }
+
+    @Test
+    fun `events7d counts clusters discovered in the week before the snapshot, as discovery does`() {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell"))
+        // Dated 10 days ago but discovered yesterday: counts. Discovered 8 days ago: does not.
+        events.save(raise(company.id, EventType.GUIDANCE_RAISE).copy(eventTimestamp = t0.minusSeconds(10 * 86_400), discoveredAt = t0.minusSeconds(86_400)))
+        events.save(raise(company.id, EventType.EARNINGS_BEAT).copy(eventTimestamp = t0.minusSeconds(8 * 86_400), discoveredAt = t0.minusSeconds(8 * 86_400)))
+        catalyst.recalculate(company.id, t0)
+
+        val view = views.view("DELL")
+
+        assertEquals(1, view.events7d)
+        assertEquals(1, discovery.discover(com.catalystradar.persistence.discovery.DiscoveryQuery(asOf = t0.plusSeconds(60))).results.single { it.ticker == "DELL" }.events7d)
+    }
+
+    @Test
+    fun `seven day change reports whether a baseline snapshot exists`() {
+        val company = companies.save(Company(ticker = "DELL", name = "Dell"))
+        events.save(raise(company.id, EventType.GUIDANCE_RAISE))
+        catalyst.recalculate(company.id, t0)
+        assertEquals(false, views.view("DELL").velocity7dBaselineAvailable)
+
+        catalyst.recalculate(company.id, t0.plusSeconds(8 * 86_400))
+        assertEquals(true, views.view("DELL").velocity7dBaselineAvailable)
     }
 
     @Test

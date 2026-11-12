@@ -14,7 +14,7 @@ interface StateTransitionRepository : ListCrudRepository<StateTransitionRow, UUI
         WHERE company_id = :companyId
           AND (CAST(:from AS TIMESTAMPTZ) IS NULL OR transitioned_at >= :from)
           AND (CAST(:to AS TIMESTAMPTZ) IS NULL OR transitioned_at <= :to)
-        ORDER BY transitioned_at, id
+        ORDER BY transitioned_at DESC, id DESC
         LIMIT :limit
         """,
     )

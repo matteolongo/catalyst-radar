@@ -721,12 +721,23 @@ Example response:
       "score": 71.4,
       "state": "CATALYZED",
       "velocity7d": 18.7,
+      "velocity7dBaselineAvailable": true,
       "events7d": 6,
       "confidence": 0.88
     }
   ]
 }
 ```
+
+Discovery ranks active companies only. `events7d` (in discovery and in
+`/catalyst`) is the number of distinct clusters, with unclustered events
+counted individually, discovered in the 7 days ending at that company's
+snapshot `asOf`. `velocity7dBaselineAvailable` is `false` when no snapshot
+exists 7 days before `asOf`; `velocity7d` is then `0` because there is nothing
+to compare against, not because the score was flat. `/timeline` returns the
+newest snapshots and transitions in the window (transitions in ascending
+order); `snapshotsTruncated` and `transitionsTruncated` report that older
+entries exist beyond `limit`.
 
 ---
 

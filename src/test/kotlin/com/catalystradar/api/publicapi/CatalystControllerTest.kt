@@ -186,7 +186,7 @@ class CatalystControllerTest {
     @Test
     fun `returns timeline with snapshots and transitions`() {
         `when`(companies.findByTicker("DELL")).thenReturn(company)
-        `when`(snapshots.history(eq(company.id), anyOrNull(), anyOrNull(), eq(50))).thenReturn(
+        `when`(snapshots.history(eq(company.id), anyOrNull(), anyOrNull(), eq(51))).thenReturn(
             listOf(
                 CatalystSnapshot(
                     companyId = company.id,
@@ -198,7 +198,7 @@ class CatalystControllerTest {
                 ),
             ),
         )
-        `when`(snapshots.findTransitions(eq(company.id), anyOrNull(), anyOrNull(), eq(50))).thenReturn(emptyList())
+        `when`(snapshots.findTransitions(eq(company.id), anyOrNull(), anyOrNull(), eq(51))).thenReturn(emptyList())
 
         mockMvc.get("/v1/companies/DELL/timeline") {
             accept = MediaType.APPLICATION_JSON
@@ -208,6 +208,36 @@ class CatalystControllerTest {
             jsonPath("$.snapshots.length()") { value(1) }
             jsonPath("$.snapshots[0].state") { value("BUILDING") }
             jsonPath("$.transitions.length()") { value(0) }
+            jsonPath("$.snapshotsTruncated") { value(false) }
+            jsonPath("$.transitionsTruncated") { value(false) }
+        }
+    }
+
+    @Test
+    fun `timeline flags truncation and keeps the newest entries of both lists`() {
+        `when`(companies.findByTicker("DELL")).thenReturn(company)
+        fun snapshotAt(hours: Long) = CatalystSnapshot(
+            companyId = company.id, score = CatalystScore(hours.toDouble(), "score-v1"), state = CatalystState.BUILDING,
+            velocity = ScoreVelocity(0.0, 0.0, 0.0), asOf = t0.plusSeconds(hours * 3_600), taxonomyVersion = "taxonomy-v1",
+        )
+        fun transitionAt(hours: Long) = com.catalystradar.persistence.catalyst.StateTransitionRecord(
+            companyId = company.id, from = CatalystState.WATCH, to = CatalystState.BUILDING,
+            score = CatalystScore(50.0, "score-v1"), at = t0.plusSeconds(hours * 3_600),
+        )
+        // Stores return limit + 1 rows: snapshots newest first, transitions oldest first.
+        `when`(snapshots.history(eq(company.id), anyOrNull(), anyOrNull(), eq(3))).thenReturn(listOf(snapshotAt(3), snapshotAt(2), snapshotAt(1)))
+        `when`(snapshots.findTransitions(eq(company.id), anyOrNull(), anyOrNull(), eq(3))).thenReturn(listOf(transitionAt(1), transitionAt(2), transitionAt(3)))
+
+        mockMvc.get("/v1/companies/DELL/timeline?limit=2") {
+            accept = MediaType.APPLICATION_JSON
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.snapshots.length()") { value(2) }
+            jsonPath("$.snapshots[0].score") { value(3.0) }
+            jsonPath("$.transitions.length()") { value(2) }
+            jsonPath("$.transitions[1].at") { value(t0.plusSeconds(3 * 3_600).toString()) }
+            jsonPath("$.snapshotsTruncated") { value(true) }
+            jsonPath("$.transitionsTruncated") { value(true) }
         }
     }
 
