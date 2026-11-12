@@ -638,6 +638,7 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         assertEquals(0, run.companiesFailed)
         assertEquals(0, run.companiesRescored)
         assertFalse(recorder.isActive(attempt.runId))
+        assertEquals(1.0, meterRegistry.counter("catalyst_pipeline_cycles_total", "status", "cancelled").count())
     }
 
     @Test
@@ -659,8 +660,11 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         ).runCycle(now)
         val id = assertNotNull(result.runId)
         assertEquals("FAILED", result.status)
-        assertEquals(0, result.documentsProcessed, "legacy outer failure result retains its counters")
         val run = assertNotNull(operationRuns.detail(id, Instant.now())).run
+        assertEquals(run.documentsConsidered, result.documentsConsidered, "the response reports what the run row holds")
+        assertEquals(run.documentsCompleted, result.documentsCompleted)
+        assertEquals(run.eventsInserted, result.eventsInserted)
+        assertEquals(1, result.documentsCompleted)
         assertEquals(OperationStatus.FAILED, run.status)
         assertFalse(run.captureComplete)
         assertEquals("PROCESSING_FAILURE", run.errorCode)
