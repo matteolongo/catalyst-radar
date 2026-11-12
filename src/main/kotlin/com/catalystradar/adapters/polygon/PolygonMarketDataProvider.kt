@@ -1,6 +1,8 @@
 package com.catalystradar.adapters.polygon
 
 import com.catalystradar.adapters.http.mapHttpClientError
+import com.catalystradar.adapters.http.mapTransportError
+import com.catalystradar.adapters.http.timeouts
 import com.catalystradar.ports.DailyBar
 import com.catalystradar.ports.MarketDataProvider
 import com.catalystradar.ports.ProviderException
@@ -29,27 +31,26 @@ class PolygonMarketDataProvider(
     private val properties: PolygonProperties,
 ) : MarketDataProvider {
 
-    private val client = builder.baseUrl(properties.baseUrl).build()
+    private val client = builder.baseUrl(properties.baseUrl)
+        .requestFactory(timeouts(properties.connectTimeout, properties.readTimeout))
+        .build()
 
     override suspend fun dailyBars(ticker: String, from: LocalDate, to: LocalDate): List<DailyBar> =
         withContext(Dispatchers.IO) {
             try {
-                val response = client.get().uri { uri ->
-                    uri.path("/v2/aggs/ticker/$ticker/range/1/day/$from/$to")
-                    uri.queryParam("adjusted", true)
-                    uri.queryParam("sort", "asc")
-                    uri.queryParam("limit", 5000)
-                    uri.queryParam("apiKey", properties.apiKey)
-                    uri.build()
-                }.retrieve().body<PolygonAggregates>()
-                    ?: throw ProviderException.InvalidResponse("polygon: empty aggregates")
+                // A template keeps ticker and dates out of the request metric's uri tag.
+                val response = client.get().uri(
+                    "/v2/aggs/ticker/{ticker}/range/1/day/{from}/{to}?adjusted=true&sort=asc&limit=5000&apiKey={apiKey}",
+                    ticker, from, to, properties.apiKey,
+                ).retrieve().body<PolygonAggregates>()
+                    ?: throw ProviderException.InvalidResponse("polygon: empty aggregates", provider = "polygon")
                 response.results.orEmpty().mapNotNull { it.toBar(ticker) }
             } catch (e: HttpClientErrorException) {
                 throw mapHttpClientError("polygon", e)
             } catch (e: HttpServerErrorException) {
-                throw ProviderException.TemporaryUnavailable("polygon: ${e.statusCode}")
+                throw ProviderException.TemporaryUnavailable("polygon: ${e.statusCode}", provider = "polygon")
             } catch (e: RestClientException) {
-                throw ProviderException.InvalidResponse("polygon: ${e.message}")
+                throw mapTransportError("polygon", e)
             }
         }
 }

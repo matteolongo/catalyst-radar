@@ -89,13 +89,20 @@ catalyst:
     base-url: https://api.polygon.io
     # Never commit a real key: export POLYGON_API_KEY in the environment.
     api-key: ${POLYGON_API_KEY:}
+    connect-timeout: PT10S
+    read-timeout: PT30S
   finnhub:
     base-url: https://finnhub.io
     # Never commit a real key: export FINNHUB_API_KEY in the environment.
     api-key: ${FINNHUB_API_KEY:}
+    connect-timeout: PT10S
+    read-timeout: PT30S
   openai:
     base-url: https://api.openai.com
     # Never commit a real key: export OPENAI_API_KEY in the environment.
     api-key: ${OPENAI_API_KEY:}
     extraction-model: ${CATALYST_OPENAI_EXTRACTION_MODEL:gpt-4o-mini}
     embedding-model: text-embedding-3-small
+    connect-timeout: PT10S
+    extraction-read-timeout: PT120S
+    embedding-read-timeout: PT60S

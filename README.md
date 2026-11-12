@@ -359,6 +359,16 @@ many documents are extracted in parallel. The Micrometer registry records bounde
 document-processing, retry, daily-snapshot, replay, provider, and LLM metrics.
 No metric tags include a ticker, company ID, document body, prompt, or secret.
 
+Provider HTTP calls (Polygon, Finnhub, OpenAI) are measured as
+`http_client_requests_seconds{client_name,method,uri,status,outcome,exception}`.
+The `uri` tag is the request path or its template (for example
+`/v2/aggs/ticker/{ticker}/range/1/day/{from}/{to}`), never a full URL, so API
+keys sent as query parameters and per-ticker values stay out of tags. Every
+provider client has explicit timeouts (`catalyst.<provider>.connect-timeout`,
+`read-timeout`; OpenAI uses `extraction-read-timeout` and
+`embedding-read-timeout`). A timeout or other I/O failure is classified as
+`TEMPORARY_UNAVAILABLE` and retried with backoff, not recorded as invalid output.
+
 LLM cost is also exported as `catalyst_llm_estimated_cost_usd_total{operation,model}`,
 incremented only when the cost of a call is known. Model IDs are recorded as
 their family: a dated snapshot such as `gpt-4o-mini-2024-07-18` is recorded,

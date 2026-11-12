@@ -1,6 +1,8 @@
 package com.catalystradar.adapters.openai
 
 import com.catalystradar.adapters.http.mapHttpClientError
+import com.catalystradar.adapters.http.mapTransportError
+import com.catalystradar.adapters.http.timeouts
 import com.catalystradar.application.operations.OperationalErrors
 import com.catalystradar.common.Versions
 import com.catalystradar.observability.CatalystMetrics
@@ -18,7 +20,6 @@ import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import org.springframework.core.io.ResourceLoader
 import org.springframework.http.MediaType
-import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.HttpServerErrorException
@@ -46,12 +47,7 @@ class OpenAiEventExtractionProvider(
 ) : EventExtractionProvider {
 
     private val client = builder.baseUrl(properties.baseUrl)
-        .requestFactory(
-            SimpleClientHttpRequestFactory().apply {
-                setConnectTimeout(CONNECT_TIMEOUT_MS)
-                setReadTimeout(READ_TIMEOUT_MS)
-            },
-        )
+        .requestFactory(timeouts(properties.connectTimeout, properties.extractionReadTimeout))
         .build()
 
     private val systemPrompt: String by lazy {
@@ -98,7 +94,7 @@ class OpenAiEventExtractionProvider(
         is HttpClientErrorException -> mapHttpClientError("openai", e)
         is HttpServerErrorException -> ProviderException.TemporaryUnavailable("openai: ${e.statusCode}", provider = "openai")
         is JacksonException -> ProviderException.InvalidResponse("openai: unusable JSON (${e.message})", provider = "openai")
-        is RestClientException -> ProviderException.InvalidResponse("openai: ${e.message}", provider = "openai")
+        is RestClientException -> mapTransportError("openai", e)
         else -> e
     }
 
@@ -211,8 +207,6 @@ class OpenAiEventExtractionProvider(
         }
 
     companion object {
-        const val CONNECT_TIMEOUT_MS = 10_000
-        const val READ_TIMEOUT_MS = 120_000
         const val DOCUMENT_CHAR_LIMIT = 8_000
         private val mapper = ObjectMapper()
     }
