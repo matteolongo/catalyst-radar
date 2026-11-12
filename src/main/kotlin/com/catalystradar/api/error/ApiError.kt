@@ -104,8 +104,7 @@ class ApiExceptionHandler {
     }
 
     private fun rootMessage(e: Exception): String {
-        var current: Throwable = e
-        while (current.cause != null && current.cause !== current) current = current.cause!!
-        return current.message ?: e.javaClass.simpleName
+        val root = generateSequence<Throwable>(e) { it.cause?.takeIf { cause -> cause !== it } }.last()
+        return root.message ?: e.javaClass.simpleName
     }
 }

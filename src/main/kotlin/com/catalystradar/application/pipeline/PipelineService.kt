@@ -1,6 +1,7 @@
 package com.catalystradar.application.pipeline
 
 import com.catalystradar.application.catalyst.CatalystService
+import com.catalystradar.application.extraction.ExtractionResultCache
 import com.catalystradar.application.clustering.EventClusteringService
 import com.catalystradar.application.event.EventNormalizationService
 import com.catalystradar.application.ingestion.DocumentProcessingStatus
@@ -15,11 +16,20 @@ import com.catalystradar.persistence.document.SourceDocumentCompanyStore
 import com.catalystradar.persistence.document.SourceDocumentStore
 import com.catalystradar.persistence.operations.DocumentStepStore
 import com.catalystradar.ports.EventExtractionProvider
-import com.catalystradar.ports.ExtractionRequest
-import com.catalystradar.ports.ProviderException
+import jakarta.annotation.PreDestroy
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.CancellationException
@@ -62,22 +72,68 @@ class PipelineService(
     private val recorder: OperationRunRecorder,
     private val attempts: ProcessingAttemptService,
     private val steps: DocumentStepStore,
+    extractionCache: ExtractionResultCache? = null,
 ) {
+    private val processor = DocumentProcessor(
+        extraction, normalization, clustering, persistence, documents, documentCompanies, companies,
+        properties, recorder, attempts, steps, extractionCache,
+    )
+    private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private val log = LoggerFactory.getLogger(PipelineService::class.java)
     private val running = AtomicBoolean(false)
 
     suspend fun runCycle(now: Instant = Instant.now(), trigger: OperationTrigger = OperationTrigger.MANUAL): PipelineResult {
-        if (!running.compareAndSet(false, true)) {
-            metrics.pipelineCycle("skipped")
-            return PipelineResult("SKIPPED", 0, 0, 0, alreadyRunning = true)
+        if (!running.compareAndSet(false, true)) return skipped()
+        return try {
+            execute(now, trigger, startedRunId = null)
+        } finally {
+            running.set(false)
         }
-        var runId: UUID? = null
+    }
+
+    /**
+     * Opens the run record, then drains the queue in the background so a
+     * caller is not held for a whole cycle. The result carries the run id;
+     * progress is read from the run itself.
+     */
+    fun start(now: Instant = Instant.now(), trigger: OperationTrigger = OperationTrigger.MANUAL): PipelineResult {
+        if (!running.compareAndSet(false, true)) return skipped()
+        val id = try {
+            recorder.begin(OperationKind.PIPELINE, trigger, now)
+        } catch (e: RuntimeException) {
+            running.set(false)
+            throw e
+        }
+        background.launch {
+            try {
+                execute(now, trigger, startedRunId = id)
+            } finally {
+                running.set(false)
+            }
+        }
+        return PipelineResult("RUNNING", 0, 0, 0, runId = id)
+    }
+
+    @PreDestroy
+    fun stopBackgroundRuns() {
+        background.cancel()
+    }
+
+    private fun skipped(): PipelineResult {
+        metrics.pipelineCycle("skipped")
+        return PipelineResult("SKIPPED", 0, 0, 0, alreadyRunning = true)
+    }
+
+    private suspend fun execute(now: Instant, trigger: OperationTrigger, startedRunId: UUID?): PipelineResult {
+        var runId: UUID? = startedRunId
         var phase = OperationPhase.INGESTION
         var counts = OperationCounts()
         return try {
-            val id = recorder.begin(OperationKind.PIPELINE, trigger, now)
+            val id = startedRunId ?: recorder.begin(OperationKind.PIPELINE, trigger, now)
             runId = id
             require(properties.batchSize in 1..500) { "pipeline batchSize must be within 1..500" }
+            require(properties.concurrency in 1..16) { "pipeline concurrency must be within 1..16" }
             require(properties.maxAttempts >= 1) { "pipeline maxAttempts must be positive" }
             require(!properties.retryDelay.isNegative && !properties.retryDelay.isZero) { "pipeline retryDelay must be positive" }
             var firstErrorCode: String? = null
@@ -99,23 +155,36 @@ class PipelineService(
             phase = OperationPhase.PROCESSING
             recorder.phase(id, phase)
             val affectedCompanies = linkedSetOf<UUID>()
-            for (record in processing.findDue(now, properties.batchSize)) {
-                val outcome = processDocument(record.sourceDocumentId, id, now)
-                affectedCompanies += outcome.affectedCompanies
-                counts = counts.copy(
-                    documentsConsidered = counts.documentsConsidered + 1,
-                    documentsCompleted = counts.documentsCompleted + if (outcome.status == DocumentProcessingStatus.COMPLETED) 1 else 0,
-                    documentsSkipped = counts.documentsSkipped + if (outcome.status == DocumentProcessingStatus.SKIPPED) 1 else 0,
-                    documentsRetryScheduled = counts.documentsRetryScheduled + if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) 1 else 0,
-                    documentsTerminalFailures = counts.documentsTerminalFailures + if (outcome.status == DocumentProcessingStatus.TERMINAL_ERROR) 1 else 0,
-                    eventsInserted = counts.eventsInserted + outcome.eventsInserted,
-                    eventsReused = counts.eventsReused + outcome.eventsReused,
-                )
-                recorder.progress(id, counts)
-                metrics.documentProcessing(outcome.status.name.lowercase())
-                if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) metrics.documentRetryAttempt()
-                if (outcome.error != null && firstErrorCode == null) {
-                    firstErrorCode = processing.findBySourceDocumentId(record.sourceDocumentId)?.lastErrorCode ?: "PROCESSING_FAILURE"
+            val countsLock = Mutex()
+            suspend fun handle(sourceDocumentId: UUID) {
+                val outcome = processor.process(sourceDocumentId, id, now)
+                countsLock.withLock {
+                    affectedCompanies += outcome.affectedCompanies
+                    counts = counts.copy(
+                        documentsConsidered = counts.documentsConsidered + 1,
+                        documentsCompleted = counts.documentsCompleted + if (outcome.status == DocumentProcessingStatus.COMPLETED) 1 else 0,
+                        documentsSkipped = counts.documentsSkipped + if (outcome.status == DocumentProcessingStatus.SKIPPED) 1 else 0,
+                        documentsRetryScheduled = counts.documentsRetryScheduled + if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) 1 else 0,
+                        documentsTerminalFailures = counts.documentsTerminalFailures + if (outcome.status == DocumentProcessingStatus.TERMINAL_ERROR) 1 else 0,
+                        eventsInserted = counts.eventsInserted + outcome.eventsInserted,
+                        eventsReused = counts.eventsReused + outcome.eventsReused,
+                    )
+                    recorder.progress(id, counts)
+                    metrics.documentProcessing(outcome.status.name.lowercase())
+                    if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) metrics.documentRetryAttempt()
+                    if (outcome.error != null && firstErrorCode == null) {
+                        firstErrorCode = processing.findBySourceDocumentId(sourceDocumentId)?.lastErrorCode ?: "PROCESSING_FAILURE"
+                    }
+                }
+            }
+            val due = processing.findDue(now, properties.batchSize).map { it.sourceDocumentId }
+            if (properties.concurrency == 1) {
+                due.forEach { handle(it) }
+            } else {
+                val permits = Semaphore(properties.concurrency)
+                coroutineScope {
+                    due.map { documentId -> async(Dispatchers.IO) { permits.withPermit { handle(documentId) } } }
+                        .forEach { it.await() }
                 }
             }
             phase = OperationPhase.SCORING
@@ -180,80 +249,4 @@ class PipelineService(
         runCatching { recorder.finish(id, status, null, code, captureComplete = false) }
             .onFailure { log.warn("pipeline final recording failed for run {}", id) }
     }
-
-    private suspend fun processDocument(sourceDocumentId: UUID, runId: UUID, now: Instant): DocumentOutcome {
-        val attempt = attempts.begin(sourceDocumentId, runId, now)
-        var activeStep: UUID? = null
-        fun start(stage: DocumentStage, input: Int? = null): UUID =
-            steps.start(runId, sourceDocumentId, attempt.id, stage, inputCount = input).also { activeStep = it }
-        fun finish(output: Int? = null, status: StepStatus = StepStatus.SUCCEEDED) {
-            steps.finish(requireNotNull(activeStep), status, outputCount = output)
-            activeStep = null
-        }
-        fun recordFailure(status: StepStatus, code: String) {
-            activeStep?.let { step ->
-                runCatching { steps.finish(step, status, code = code) }
-                    .onFailure { log.warn("pipeline step final recording failed for document {}", sourceDocumentId) }
-            }
-        }
-        return try {
-            val document = documents.findById(sourceDocumentId)
-                ?: return attempts.fail(attempt, DocumentProcessingStatus.TERMINAL_ERROR, "PROCESSING_FAILURE", null, now).also {
-                    recorder.issue(runId, OperationPhase.PROCESSING, "PROCESSING_FAILURE", documentId = sourceDocumentId)
-                }
-            val resolved = documentCompanies.findCompanyIds(sourceDocumentId).mapNotNull(companies::findById)
-            if (resolved.isEmpty()) {
-                start(DocumentStage.EVENT_EXTRACTION)
-                finish(status = StepStatus.SKIPPED)
-                val persistenceStep = start(DocumentStage.EVENT_PERSISTENCE, 0)
-                return persistence.persist(DocumentPersistencePlan(sourceDocumentId, emptyList(), attempt.id, persistenceStep), DocumentProcessingStatus.SKIPPED, now)
-            }
-            start(DocumentStage.EVENT_EXTRACTION, 1)
-            val extractionResult = extraction.extract(ExtractionRequest(document, resolved, attempt.id))
-            finish(extractionResult.events.size)
-            start(DocumentStage.EVENT_VALIDATION, extractionResult.events.size)
-            val validated = normalization.validateDocument(extractionResult)
-            finish(validated.events.size)
-            start(DocumentStage.EVENT_NORMALIZATION, validated.events.size)
-            val prepared = normalization.prepareValidatedDocument(document, validated, resolved)
-            finish(prepared.size, if (validated.documentRelevant) StepStatus.SUCCEEDED else StepStatus.SKIPPED)
-            start(DocumentStage.EVENT_CLUSTERING, prepared.size)
-            val plannedEvents = prepared.map { candidate ->
-                PlannedEvent(
-                    event = candidate.event,
-                    fingerprint = candidate.fingerprint,
-                    cluster = clustering.prepareClustering(sourceDocumentId, candidate.fingerprint, candidate.event, attempt.id),
-                )
-            }
-            finish(plannedEvents.size, if (prepared.isEmpty()) StepStatus.SKIPPED else StepStatus.SUCCEEDED)
-            val persistenceStep = start(DocumentStage.EVENT_PERSISTENCE, plannedEvents.size)
-            val plan = DocumentPersistencePlan(sourceDocumentId, plannedEvents, attempt.id, persistenceStep)
-            val finalStatus = if (extractionResult.documentRelevant) DocumentProcessingStatus.COMPLETED else DocumentProcessingStatus.SKIPPED
-            persistence.persist(plan, finalStatus, now)
-        } catch (e: CancellationException) {
-            recordFailure(StepStatus.INTERRUPTED, "CANCELLED")
-            runCatching { attempts.interrupt(attempt, "CANCELLED") }
-                .onFailure { log.warn("pipeline attempt cancellation recording failed for document {}", sourceDocumentId) }
-            throw e
-        } catch (e: ProviderException) {
-            val retryAt = if (e.isRetryable() && attempt.number < properties.maxAttempts) now.plus(retryDelay(e, attempt.number)) else null
-            val code = OperationalErrors.code(e)
-            recordFailure(StepStatus.FAILED, code)
-            attempts.fail(attempt, if (retryAt != null) DocumentProcessingStatus.RETRYABLE_ERROR else DocumentProcessingStatus.TERMINAL_ERROR, code, retryAt, now).also {
-                recorder.issue(runId, OperationPhase.PROCESSING, code, documentId = sourceDocumentId, provider = e.provider)
-            }
-        } catch (e: RuntimeException) {
-            recordFailure(StepStatus.FAILED, "PROCESSING_FAILURE")
-            attempts.fail(attempt, DocumentProcessingStatus.TERMINAL_ERROR, "PROCESSING_FAILURE", null, now).also {
-                recorder.issue(runId, OperationPhase.PROCESSING, "PROCESSING_FAILURE", documentId = sourceDocumentId)
-            }
-        }
-    }
-    private fun retryDelay(failure: ProviderException, attemptCount: Int): Duration {
-        if (failure is ProviderException.RateLimited && failure.retryAfterSeconds != null) return Duration.ofSeconds(failure.retryAfterSeconds)
-        return properties.retryDelay.multipliedBy(1L shl (attemptCount - 1).coerceAtMost(10))
-    }
-
-    private fun ProviderException.isRetryable(): Boolean =
-        this is ProviderException.RateLimited || this is ProviderException.TemporaryUnavailable
 }

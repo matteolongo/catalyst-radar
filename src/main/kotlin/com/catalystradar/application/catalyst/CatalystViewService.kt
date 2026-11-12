@@ -3,6 +3,7 @@ package com.catalystradar.application.catalyst
 import com.catalystradar.application.company.CompanyNotFoundException
 import com.catalystradar.application.company.CompanyService
 import com.catalystradar.application.scoring.ScoreCalculator
+import com.catalystradar.application.scoring.knownAt
 import com.catalystradar.application.scoring.CalculatedScore
 import com.catalystradar.application.scoring.EventContribution
 import com.catalystradar.domain.catalyst.CatalystState
@@ -77,7 +78,7 @@ class CatalystViewService(
         val company = companies.findByTicker(ticker) ?: throw CompanyNotFoundException(ticker)
         val snapshot = snapshots.latestSnapshot(company.id) ?: throw CatalystNotFoundException(ticker)
         val detailed = events.findDetailedAvailableByCompanyId(company.id, snapshots.createdAt(snapshot.id))
-        val canonical = selector.select(detailed.map { it.event })
+        val canonical = selector.select(knownAt(detailed.map { it.event }, snapshot.asOf))
         val detailsById = detailed.associateBy { it.event.id }
         val calculated = calculator.calculate(canonical, snapshot.asOf)
         val explanationStatus = when {

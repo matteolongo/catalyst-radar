@@ -10,6 +10,21 @@ interface EventRepository : ListCrudRepository<EventRow, UUID> {
 
     fun findByClusterId(clusterId: UUID): List<EventRow>
 
+    @Query(
+        """
+        SELECT * FROM events e
+        WHERE e.company_id = :companyId
+          AND e.discovered_at <= :asOf
+          AND (COALESCE(e.event_timestamp, e.discovered_at) >= :since
+               OR e.cluster_id IN (
+                   SELECT s.cluster_id FROM events s
+                   WHERE s.company_id = :companyId
+                     AND s.cluster_id IS NOT NULL
+                     AND COALESCE(s.event_timestamp, s.discovered_at) >= :since))
+        """,
+    )
+    fun findScoringInputs(companyId: UUID, since: Instant, asOf: Instant): List<EventRow>
+
     @Query("SELECT * FROM events WHERE company_id = :companyId AND created_at <= :snapshotCreatedAt")
     fun findAvailableByCompanyId(companyId: UUID, snapshotCreatedAt: Instant): List<EventRow>
 

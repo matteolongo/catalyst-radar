@@ -184,7 +184,7 @@
     var url = new URL(path, API_BASE);
     if (url.origin !== API_BASE || url.hash) throw new TypeError('API paths must stay on this origin');
     options = options || {};
-    var allowed = ['method', 'body', 'signal'];
+    var allowed = ['method', 'body', 'signal', 'async'];
     Object.keys(options).forEach(function (key) {
       if (!allowed.includes(key)) throw new TypeError('Unsupported API request option: ' + key);
     });
@@ -196,6 +196,10 @@
     var apiKey = window.sessionStorage.getItem(API_KEY_NAME);
     if (url.pathname.startsWith('/internal/') && adminKey) headers['X-Admin-Key'] = adminKey;
     if (url.pathname.startsWith('/v1/') && apiKey) headers.Authorization = 'Bearer ' + apiKey;
+    if (options.async) {
+      if (method !== 'POST') throw new TypeError('Only POST requests may run asynchronously');
+      headers.Prefer = 'respond-async';
+    }
     var fetchOptions = { method: method, headers: headers };
     if (options.signal) fetchOptions.signal = options.signal;
     if (options.body !== undefined) {
@@ -506,7 +510,7 @@
       (minTime === maxTime ? '' : '<text x="30" y="147" class="axis-label">' + new Date(minTime).toISOString().slice(0, 10) + '</text>' +
         '<text x="570" y="147" text-anchor="end" class="axis-label">' + new Date(maxTime).toISOString().slice(0, 10) + '</text>') + '</svg>';
     $('companyHistory').innerHTML = chart + transitionList + '<details><summary>View saved snapshots (' + snapshots.length + ')</summary>' +
-      '<div class="history-table"><table><caption>Stored score snapshots</caption><thead><tr><th>Date</th><th>Score</th><th>State</th><th>As of</th></tr></thead><tbody>' +
+      '<div class="history-table"><table><caption>Stored score snapshots</caption><thead><tr><th>Date</th><th>Score</th><th>Downside</th><th>State</th><th>As of</th></tr></thead><tbody>' +
       snapshots.map(function (s) { return '<tr><td data-label="Date">' + esc(s.asOf && !isNaN(new Date(s.asOf)) ? new Date(s.asOf).toISOString().slice(0, 10) : '–') + '</td><td data-label="Score">' + esc(fmtScore(s.score)) + '</td><td data-label="State">' + esc(s.state) + '</td><td data-label="As of">' + timeLabel(s.asOf) + '</td></tr>'; }).join('') +
       '</tbody></table></div></details>';
   }

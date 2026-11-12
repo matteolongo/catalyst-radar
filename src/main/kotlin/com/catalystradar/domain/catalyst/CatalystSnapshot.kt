@@ -17,8 +17,10 @@ data class CatalystSnapshot(
     val velocity: ScoreVelocity,
     val asOf: Instant,
     val taxonomyVersion: String,
+    val downsideScore: Double = 0.0,
 ) {
     init {
         require(taxonomyVersion.isNotBlank()) { "taxonomyVersion must not be blank" }
+        require(downsideScore in 0.0..100.0) { "downsideScore must be within 0..100, was $downsideScore" }
     }
 }

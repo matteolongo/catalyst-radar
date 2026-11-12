@@ -1,39 +1,30 @@
 package com.catalystradar.application.catalyst
 
 import com.catalystradar.application.scoring.ScoreCalculator
+import com.catalystradar.application.scoring.ScoreConfig
+import com.catalystradar.application.scoring.ScoreV1
+import com.catalystradar.application.scoring.knownAt
 import com.catalystradar.common.Versions
 import com.catalystradar.domain.catalyst.CatalystScore
 import com.catalystradar.domain.catalyst.CatalystSnapshot
 import com.catalystradar.domain.catalyst.CatalystState
 import com.catalystradar.domain.catalyst.ScoreVelocity
 import com.catalystradar.observability.CatalystMetrics
-import com.catalystradar.persistence.catalyst.CatalystSnapshotStore
 import com.catalystradar.persistence.operations.CompanyValuationStore
 import org.slf4j.LoggerFactory
-import com.catalystradar.persistence.event.EventStore
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
-/**
- * Initial score bands. Provisional calibration defaults, not truths:
- * BUILDING/CATALYZED separation comes from benchmark data in CR-18.
- */
-data class StateBand(val state: CatalystState, val minScore: Double, val maxScore: Double)
+typealias StateBand = com.catalystradar.application.scoring.StateBand
 
-private val stateBands = listOf(
-    StateBand(CatalystState.NORMAL, 0.0, 25.0),
-    StateBand(CatalystState.WATCH, 25.0, 45.0),
-    StateBand(CatalystState.BUILDING, 45.0, 65.0),
-    StateBand(CatalystState.CATALYZED, 65.0, 80.0),
-    StateBand(CatalystState.HIGH, 80.0, 100.0),
-)
+fun stateBandForScore(score: Double, config: ScoreConfig = ScoreV1.config): StateBand =
+    config.stateBandForScore(score)
 
-fun stateBandForScore(score: Double): StateBand =
-    stateBands.firstOrNull { score < it.maxScore } ?: stateBands.last()
-
-fun stateForScore(score: Double): CatalystState = stateBandForScore(score).state
+fun stateForScore(score: Double, config: ScoreConfig = ScoreV1.config): CatalystState =
+    stateBandForScore(score, config).state
 
 /**
  * Scoring/state application service: the only writer of catalyst
@@ -47,27 +38,29 @@ fun stateForScore(score: Double): CatalystState = stateBandForScore(score).state
  */
 @Service
 class CatalystService(
-    private val events: EventStore,
-    private val snapshots: CatalystSnapshotStore,
+    private val events: CompanyEventSource,
+    private val snapshots: SnapshotLedger,
     private val selector: CanonicalEventSelector,
     private val metrics: CatalystMetrics,
     private val valuations: CompanyValuationStore,
 ) {
 
     private val log = LoggerFactory.getLogger(CatalystService::class.java)
-    private val calculator = ScoreCalculator()
+    private val config = ScoreV1.config
+    private val calculator = ScoreCalculator(config)
+    private val horizon = Duration.ofSeconds((config.decayHorizonDays() * 86_400).toLong())
 
     @Transactional
     fun recalculate(companyId: UUID, asOf: Instant = Instant.now(), operationRunId: UUID? = null): CatalystSnapshot {
         snapshots.lockCompany(companyId)
-        val canonical = selector.select(events.findByCompanyId(companyId))
+        val known = knownAt(events.findScoringInputs(companyId, asOf.minus(horizon), asOf), asOf)
+        val canonical = selector.select(known)
         val calculated = calculator.calculate(canonical, asOf)
-        val state = stateForScore(calculated.score.value)
-        val history = snapshots.history(companyId)
+        val state = stateForScore(calculated.score.value, config)
         val velocity = ScoreVelocity(
-            velocity1d = scoreChangeSince(history, asOf.minusSeconds(86_400), calculated.score.value),
-            velocity3d = scoreChangeSince(history, asOf.minusSeconds(3L * 86_400), calculated.score.value),
-            velocity7d = scoreChangeSince(history, asOf.minusSeconds(7L * 86_400), calculated.score.value),
+            velocity1d = scoreChangeSince(snapshots, companyId, asOf.minusSeconds(86_400), calculated.score.value),
+            velocity3d = scoreChangeSince(snapshots, companyId, asOf.minusSeconds(3L * 86_400), calculated.score.value),
+            velocity7d = scoreChangeSince(snapshots, companyId, asOf.minusSeconds(7L * 86_400), calculated.score.value),
         )
         val previous = snapshots.latestAtOrBefore(companyId, asOf)
         val previousState = previous?.state
@@ -79,6 +72,7 @@ class CatalystService(
                 velocity = velocity,
                 asOf = asOf,
                 taxonomyVersion = Versions.TAXONOMY_V1,
+                downsideScore = calculator.scoreForRaw(calculated.negativeRaw),
             ),
         )
         var transitionId: UUID? = null
@@ -100,11 +94,11 @@ class CatalystService(
  * no history. Shared by live recalculation and historical replay.
  */
 fun scoreChangeSince(
-    history: List<CatalystSnapshot>,
+    snapshots: SnapshotLedger,
+    companyId: UUID,
     cutoff: Instant,
     current: Double,
 ): Double {
-    val baseline = history.filter { !it.asOf.isAfter(cutoff) }.maxByOrNull { it.asOf }
-        ?: return 0.0
+    val baseline = snapshots.latestAtOrBefore(companyId, cutoff) ?: return 0.0
     return current - baseline.score.value
 }

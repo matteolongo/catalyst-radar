@@ -22,6 +22,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
@@ -34,9 +35,24 @@ import java.time.Instant
 @RequestMapping("/internal/ingestion")
 class InternalPipelineController(private val pipeline: PipelineService) {
 
+    /**
+     * Synchronous by default. With `Prefer: respond-async` (RFC 7240) the run
+     * starts in the background and `202` returns its run id immediately;
+     * progress is read from the run itself.
+     */
     @PostMapping("/runs")
-    fun runIngestion(): PipelineResultResponse =
-        runBlocking { pipeline.runCycle().toResponse() }
+    fun runIngestion(
+        @RequestHeader("Prefer", required = false) prefer: String?,
+    ): ResponseEntity<PipelineResultResponse> {
+        val async = prefer.orEmpty().split(',').any { it.trim().equals("respond-async", ignoreCase = true) }
+        if (!async) return ResponseEntity.ok(runBlocking { pipeline.runCycle().toResponse() })
+        val started = pipeline.start()
+        return if (started.alreadyRunning) {
+            ResponseEntity.ok(started.toResponse())
+        } else {
+            ResponseEntity.accepted().header("Preference-Applied", "respond-async").body(started.toResponse())
+        }
+    }
 }
 
 @RestController

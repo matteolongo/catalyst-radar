@@ -9,8 +9,10 @@ import com.catalystradar.application.clustering.cosineSimilarity
 import com.catalystradar.application.company.CompanyNotFoundException
 import com.catalystradar.application.company.CompanyService
 import com.catalystradar.application.event.EventNormalizationService
+import com.catalystradar.application.extraction.ExtractionResultCache
 import com.catalystradar.application.extraction.ExtractionValidator
 import com.catalystradar.application.scoring.ScoreCalculator
+import com.catalystradar.application.scoring.knownAt
 import com.catalystradar.common.Versions
 import com.catalystradar.domain.catalyst.CatalystState
 import com.catalystradar.domain.event.CatalystEvent
@@ -57,7 +59,9 @@ data class ReplayResult(
  * Deterministic historical recomputation. Inputs are only source documents
  * durably linked to the company and discovered by the cutoff. Candidate
  * clusters are rebuilt in memory, so persisted events or clusters from the
- * future cannot alter historical scores. Replay writes no domain records.
+ * future cannot alter historical scores. Replay writes no domain records;
+ * parsed extraction results are reused from, and added to, the extraction
+ * result cache so a repeated replay is reproducible and calls no model.
  */
 @Service
 class ReplayService(
@@ -70,6 +74,7 @@ class ReplayService(
     private val embeddings: EmbeddingProvider,
     private val dedup: DedupProperties,
     private val metrics: CatalystMetrics,
+    private val extractionCache: ExtractionResultCache? = null,
 ) {
 
     private val calculator = ScoreCalculator()
@@ -91,8 +96,9 @@ class ReplayService(
         var documentsSkipped = 0
         val accepted = mutableListOf<CatalystEvent>()
         for (document in documents) {
+            val extractionRequest = ExtractionRequest(document, listOf(company))
             val result = validator.validate(
-                extraction.extract(ExtractionRequest(document, listOf(company))),
+                extractionCache?.extract(extraction, extractionRequest) ?: extraction.extract(extractionRequest),
             )
             if (!result.documentRelevant) {
                 documentsSkipped++
@@ -109,9 +115,8 @@ class ReplayService(
                 accepted += clusterer.assign(event)
             }
         }
-        val canonical = selector.select(accepted)
+        val canonical = selector.select(knownAt(accepted, request.cutoff))
         val calculated = calculator.calculate(canonical, request.cutoff)
-        val history = snapshots.history(company.id).filter { !it.asOf.isAfter(request.cutoff) }
         val state = stateForScore(calculated.score.value)
         metrics.replayInputs(
             documentsConsidered = documents.size,
@@ -123,9 +128,9 @@ class ReplayService(
             asOf = request.cutoff,
             score = calculated.score.value,
             state = state,
-            velocity1d = scoreChangeSince(history, request.cutoff.minusSeconds(86_400), calculated.score.value),
-            velocity3d = scoreChangeSince(history, request.cutoff.minusSeconds(3L * 86_400), calculated.score.value),
-            velocity7d = scoreChangeSince(history, request.cutoff.minusSeconds(7L * 86_400), calculated.score.value),
+            velocity1d = scoreChangeSince(snapshots, company.id, request.cutoff.minusSeconds(86_400), calculated.score.value),
+            velocity3d = scoreChangeSince(snapshots, company.id, request.cutoff.minusSeconds(3L * 86_400), calculated.score.value),
+            velocity7d = scoreChangeSince(snapshots, company.id, request.cutoff.minusSeconds(7L * 86_400), calculated.score.value),
             eventCount = canonical.size,
             scoreVersion = request.scoreVersion,
             taxonomyVersion = request.taxonomyVersion,

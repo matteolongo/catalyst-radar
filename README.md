@@ -279,6 +279,7 @@ All `/internal/*` routes require `X-Admin-Key`. The operational endpoints are:
 
 ```text
 POST /internal/ingestion/runs      run the full ingest-to-snapshot pipeline
+                                   (send `Prefer: respond-async` for 202 + runId)
 POST /internal/replays             recompute one company at a historical cutoff
 POST /internal/api-clients         issue a public API key
 ```
@@ -352,7 +353,9 @@ start from a fresh POC database or re-ingest that material.
 ### Observability
 
 `/actuator/health` is public for deployment checks and does not reveal health
-details. The Micrometer registry records bounded-cardinality pipeline,
+details. `/actuator/prometheus` exposes the registry in Prometheus format and
+requires `X-Admin-Key`. `catalyst.pipeline.concurrency` (default 1, max 16) bounds how
+many documents are extracted in parallel. The Micrometer registry records bounded-cardinality pipeline,
 document-processing, retry, daily-snapshot, replay, provider, and LLM metrics.
 No metric tags include a ticker, company ID, document body, prompt, or secret.
 Connect the registry to the deployment's chosen monitoring backend rather than
