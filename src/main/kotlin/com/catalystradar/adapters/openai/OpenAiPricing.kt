@@ -16,8 +16,17 @@ object OpenAiPricing {
         "text-embedding-3-small" to Price(inputPerMillionUsd = 0.02, outputPerMillionUsd = 0.0),
     )
 
+    private val SNAPSHOT_SUFFIX = Regex("-\\d{4}-\\d{2}-\\d{2}$")
+
+    /**
+     * Model family without a dated snapshot suffix. OpenAI may answer a
+     * request for `gpt-4o-mini` with `gpt-4o-mini-2024-07-18`; recording
+     * and pricing the family keeps one model in one place.
+     */
+    fun canonicalModel(model: String): String = model.replace(SNAPSHOT_SUFFIX, "")
+
     fun estimateUsd(model: String, inputTokens: Int, outputTokens: Int): BigDecimal? {
-        val price = PRICES[model] ?: return null
+        val price = PRICES[model] ?: PRICES[canonicalModel(model)] ?: return null
         return BigDecimal.valueOf(inputTokens.toLong()).multiply(BigDecimal.valueOf(price.inputPerMillionUsd))
             .add(BigDecimal.valueOf(outputTokens.toLong()).multiply(BigDecimal.valueOf(price.outputPerMillionUsd)))
             .divide(BigDecimal.valueOf(1_000_000))

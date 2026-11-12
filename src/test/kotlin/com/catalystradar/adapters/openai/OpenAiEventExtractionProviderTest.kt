@@ -131,6 +131,19 @@ class OpenAiEventExtractionProviderTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `dated response model is recorded and priced as its model family`() = runTest {
+        val req = request()
+        wireMock.stubFor(post(urlPathEqualTo("/v1/chat/completions"))
+            .willReturn(okJson(CHAT_RESPONSE.replace("\"gpt-4o-mini\"", "\"gpt-4o-mini-2024-07-18\""))))
+        provider().extract(req)
+        val recorded = modelRuns.findByDocument(req.document.id).single()
+        assertEquals("gpt-4o-mini", recorded.model)
+        assertEquals(BigDecimal("0.000045"), recorded.estimatedCost)
+        assertEquals(0.000045, meterRegistry.counter("catalyst_llm_estimated_cost_usd_total",
+            "operation", "extract", "model", "gpt-4o-mini").count(), 1e-12)
+    }
+
+    @Test
     fun `unknown extraction pricing preserves known tokens`() = runTest {
         val req = request()
         wireMock.stubFor(post(urlPathEqualTo("/v1/chat/completions"))

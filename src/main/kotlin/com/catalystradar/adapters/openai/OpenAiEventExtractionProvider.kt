@@ -155,7 +155,10 @@ class OpenAiEventExtractionProvider(
         error: String?,
         errorCode: String? = null,
     ) {
-        val resolvedModel = model ?: properties.extractionModel
+        val resolvedModel = OpenAiPricing.canonicalModel(model ?: properties.extractionModel)
+        val estimatedCost = if (usage?.promptTokens != null && usage.completionTokens != null) {
+            OpenAiPricing.estimateUsd(resolvedModel, usage.promptTokens, usage.completionTokens)
+        } else null
         metrics.llmCall(
             operation = "extract",
             model = resolvedModel,
@@ -163,6 +166,7 @@ class OpenAiEventExtractionProvider(
             inputTokens = usage?.promptTokens ?: 0,
             outputTokens = usage?.completionTokens ?: 0,
             latencyMs = latencyMs,
+            estimatedCostUsd = estimatedCost?.toDouble(),
         )
         runCatching {
             modelRuns.record(
@@ -177,9 +181,7 @@ class OpenAiEventExtractionProvider(
                     inputTokens = usage?.promptTokens,
                     outputTokens = usage?.completionTokens,
                     latencyMs = latencyMs,
-                    estimatedCost = if (usage?.promptTokens != null && usage.completionTokens != null) {
-                        OpenAiPricing.estimateUsd(resolvedModel, usage.promptTokens, usage.completionTokens)
-                    } else null,
+                    estimatedCost = estimatedCost,
                     success = success,
                     error = error,
                     errorCode = errorCode,

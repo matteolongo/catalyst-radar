@@ -26,9 +26,18 @@ management:
       probes:
         enabled: true
   tracing:
+    sampling:
+      # Spring Boot samples 10% of traces by default; LLM calls are root
+      # spans, so keep all of them unless an operator lowers this.
+      probability: ${LANGSMITH_SAMPLING_PROBABILITY:1.0}
     export:
       otlp:
         enabled: ${LANGSMITH_TRACING:false}
+  logging:
+    export:
+      otlp:
+        # Only LLM traces leave the process; application logs never do.
+        enabled: false
   opentelemetry:
     tracing:
       export:

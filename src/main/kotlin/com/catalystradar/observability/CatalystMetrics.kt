@@ -35,6 +35,7 @@ class CatalystMetrics(private val registry: MeterRegistry) {
         inputTokens: Int,
         outputTokens: Int,
         latencyMs: Long,
+        estimatedCostUsd: Double? = null,
     ) {
         val outcome = if (success) "success" else "failure"
         registry.counter(
@@ -53,6 +54,13 @@ class CatalystMetrics(private val registry: MeterRegistry) {
             "catalyst_llm_latency_seconds",
             listOf(Tag.of("operation", operation), Tag.of("model", model)),
         ).record(latencyMs, TimeUnit.MILLISECONDS)
+        // Unknown cost is skipped rather than counted as free.
+        estimatedCostUsd?.let {
+            registry.counter(
+                "catalyst_llm_estimated_cost_usd_total",
+                listOf(Tag.of("operation", operation), Tag.of("model", model)),
+            ).increment(it)
+        }
     }
 
     fun eventExtracted(family: String, type: String, direction: String) {

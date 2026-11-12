@@ -21,4 +21,16 @@ class OpenAiPricingTest {
     fun `known zero usage has zero estimated cost`() {
         assertEquals(BigDecimal("0.000000"), OpenAiPricing.estimateUsd("gpt-4o-mini", 0, 0))
     }
+
+    @Test
+    fun `dated snapshot ids are priced as their model family`() {
+        assertEquals(BigDecimal("0.000045"), OpenAiPricing.estimateUsd("gpt-4o-mini-2024-07-18", 100, 50))
+    }
+
+    @Test
+    fun `canonical model strips only a trailing date suffix`() {
+        assertEquals("gpt-4o-mini", OpenAiPricing.canonicalModel("gpt-4o-mini-2024-07-18"))
+        assertEquals("gpt-4o-mini", OpenAiPricing.canonicalModel("gpt-4o-mini"))
+        assertEquals("text-embedding-3-small", OpenAiPricing.canonicalModel("text-embedding-3-small"))
+    }
 }

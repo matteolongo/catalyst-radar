@@ -180,7 +180,7 @@ environment variables. Never commit a real key, token, or database password.
 | Public API-key enforcement | `CATALYST_API_AUTH_ENABLED` |
 | News providers | `POLYGON_API_KEY`, `FINNHUB_API_KEY` |
 | Extraction/embeddings | `OPENAI_API_KEY`, `CATALYST_OPENAI_EXTRACTION_MODEL` |
-| LLM tracing (LangSmith/OTLP, opt-in) | `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, `LANGSMITH_OTEL_ENDPOINT`, `LANGSMITH_CAPTURE_CONTENT` |
+| LLM tracing (LangSmith/OTLP, opt-in) | `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, `LANGSMITH_OTEL_ENDPOINT`, `LANGSMITH_CAPTURE_CONTENT`, `LANGSMITH_SAMPLING_PROBABILITY` (default `1.0`) |
 | Full-pipeline scheduler | `CATALYST_INGESTION_ENABLED`, `CATALYST_INGESTION_INTERVAL` |
 | Processing safety | `CATALYST_PIPELINE_BATCH_SIZE`, `CATALYST_PIPELINE_MAX_ATTEMPTS`, `CATALYST_PIPELINE_RETRY_DELAY` |
 | Daily decay snapshots | `CATALYST_SNAPSHOTS_ENABLED`, `CATALYST_SNAPSHOTS_INTERVAL` |
@@ -358,6 +358,13 @@ requires `X-Admin-Key`. `catalyst.pipeline.concurrency` (default 1, max 16) boun
 many documents are extracted in parallel. The Micrometer registry records bounded-cardinality pipeline,
 document-processing, retry, daily-snapshot, replay, provider, and LLM metrics.
 No metric tags include a ticker, company ID, document body, prompt, or secret.
+
+LLM cost is also exported as `catalyst_llm_estimated_cost_usd_total{operation,model}`,
+incremented only when the cost of a call is known. Model IDs are recorded as
+their family: a dated snapshot such as `gpt-4o-mini-2024-07-18` is recorded,
+priced and tagged as `gpt-4o-mini`. With `LANGSMITH_TRACING=true`, every LLM
+call is exported as a span unless `LANGSMITH_SAMPLING_PROBABILITY` lowers the
+rate; application logs and metrics are never exported over OTLP.
 
 Every response carries an `X-Request-Id` header. A caller-supplied
 `X-Request-Id` is kept when it is 1–64 characters of `A-Z a-z 0-9 . _ -`;

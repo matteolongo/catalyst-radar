@@ -60,7 +60,8 @@ class OperationsFixtures(private val jdbc: JdbcClient) {
     }
 
     fun model(at: Instant, cost: BigDecimal?, input: Int?, output: Int?, success: Boolean = true,
-              operation: String = "extract", document: UUID? = null, attempt: UUID? = null, latency: Long? = 100): UUID {
+              operation: String = "extract", document: UUID? = null, attempt: UUID? = null, latency: Long? = 100,
+              code: String? = if (success) null else "RATE_LIMITED"): UUID {
         val id = UUID.randomUUID()
         jdbc.sql("""
             INSERT INTO model_runs(id,provider,operation,model,source_document_id,processing_attempt_id,
@@ -68,7 +69,7 @@ class OperationsFixtures(private val jdbc: JdbcClient) {
             VALUES(:id,'openai',:operation,'gpt-4o-mini',:document,:attempt,:input,:output,:latency,:cost,:success,:code,:at::timestamptz)
         """).param("id", id).param("operation", operation).param("document", document).param("attempt", attempt)
             .param("input", input).param("output", output).param("latency", latency).param("cost", cost)
-            .param("success", success).param("code", if (success) null else "RATE_LIMITED")
+            .param("success", success).param("code", code)
             .param("at", at.toString()).update()
         return id
     }

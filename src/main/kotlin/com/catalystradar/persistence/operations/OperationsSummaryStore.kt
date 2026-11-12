@@ -87,6 +87,7 @@ class OperationsSummaryStore(
             SELECT id,provider,created_at AS observed_at,success AS succeeded,
                 CASE WHEN success THEN NULL ELSE COALESCE(error_code,'UNKNOWN_FAILURE') END AS error_code
             FROM model_runs WHERE provider='openai' AND created_at <= :now
+                AND error_code IS DISTINCT FROM 'CANCELLED'
         ) SELECT p.provider,latest.observed_at,latest.succeeded,latest.error_code,
             (SELECT MAX(o.observed_at) FROM observations o WHERE o.provider=p.provider AND o.succeeded) AS last_success_at,
             (SELECT COUNT(*) FROM observations o WHERE o.provider=p.provider AND NOT o.succeeded
