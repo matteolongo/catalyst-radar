@@ -9,7 +9,12 @@ frontend build. See the [operator/API reference](../docs/operations-backoffice.m
 
 **Radar** opens first with companies ranked by highest 7-day score change.
 Choose **Highest score** to rank by current score. Each row shows the saved
-score, state, signed change and snapshot time. On wide screens, selecting a
+score, state, signed change and snapshot time. A company with no snapshot 7
+days before its latest one shows **No 7-day baseline** instead of a change of
+0.0. A row saved more than 36 hours before the ranking is marked **Stale**: its
+score and change were computed then and have not decayed since, so it is not
+directly comparable with fresh rows. Enable daily snapshots to keep rankings
+comparable. On wide screens, selecting a
 ticker previews that snapshot beside the ranking, with links to the company
 record, score history and evidence. On narrow screens the ticker opens the
 company record directly. The preview uses the returned ranking data. If a
