@@ -51,6 +51,9 @@ class LlmTracing(
         return runCatching {
             val span = otel.getTracer(INSTRUMENTATION_NAME, INSTRUMENTATION_VERSION)
                 .spanBuilder("openai.$operation")
+                // Root span: a parent from an HTTP or pipeline observation is
+                // never exported (see LlmSpanExport) and would orphan it.
+                .setNoParent()
                 .startSpan()
             decorate(span)
             OtelLlmCallTrace(span, properties.captureContent)

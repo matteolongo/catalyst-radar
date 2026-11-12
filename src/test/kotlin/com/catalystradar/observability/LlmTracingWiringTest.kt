@@ -47,6 +47,37 @@ class LlmTracingWiringTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `LLM spans are roots even inside another active span`() {
+        val otel = requireNotNull(openTelemetry.ifAvailable)
+        val outer = otel.getTracer("outer").spanBuilder("http").startSpan()
+        val exporter = io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter.create()
+        val provider = io.opentelemetry.sdk.trace.SdkTracerProvider.builder()
+            .addSpanProcessor(io.opentelemetry.sdk.trace.export.SimpleSpanProcessor.create(exporter)).build()
+        val sdk = io.opentelemetry.sdk.OpenTelemetrySdk.builder().setTracerProvider(provider).build()
+        val sdkProvider = object : ObjectProvider<OpenTelemetry> {
+            override fun getObject(vararg args: Any?): OpenTelemetry = sdk
+            override fun getIfAvailable(): OpenTelemetry = sdk
+            override fun getIfUnique(): OpenTelemetry = sdk
+            override fun getObject(): OpenTelemetry = sdk
+        }
+        try {
+            outer.makeCurrent().use {
+                LlmTracing(sdkProvider, LangSmithProperties(enabled = true)).beginExtraction(
+                    "gpt-4o-mini",
+                    ExtractionRequest(
+                        SourceDocument(provider = "polygon", title = "t", body = "b", discoveredAt = Instant.parse("2026-09-16T10:00:00Z")),
+                        listOf(Company(ticker = "DELL", name = "Dell")),
+                    ),
+                ).succeed(null, null, null)
+            }
+            assertTrue(exporter.finishedSpanItems.single().parentSpanContext.isValid.not())
+        } finally {
+            outer.end()
+            provider.close()
+        }
+    }
+
+    @Test
     fun `every LLM span is sampled by default`() {
         assertEquals(1.0, environment.getProperty("management.tracing.sampling.probability", Double::class.java))
         val tracer = requireNotNull(openTelemetry.ifAvailable).getTracer("sampling-check")

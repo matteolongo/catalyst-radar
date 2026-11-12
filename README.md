@@ -364,7 +364,8 @@ incremented only when the cost of a call is known. Model IDs are recorded as
 their family: a dated snapshot such as `gpt-4o-mini-2024-07-18` is recorded,
 priced and tagged as `gpt-4o-mini`. With `LANGSMITH_TRACING=true`, every LLM
 call is exported as a span unless `LANGSMITH_SAMPLING_PROBABILITY` lowers the
-rate; application logs and metrics are never exported over OTLP.
+rate. Only LLM spans are exported: HTTP server and provider HTTP spans stay
+local, and application logs and metrics are never exported over OTLP.
 
 Every response carries an `X-Request-Id` header. A caller-supplied
 `X-Request-Id` is kept when it is 1–64 characters of `A-Z a-z 0-9 . _ -`;
