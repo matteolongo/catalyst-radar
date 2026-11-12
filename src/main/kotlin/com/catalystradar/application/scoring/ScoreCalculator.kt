@@ -5,6 +5,7 @@ import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.Direction
 import java.time.Duration
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.pow
@@ -31,7 +32,22 @@ data class CalculatedScore(
     val convergenceMultiplier: Double,
     val normalizationScale: Double,
     val contributionCutoff: Double,
-)
+) {
+    /** Downside strength on the same 0..100 scale, from negative contributions only. */
+    val negativeRaw: Double get() = -contributions.filter { it.sign < 0 }.sumOf { it.value }
+}
+
+/**
+ * Point-in-time guard: an event discovered or dated after the evaluated
+ * instant must not count. Apply it before canonical selection so a
+ * not-yet-known cluster member cannot displace a known one.
+ */
+fun knownAt(events: List<CatalystEvent>, asOf: Instant): List<CatalystEvent> {
+    // PostgreSQL stores microseconds and rounds, so a value stamped at asOf comes
+    // back up to half a microsecond later; compare at the storage resolution.
+    val storedAsOf = asOf.plusNanos(500).truncatedTo(ChronoUnit.MICROS)
+    return events.filter { !it.discoveredAt.isAfter(storedAsOf) && it.eventTimestamp?.isAfter(storedAsOf) != true }
+}
 
 /**
  * Deterministic score-v1 engine. Pure function of canonical events,
@@ -42,13 +58,14 @@ data class CalculatedScore(
 class ScoreCalculator(private val config: ScoreConfig = ScoreV1.config) {
 
     fun calculate(events: List<CatalystEvent>, asOf: Instant): CalculatedScore {
-        val contributions = events.mapNotNull { event ->
+        val known = knownAt(events, asOf)
+        val contributions = known.mapNotNull { event ->
             val contribution = contribution(event, asOf)
             val value = contribution.value.takeIf { abs(it) >= config.contributionCutoff }
                 ?: return@mapNotNull null
             contribution
         }
-        val families = events.filter { event -> contributions.any { it.eventId == event.id } }
+        val families = known.filter { event -> contributions.any { it.eventId == event.id } }
             .map { it.family }
             .toSet()
         val contributionSum = contributions.sumOf { it.value }

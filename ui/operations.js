@@ -2391,6 +2391,7 @@
       });
     }
     function pipelineOutcome(result) {
+      if (result.status === 'RUNNING') return 'Pipeline started. Progress appears in the run details below.';
       return 'Pipeline ' + esc(result.status || 'completed') + ': ' + integer(result.documentsCompleted) + ' documents completed, ' +
         integer(result.documentsSkipped) + ' skipped, ' + integer(result.documentsRetryScheduled) + ' retry scheduled, ' +
         integer(result.documentsTerminalFailures) + ' terminal failures; ' + integer(result.eventsInserted) + ' events inserted and ' +
@@ -2404,7 +2405,7 @@
       pipelineOutcomeText = null;
       updateRunNowButton();
       pipelineStatus('Starting pipeline…');
-      api('/internal/ingestion/runs', { method: 'POST' }).then(function (result) {
+      api('/internal/ingestion/runs', { method: 'POST', async: true }).then(function (result) {
         if (revision !== credentials().revision || !current(revision, requestSequence, 'pipeline')) return;
         if (result && result.alreadyRunning) {
           pipelineOutcomeText = 'A pipeline cycle is already running';

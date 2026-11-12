@@ -26,6 +26,7 @@ data class CatalystSnapshotRow(
     @Column("velocity_7d") val velocity7d: Double,
     @Column("taxonomy_version") val taxonomyVersion: String,
     @Column("as_of") val asOf: Instant,
+    @Column("downside_score") val downsideScore: Double = 0.0,
 )
 
 fun CatalystSnapshotRow.toDomain() = CatalystSnapshot(
@@ -36,6 +37,7 @@ fun CatalystSnapshotRow.toDomain() = CatalystSnapshot(
     velocity = ScoreVelocity(velocity1d = velocity1d, velocity3d = velocity3d, velocity7d = velocity7d),
     asOf = asOf,
     taxonomyVersion = taxonomyVersion,
+    downsideScore = downsideScore,
 )
 
 fun CatalystSnapshot.toRow() = CatalystSnapshotRow(
@@ -49,4 +51,5 @@ fun CatalystSnapshot.toRow() = CatalystSnapshotRow(
     velocity7d = velocity.velocity7d,
     taxonomyVersion = taxonomyVersion,
     asOf = asOf,
+    downsideScore = downsideScore,
 )

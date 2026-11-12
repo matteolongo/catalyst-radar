@@ -25,6 +25,7 @@ import com.catalystradar.persistence.catalyst.CatalystSnapshotStore
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
@@ -185,7 +186,7 @@ class CatalystControllerTest {
     @Test
     fun `returns timeline with snapshots and transitions`() {
         `when`(companies.findByTicker("DELL")).thenReturn(company)
-        `when`(snapshots.history(company.id)).thenReturn(
+        `when`(snapshots.history(eq(company.id), anyOrNull(), anyOrNull(), eq(50))).thenReturn(
             listOf(
                 CatalystSnapshot(
                     companyId = company.id,
@@ -197,7 +198,7 @@ class CatalystControllerTest {
                 ),
             ),
         )
-        `when`(snapshots.findTransitions(eq(company.id))).thenReturn(emptyList())
+        `when`(snapshots.findTransitions(eq(company.id), anyOrNull(), anyOrNull(), eq(50))).thenReturn(emptyList())
 
         mockMvc.get("/v1/companies/DELL/timeline") {
             accept = MediaType.APPLICATION_JSON

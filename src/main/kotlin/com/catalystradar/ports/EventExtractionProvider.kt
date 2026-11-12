@@ -16,6 +16,9 @@ import java.util.UUID
  * the deterministic engine scores. The model never sees scoring rules.
  */
 interface EventExtractionProvider {
+    /** Identifies the model behind this provider, so cached results are never reused across models. */
+    val model: String get() = "unspecified"
+
     suspend fun extract(request: ExtractionRequest): ExtractionResult
 }
 

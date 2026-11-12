@@ -124,6 +124,7 @@ fun CatalystView.toResponse() = CatalystResponse(
 
 data class SnapshotResponse(
     val score: Double,
+    val downsideScore: Double,
     val state: String,
     val velocity1d: Double,
     val velocity3d: Double,
@@ -135,6 +136,7 @@ data class SnapshotResponse(
 
 fun CatalystSnapshot.toResponse() = SnapshotResponse(
     score = score.value,
+    downsideScore = downsideScore,
     state = state.name,
     velocity1d = velocity.velocity1d,
     velocity3d = velocity.velocity3d,

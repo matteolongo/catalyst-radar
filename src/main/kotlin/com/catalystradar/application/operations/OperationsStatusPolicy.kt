@@ -12,8 +12,8 @@ class OperationsStatusPolicy(private val properties: OperationsProperties) {
         val age = lastSuccessAt?.let { Duration.between(it, now).coerceAtLeast(Duration.ZERO) }
         val status = when {
             !enabled -> FreshnessStatus.OFF
-            lastSuccessAt == null -> FreshnessStatus.NEVER
-            age!! > staleAfter -> FreshnessStatus.OVERDUE
+            age == null -> FreshnessStatus.NEVER
+            age > staleAfter -> FreshnessStatus.OVERDUE
             else -> FreshnessStatus.CURRENT
         }
         return Freshness(status, lastSuccessAt, age?.seconds, interval.seconds, staleAfter.seconds)

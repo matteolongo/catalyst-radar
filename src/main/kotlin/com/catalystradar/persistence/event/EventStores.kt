@@ -1,5 +1,6 @@
 package com.catalystradar.persistence.event
 
+import com.catalystradar.application.catalyst.CompanyEventSource
 import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.EventCluster
 import com.catalystradar.domain.event.EventType
@@ -16,7 +17,10 @@ class EventStore(
     private val repository: EventRepository,
     private val template: JdbcAggregateTemplate,
     private val jdbc: NamedParameterJdbcTemplate,
-) {
+) : CompanyEventSource {
+
+    override fun findScoringInputs(companyId: UUID, since: Instant, asOf: Instant): List<CatalystEvent> =
+        repository.findScoringInputs(companyId, since, asOf).map { it.toDomain() }
 
     fun save(
         event: CatalystEvent,

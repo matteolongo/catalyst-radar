@@ -1,5 +1,6 @@
 package com.catalystradar.persistence.catalyst
 
+import com.catalystradar.application.catalyst.SnapshotLedger
 import com.catalystradar.domain.catalyst.CatalystScore
 import com.catalystradar.domain.catalyst.CatalystSnapshot
 import com.catalystradar.domain.catalyst.CatalystState
@@ -16,20 +17,20 @@ class CatalystSnapshotStore(
     private val transitions: StateTransitionRepository,
     private val template: JdbcAggregateTemplate,
     private val jdbc: JdbcTemplate,
-) {
+) : SnapshotLedger {
 
-    fun save(snapshot: CatalystSnapshot): CatalystSnapshot =
+    override fun save(snapshot: CatalystSnapshot): CatalystSnapshot =
         template.insert(snapshot.toRow()).toDomain()
 
-    fun lockCompany(companyId: UUID) {
+    override fun lockCompany(companyId: UUID) {
         check(jdbc.queryForList("SELECT id FROM companies WHERE id=? FOR UPDATE", companyId).size == 1) { "company not found" }
     }
 
-    fun latestAtOrBefore(companyId: UUID, asOf: Instant): CatalystSnapshot? = jdbc.query(
+    override fun latestAtOrBefore(companyId: UUID, asOf: Instant): CatalystSnapshot? = jdbc.query(
         "SELECT * FROM catalyst_snapshots WHERE company_id=? AND as_of<=? ORDER BY as_of DESC,created_at DESC,id DESC LIMIT 1",
         { rs, _ -> CatalystSnapshotRow(rs.getObject("id", UUID::class.java), rs.getObject("company_id", UUID::class.java),
             rs.getDouble("score"), rs.getString("score_version"), rs.getString("state"), rs.getDouble("velocity_1d"),
-            rs.getDouble("velocity_3d"), rs.getDouble("velocity_7d"), rs.getString("taxonomy_version"), rs.getTimestamp("as_of").toInstant()).toDomain() },
+            rs.getDouble("velocity_3d"), rs.getDouble("velocity_7d"), rs.getString("taxonomy_version"), rs.getTimestamp("as_of").toInstant(), rs.getDouble("downside_score")).toDomain() },
         companyId, Timestamp.from(asOf),
     ).singleOrNull()
 
@@ -47,7 +48,11 @@ class CatalystSnapshotStore(
     fun history(companyId: UUID): List<CatalystSnapshot> =
         snapshots.findByCompanyIdOrderByAsOfDesc(companyId).map { it.toDomain() }
 
-    fun recordTransition(
+    /** Newest-first snapshots inside an optional window, bounded in the query. */
+    fun history(companyId: UUID, from: Instant?, to: Instant?, limit: Int): List<CatalystSnapshot> =
+        snapshots.findWindow(companyId, from, to, limit).map { it.toDomain() }
+
+    override fun recordTransition(
         companyId: UUID,
         from: CatalystState,
         to: CatalystState,
@@ -66,6 +71,9 @@ class CatalystSnapshotStore(
             ),
         ).id
     }
+
+    fun findTransitions(companyId: UUID, from: Instant?, to: Instant?, limit: Int): List<StateTransitionRecord> =
+        transitions.findWindow(companyId, from, to, limit).map { it.toRecord() }
 
     fun findTransitions(companyId: UUID): List<StateTransitionRecord> =
         transitions.findByCompanyIdOrderByTransitionedAt(companyId).map { it.toRecord() }

@@ -54,7 +54,8 @@ class OpenAiEventExtractionProvider(
         )
         .build()
 
-    private val systemPrompt: String by lazy {readResource("classpath:prompts/event-extractor-v1.txt")
+    private val systemPrompt: String by lazy {
+        readResource("classpath:prompts/event-extractor-v1.txt")
     }
 
     private val schemaJson: String by lazy {
@@ -62,6 +63,8 @@ class OpenAiEventExtractionProvider(
     }
 
     private val log = LoggerFactory.getLogger(OpenAiEventExtractionProvider::class.java)
+
+    override val model: String get() = properties.extractionModel
 
     override suspend fun extract(request: ExtractionRequest): ExtractionResult =
         withContext(Dispatchers.IO) {
@@ -81,36 +84,23 @@ class OpenAiEventExtractionProvider(
                 trace.fail(e)
                 recordFailure(request, response, started, e)
                 throw e
-            } catch (e: HttpClientErrorException) {
-                val mapped = mapHttpClientError("openai", e)
-                trace.fail(mapped)
-                recordFailure(request, response, started, mapped)
-                throw mapped
-            } catch (e: HttpServerErrorException) {
-                val failure = ProviderException.TemporaryUnavailable("openai: ${e.statusCode}", provider = "openai")
-                trace.fail(failure)
-                recordFailure(request, response, started, failure)
-                throw failure
-            } catch (e: ProviderException) {
-                trace.fail(e)
-                recordFailure(request, response, started, e)
-                throw e
-            } catch (e: JacksonException) {
-                val failure = ProviderException.InvalidResponse("openai: unusable JSON (${e.message})", provider = "openai")
-                trace.fail(failure)
-                recordFailure(request, response, started, failure)
-                throw failure
-            } catch (e: RestClientException) {
-                val failure = ProviderException.InvalidResponse("openai: ${e.message}", provider = "openai")
-                trace.fail(failure)
-                recordFailure(request, response, started, failure)
-                throw failure
             } catch (e: RuntimeException) {
-                trace.fail(e)
-                recordFailure(request, response, started, e)
-                throw e
+                val failure = toProviderFailure(e)
+                trace.fail(failure)
+                recordFailure(request, response, started, failure)
+                throw failure
             }
         }
+
+    /** Provider and unexpected runtime errors pass through; transport and parse errors become provider errors. */
+    private fun toProviderFailure(e: RuntimeException): RuntimeException = when (e) {
+        is ProviderException -> e
+        is HttpClientErrorException -> mapHttpClientError("openai", e)
+        is HttpServerErrorException -> ProviderException.TemporaryUnavailable("openai: ${e.statusCode}", provider = "openai")
+        is JacksonException -> ProviderException.InvalidResponse("openai: unusable JSON (${e.message})", provider = "openai")
+        is RestClientException -> ProviderException.InvalidResponse("openai: ${e.message}", provider = "openai")
+        else -> e
+    }
 
     private fun post(userMessage: String): OpenAiChatResponse {
         val body = mapOf(

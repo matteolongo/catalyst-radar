@@ -39,6 +39,7 @@ class ApiKeyAuthFilter(
             response.setHeader("Cache-Control", "no-store")
         }
         when {
+            path == "/actuator/prometheus" -> checkAdmin(request, response, chain)
             path == "/actuator" || path.startsWith("/actuator/") -> chain.doFilter(request, response)
             path.startsWith("/internal/") -> checkAdmin(request, response, chain)
             path.startsWith("/v1/") && authEnabled -> checkApiKey(request, response, chain)

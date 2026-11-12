@@ -155,6 +155,9 @@ separate timestamps.
 The only new UI execution control is existing `POST /internal/ingestion/runs`.
 It runs the full pipeline and may incur news/LLM costs; the UI warns before use.
 A busy response has `alreadyRunning=true`, null `runId` and no fictitious run.
+The UI sends `Prefer: respond-async`: the server then answers `202` with `status=RUNNING`
+and the `runId` immediately and continues in the background; progress is read from the
+run itself. Without that header the call stays synchronous and returns the final counts.
 Daily snapshots have scheduled history, perform no provider calls and have no new
 manual endpoint. There is no document retry, scheduler editing, cancel control,
 automatic replay, raw payload viewer or trading action.

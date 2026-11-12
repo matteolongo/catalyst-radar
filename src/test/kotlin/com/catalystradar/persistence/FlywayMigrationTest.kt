@@ -49,6 +49,7 @@ class FlywayMigrationTest : PostgresIntegrationTest() {
                 "event_clusters",
                 "events",
                 "catalyst_snapshots",
+                "extraction_results",
                 "state_transitions",
                 "model_runs",
                 "ingestion_runs",

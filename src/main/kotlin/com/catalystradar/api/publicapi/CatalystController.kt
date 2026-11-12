@@ -40,15 +40,8 @@ class CatalystController(
     ): TimelineResponse {
         require(limit in 1..200) { "limit must be within 1..200" }
         val company = companies.findByTicker(ticker) ?: throw CompanyNotFoundException(ticker)
-        val inWindow = { at: Instant ->
-            (from == null || !at.isBefore(from)) && (to == null || !at.isAfter(to))
-        }
-        val history = snapshots.history(company.id)
-            .filter { inWindow(it.asOf) }
-            .take(limit)
-        val transitions = snapshots.findTransitions(company.id)
-            .filter { inWindow(it.at) }
-            .take(limit)
+        val history = snapshots.history(company.id, from, to, limit)
+        val transitions = snapshots.findTransitions(company.id, from, to, limit)
         return TimelineResponse(
             ticker = company.ticker,
             snapshots = history.map { it.toResponse() },

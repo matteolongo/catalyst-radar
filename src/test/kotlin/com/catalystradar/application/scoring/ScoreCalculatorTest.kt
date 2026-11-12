@@ -169,6 +169,38 @@ class ScoreCalculatorTest {
         assertEquals(0.0, result.score.value, 1e-9)
     }
 
+    @Test
+    fun `events discovered or dated after the evaluated instant do not count`() {
+        val discoveredLater = raise(1.0).copy(discoveredAt = asOf.plusSeconds(1))
+        val datedLater = raise(1.0).copy(eventTimestamp = asOf.plusSeconds(1))
+
+        val result = calculator.calculate(listOf(discoveredLater, datedLater), asOf)
+
+        assertTrue(result.contributions.isEmpty())
+        assertEquals(0.0, result.score.value, 1e-9)
+    }
+
+    @Test
+    fun `an event stamped at the evaluated instant counts despite microsecond storage rounding`() {
+        val instant = Instant.parse("2026-09-16T10:00:00.123456789Z")
+        val stored = raise(1.0).copy(discoveredAt = Instant.parse("2026-09-16T10:00:00.123457Z"), eventTimestamp = null)
+
+        assertEquals(1, calculator.calculate(listOf(stored), instant).contributions.size)
+    }
+
+    @Test
+    fun `negative contributions are reported separately from the netted score`() {
+        val result = calculator.calculate(listOf(miss(confidence = 1.0)), asOf)
+
+        assertEquals(0.0, result.score.value, 1e-9)
+        assertEquals(7.2, result.negativeRaw, 1e-9)
+    }
+
+    @Test
+    fun `decay horizon covers the longest half-life`() {
+        assertTrue(ScoreV1.config.decayHorizonDays() > 90.0 * 9)
+    }
+
     private fun raise(confidence: Double) = CatalystEvent(
         companyId = UUID.randomUUID(),
         type = EventType.GUIDANCE_RAISE,

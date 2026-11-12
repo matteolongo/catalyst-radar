@@ -9,5 +9,7 @@ import java.time.Duration
 data class PipelineProperties(
     var batchSize: Int = 50,
     var maxAttempts: Int = 3,
+    /** Documents processed in parallel; each one calls the extraction and embedding providers. */
+    var concurrency: Int = 1,
     var retryDelay: Duration = Duration.ofMinutes(1),
 )

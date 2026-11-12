@@ -1,6 +1,7 @@
 package com.catalystradar.application.scoring
 
 import com.catalystradar.common.Versions
+import com.catalystradar.domain.catalyst.CatalystState
 import com.catalystradar.domain.event.Directness
 import com.catalystradar.domain.event.EventFamily
 import com.catalystradar.domain.event.EventType
@@ -14,6 +15,8 @@ import com.catalystradar.domain.event.SourceQuality
  * Weights are initial design defaults awaiting benchmark calibration,
  * not measured truths.
  */
+data class StateBand(val state: CatalystState, val minScore: Double, val maxScore: Double)
+
 data class ScoreConfig(
     val version: String,
     val baseWeights: Map<EventType, Double>,
@@ -24,7 +27,21 @@ data class ScoreConfig(
     val convergenceMultipliers: Map<Int, Double>,
     val normalizationScale: Double,
     val contributionCutoff: Double,
+    val stateBands: List<StateBand>,
 ) {
+    fun stateBandForScore(score: Double): StateBand =
+        stateBands.firstOrNull { score < it.maxScore } ?: stateBands.last()
+
+    /**
+     * How far back an event can still reach the contribution cutoff. Older
+     * events cannot change a score, so reads may stop loading them.
+     */
+    fun decayHorizonDays(): Double {
+        val longestHalfLife = (familyHalfLivesDays.values + halfLifeOverridesDays.values).max()
+        val strongestContribution = baseWeights.values.max()
+        return longestHalfLife * kotlin.math.log2(strongestContribution / contributionCutoff)
+    }
+
     fun halfLifeDays(type: EventType): Double =
         halfLifeOverridesDays[type] ?: requireNotNull(familyHalfLivesDays[type.family]) {
             "no half-life for family ${type.family}"
@@ -109,6 +126,15 @@ object ScoreV1 {
         4 to 1.15,
     )
 
+    /** Provisional calibration defaults; BUILDING/CATALYZED separation awaits benchmark data. */
+    private val stateBands = listOf(
+        StateBand(CatalystState.NORMAL, 0.0, 25.0),
+        StateBand(CatalystState.WATCH, 25.0, 45.0),
+        StateBand(CatalystState.BUILDING, 45.0, 65.0),
+        StateBand(CatalystState.CATALYZED, 65.0, 80.0),
+        StateBand(CatalystState.HIGH, 80.0, 100.0),
+    )
+
     val config = ScoreConfig(
         version = version,
         baseWeights = baseWeights,
@@ -119,6 +145,7 @@ object ScoreV1 {
         convergenceMultipliers = convergence,
         normalizationScale = 30.0,
         contributionCutoff = 0.01,
+        stateBands = stateBands,
     )
 
     fun halfLifeDays(type: EventType): Double = config.halfLifeDays(type)
