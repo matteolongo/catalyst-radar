@@ -368,6 +368,13 @@ many documents are extracted in parallel. The Micrometer registry records bounde
 document-processing, retry, daily-snapshot, replay, provider, and LLM metrics.
 No metric tags include a ticker, company ID, document body, prompt, or secret.
 
+`catalyst_pipeline_cycles_total{status}` includes `cancelled`.
+`catalyst_document_processing_retries_scheduled_total` counts retries scheduled
+for documents; the older `catalyst_document_processing_retry_attempts_total`
+carries the same value and is deprecated because its name suggested executed
+attempts. When a cycle fails outright, the internal run response reports the
+counters last written to the run record rather than zeros.
+
 `catalyst_ingestion_run_duration_seconds{provider,status}` records one sample
 per provider run, including failed and cancelled runs (`status` is `success`,
 `partial`, `failed` or `cancelled`).

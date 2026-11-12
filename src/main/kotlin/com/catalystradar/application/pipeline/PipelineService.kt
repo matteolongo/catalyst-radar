@@ -129,6 +129,12 @@ class PipelineService(
         var runId: UUID? = startedRunId
         var phase = OperationPhase.INGESTION
         var counts = OperationCounts()
+        // What the run row holds; an outer failure reports these, not unsaved progress.
+        var recordedCounts = OperationCounts()
+        fun recordProgress(id: UUID) {
+            recorder.progress(id, counts)
+            recordedCounts = counts
+        }
         return try {
             val id = startedRunId ?: recorder.begin(OperationKind.PIPELINE, trigger, now)
             runId = id
@@ -169,9 +175,9 @@ class PipelineService(
                         eventsInserted = counts.eventsInserted + outcome.eventsInserted,
                         eventsReused = counts.eventsReused + outcome.eventsReused,
                     )
-                    recorder.progress(id, counts)
+                    recordProgress(id)
                     metrics.documentProcessing(outcome.status.name.lowercase())
-                    if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) metrics.documentRetryAttempt()
+                    if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) metrics.documentRetryScheduled()
                     if (outcome.error != null && firstErrorCode == null) {
                         firstErrorCode = processing.findBySourceDocumentId(sourceDocumentId)?.lastErrorCode ?: "PROCESSING_FAILURE"
                     }
@@ -190,7 +196,7 @@ class PipelineService(
             phase = OperationPhase.SCORING
             recorder.phase(id, phase)
             counts = counts.copy(companiesConsidered = affectedCompanies.size)
-            recorder.progress(id, counts)
+            recordProgress(id)
             for (companyId in affectedCompanies) {
                 try {
                     catalyst.recalculate(companyId, now, id)
@@ -203,7 +209,7 @@ class PipelineService(
                     counts = counts.copy(companiesFailed = counts.companiesFailed + 1)
                     log.warn("pipeline recalculation failed for company {} run {}", companyId, id)
                 }
-                recorder.progress(id, counts)
+                recordProgress(id)
             }
             val providerIssue = ingestionResult.runs.any { it.status != IngestionStatus.SUCCESS }
             val noProviderSucceeded = ingestionResult.runs.isNotEmpty() && ingestionResult.runs.all {
@@ -227,6 +233,7 @@ class PipelineService(
             )
         } catch (e: CancellationException) {
             runId?.let { finishIncomplete(it, phase, OperationStatus.CANCELLED, "CANCELLED") }
+            metrics.pipelineCycle("cancelled")
             throw e
         } catch (e: RuntimeException) {
             val code = when (phase) {
@@ -237,8 +244,15 @@ class PipelineService(
             runId?.let { finishIncomplete(it, phase, OperationStatus.FAILED, code) }
             log.error("pipeline cycle failed run={} phase={}", runId, phase)
             metrics.pipelineCycle("failed")
-            // The durable ledger preserves committed progress even if an outer stage failed.
-            PipelineResult("FAILED", 0, 0, 0, OperationalErrors.message(code), runId = runId)
+            // Report the progress the run row holds, so the response and the ledger agree.
+            PipelineResult(
+                status = "FAILED", documentsProcessed = recordedCounts.documentsConsidered,
+                eventsExtracted = recordedCounts.eventsInserted + recordedCounts.eventsReused,
+                companiesRescored = recordedCounts.companiesRescored, error = OperationalErrors.message(code),
+                documentsSkipped = recordedCounts.documentsSkipped, documentsRetryScheduled = recordedCounts.documentsRetryScheduled,
+                documentsTerminalFailures = recordedCounts.documentsTerminalFailures, documentsCompleted = recordedCounts.documentsCompleted,
+                eventsInserted = recordedCounts.eventsInserted, eventsReused = recordedCounts.eventsReused, runId = runId,
+            )
         } finally {
             running.set(false)
         }

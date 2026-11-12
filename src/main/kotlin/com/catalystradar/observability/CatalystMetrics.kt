@@ -99,7 +99,13 @@ class CatalystMetrics(private val registry: MeterRegistry) {
         ).increment()
     }
 
-    fun documentRetryAttempt() {
+    /**
+     * A retry was scheduled for a document. Also increments the legacy
+     * `catalyst_document_processing_retry_attempts_total`, whose name
+     * suggested executed attempts; remove it once dashboards have moved.
+     */
+    fun documentRetryScheduled() {
+        registry.counter("catalyst_document_processing_retries_scheduled_total").increment()
         registry.counter("catalyst_document_processing_retry_attempts_total").increment()
     }
 

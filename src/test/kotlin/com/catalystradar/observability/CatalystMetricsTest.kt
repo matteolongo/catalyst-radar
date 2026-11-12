@@ -88,7 +88,7 @@ class CatalystMetricsTest {
     fun `counts document outcomes, retries, daily snapshots, and replay inputs`() {
         metrics.documentProcessing("completed")
         metrics.documentProcessing("retryable_error")
-        metrics.documentRetryAttempt()
+        metrics.documentRetryScheduled()
         metrics.dailySnapshotCycle("success")
         metrics.replayInputs(documentsConsidered = 3, documentsSkipped = 1, candidatesAccepted = 2)
 
@@ -99,6 +99,10 @@ class CatalystMetricsTest {
         assertEquals(
             1.0,
             registry.counter("catalyst_document_processing_retry_attempts_total").count(),
+        )
+        assertEquals(
+            1.0,
+            registry.counter("catalyst_document_processing_retries_scheduled_total").count(),
         )
         assertEquals(
             1.0,
