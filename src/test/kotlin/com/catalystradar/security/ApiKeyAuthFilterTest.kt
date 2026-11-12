@@ -42,6 +42,18 @@ class ApiKeyAuthFilterTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `denial carries the same request id as the response header`() {
+        mockMvc.get("/v1/companies/DELL") {
+            accept = MediaType.APPLICATION_JSON
+            header("X-Request-Id", "trace-abc")
+        }.andExpect {
+            status { isUnauthorized() }
+            header { string("X-Request-Id", "trace-abc") }
+            jsonPath("$.requestId") { value("trace-abc") }
+        }
+    }
+
+    @Test
     fun `valid key passes`() {
         companies.save(Company(ticker = "DELL", name = "Dell"))
         val key = keys.create("backtester")

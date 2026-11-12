@@ -1,5 +1,6 @@
 package com.catalystradar.application.operations
 
+import com.catalystradar.common.requireValidInput
 import com.catalystradar.application.ingestion.IngestionStatus
 import java.math.BigDecimal
 import java.time.Instant
@@ -48,8 +49,8 @@ data class DependencyObservation(val provider: String, val configured: Boolean, 
 data class OperationalSignal(val code: String, val severity: SignalSeverity, val count: Long? = null, val documentId: UUID? = null, val runId: UUID? = null, val provider: String? = null)
 data class ActivityWindow(val from: Instant, val to: Instant) {
     init {
-        require(from < to) { "from must precede to" }
-        require(java.time.Duration.between(from, to) <= java.time.Duration.ofDays(7)) { "window cannot exceed seven days" }
+        requireValidInput(from < to) { "from must precede to" }
+        requireValidInput(java.time.Duration.between(from, to) <= java.time.Duration.ofDays(7)) { "window cannot exceed seven days" }
     }
 }
 data class OperationsOverview(

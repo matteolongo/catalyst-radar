@@ -1,5 +1,6 @@
 package com.catalystradar.api.publicapi
 
+import com.catalystradar.common.requireValidInput
 import com.catalystradar.api.dto.CatalystResponse
 import com.catalystradar.api.dto.TimelineResponse
 import com.catalystradar.api.dto.toResponse
@@ -38,7 +39,7 @@ class CatalystController(
         @RequestParam(required = false) to: Instant?,
         @RequestParam(defaultValue = "50") limit: Int,
     ): TimelineResponse {
-        require(limit in 1..200) { "limit must be within 1..200" }
+        requireValidInput(limit in 1..200) { "limit must be within 1..200" }
         val company = companies.findByTicker(ticker) ?: throw CompanyNotFoundException(ticker)
         val history = snapshots.history(company.id, from, to, limit)
         val transitions = snapshots.findTransitions(company.id, from, to, limit)

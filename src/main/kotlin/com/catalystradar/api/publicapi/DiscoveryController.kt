@@ -1,5 +1,6 @@
 package com.catalystradar.api.publicapi
 
+import com.catalystradar.common.requireValidInput
 import com.catalystradar.api.dto.DiscoveryResponse
 import com.catalystradar.api.dto.toResponse
 import com.catalystradar.domain.catalyst.CatalystState
@@ -30,8 +31,8 @@ class DiscoveryController(private val discovery: DiscoveryStore) {
         @RequestParam(defaultValue = "20") limit: Int,
         @RequestParam(defaultValue = "0") offset: Int,
     ): DiscoveryResponse {
-        require(limit in 1..100) { "limit must be within 1..100" }
-        require(offset >= 0) { "offset must be non-negative" }
+        requireValidInput(limit in 1..100) { "limit must be within 1..100" }
+        requireValidInput(offset >= 0) { "offset must be non-negative" }
         val asOf = Instant.now()
         val page = discovery.discover(
             DiscoveryQuery(

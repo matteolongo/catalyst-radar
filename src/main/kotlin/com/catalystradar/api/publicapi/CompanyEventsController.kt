@@ -1,5 +1,7 @@
 package com.catalystradar.api.publicapi
 
+import com.catalystradar.common.InvalidInputException
+import com.catalystradar.common.requireValidInput
 import com.catalystradar.api.dto.EventsFeedResponse
 import com.catalystradar.api.dto.toResponse
 import com.catalystradar.application.company.CompanyNotFoundException
@@ -31,7 +33,7 @@ class CompanyEventsController(
         @RequestParam(defaultValue = "20") limit: Int,
         @RequestParam(required = false) cursor: String?,
     ): EventsFeedResponse {
-        require(limit in 1..100) { "limit must be within 1..100" }
+        requireValidInput(limit in 1..100) { "limit must be within 1..100" }
         val company = companies.findByTicker(ticker) ?: throw CompanyNotFoundException(ticker)
         val ordered = events.findDetailedByCompanyId(company.id)
             .sortedWith(compareByDescending<EventWithSource> { it.event.discoveredAt }.thenBy { it.event.id })
@@ -41,7 +43,7 @@ class CompanyEventsController(
             val id = try {
                 UUID.fromString(cursor)
             } catch (e: IllegalArgumentException) {
-                throw IllegalArgumentException("invalid cursor: $cursor")
+                throw InvalidInputException("invalid cursor")
             }
             ordered.dropWhile { it.event.id != id }.drop(1)
         }

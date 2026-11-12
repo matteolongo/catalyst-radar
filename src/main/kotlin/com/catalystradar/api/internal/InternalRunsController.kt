@@ -1,5 +1,6 @@
 package com.catalystradar.api.internal
 
+import com.catalystradar.common.requireValidInput
 import com.catalystradar.api.dto.IngestionRunsResponse
 import com.catalystradar.api.dto.ModelRunsResponse
 import com.catalystradar.api.dto.toResponse
@@ -24,13 +25,13 @@ class InternalRunsController(
 
     @GetMapping("/ingestion/runs")
     fun ingestionRuns(@RequestParam(defaultValue = "20") limit: Int): IngestionRunsResponse {
-        require(limit in 1..100) { "limit must be within 1..100" }
+        requireValidInput(limit in 1..100) { "limit must be within 1..100" }
         return IngestionRunsResponse(ingestionRuns.listRecent(limit).map { it.toResponse() })
     }
 
     @GetMapping("/model-runs")
     fun modelRuns(@RequestParam(defaultValue = "50") limit: Int): ModelRunsResponse {
-        require(limit in 1..200) { "limit must be within 1..200" }
+        requireValidInput(limit in 1..200) { "limit must be within 1..200" }
         return ModelRunsResponse(modelRuns.listRecent(limit).map { it.toResponse() })
     }
 }

@@ -289,7 +289,7 @@ class InternalOperationsControllerTest {
 
     @Test
     fun `malformed operations cursor is a stable bad request`() {
-        `when`(operations.documents(any())).thenThrow(IllegalArgumentException("invalid cursor"))
+        `when`(operations.documents(any())).thenThrow(com.catalystradar.common.InvalidInputException("invalid cursor"))
 
         mockMvc.get("/internal/operations/documents?cursor=bad") { header("X-Admin-Key", "test-admin") }.andExpect {
             status { isBadRequest() }
