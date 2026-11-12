@@ -345,6 +345,15 @@ Each run counts that outcome once, logs only the count and the reason
 `catalyst_ingestion_documents_total{status="unresolved_company"}`. Repeated
 ingestion of the same article does not inflate it.
 
+Each 20-ticker chunk follows provider pages (`next_url` for Polygon) up to
+`catalyst.ingestion.max-pages-per-chunk` (default 10, 1–100). If more pages
+remain, or a provider repeats a cursor, the provider run ends `PARTIAL` with
+`WINDOW_TRUNCATED`, `catalyst_ingestion_window_truncated_total{provider}` is
+incremented, and a warning is logged. Truncation does not trigger the fallback
+provider and does not mark the provider degraded; raise the page bound or
+shorten the lookback instead. A truncated run does not count as a successful
+ingestion for freshness.
+
 V2 is additive and safely applies after V1. It backfills document/company
 links derivable from existing events. A legacy source document with neither an
 event nor a resolvable company link cannot be made replayable automatically;

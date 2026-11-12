@@ -13,4 +13,6 @@ data class IngestionProperties(
     var provider: String = "polygon",
     var fallbackProvider: String = "finnhub",
     var pageSize: Int = 50,
+    /** Provider pages followed per ticker chunk before the run is marked truncated. */
+    var maxPagesPerChunk: Int = 10,
 )

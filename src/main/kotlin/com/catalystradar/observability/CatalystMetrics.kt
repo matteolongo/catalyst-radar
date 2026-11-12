@@ -28,6 +28,13 @@ class CatalystMetrics(private val registry: MeterRegistry) {
         ).record(durationMs, TimeUnit.MILLISECONDS)
     }
 
+    fun ingestionWindowTruncated(provider: String) {
+        registry.counter(
+            "catalyst_ingestion_window_truncated_total",
+            listOf(Tag.of("provider", provider)),
+        ).increment()
+    }
+
     fun llmCall(
         operation: String,
         model: String,

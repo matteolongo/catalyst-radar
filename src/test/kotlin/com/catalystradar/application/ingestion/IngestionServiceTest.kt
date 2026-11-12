@@ -16,7 +16,10 @@ import com.catalystradar.operations.OperationsFixtures
 import org.springframework.jdbc.core.simple.JdbcClient
 import java.time.Instant
 import com.github.tomakehurst.wiremock.client.WireMock.aResponse
+import com.github.tomakehurst.wiremock.client.WireMock.absent
+import com.github.tomakehurst.wiremock.client.WireMock.equalTo
 import com.github.tomakehurst.wiremock.client.WireMock.get
+import com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor
 import com.github.tomakehurst.wiremock.client.WireMock.okJson
 import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
@@ -71,9 +74,10 @@ class IngestionServiceTest : PostgresIntegrationTest() {
     private fun service(
         provider: String = "polygon",
         fallback: String = "finnhub",
+        maxPagesPerChunk: Int = 10,
     ) = IngestionService(
         providers = listOf(polygon, finnhub),
-        properties = IngestionProperties(provider = provider, fallbackProvider = fallback),
+        properties = IngestionProperties(provider = provider, fallbackProvider = fallback, maxPagesPerChunk = maxPagesPerChunk),
         companies = companies,
         registrations = registrations,
         runs = runs,
@@ -95,6 +99,62 @@ class IngestionServiceTest : PostgresIntegrationTest() {
         assertEquals(2, result.runs[0].fetched)
         assertEquals(2, result.runs[0].added)
         assertNotNull(documents.findByProviderAndProviderDocumentId("polygon", "poly-1"))
+    }
+
+    private fun pageOf(id: String, nextCursor: String?): String {
+        val next = nextCursor?.let { ", \"next_url\": \"${wireMock.baseUrl()}/v2/reference/news?cursor=$it\"" } ?: ""
+        return """{"results": [{"id": "$id", "title": "Dell news $id", "description": "Dell $id.", "article_url": "https://example.com/$id", "published_utc": "2026-09-16T14:30:00Z", "tickers": ["DELL"]}], "status": "OK"$next}"""
+    }
+
+    private fun stubPage(cursor: String?, body: String) {
+        val request = get(urlPathEqualTo("/v2/reference/news"))
+        wireMock.stubFor(
+            (if (cursor == null) request.withQueryParam("cursor", absent()) else request.withQueryParam("cursor", equalTo(cursor)))
+                .willReturn(okJson(body)),
+        )
+    }
+
+    @Test
+    fun `follows provider pages until the window is exhausted`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        stubPage(null, pageOf("page-1", "p2"))
+        stubPage("p2", pageOf("page-2", "p3"))
+        stubPage("p3", pageOf("page-3", null))
+
+        val run = service().ingestCycle().runs.single()
+
+        assertEquals(IngestionStatus.SUCCESS, run.status)
+        assertEquals(3, run.fetched)
+        assertEquals(3, run.added)
+        listOf("page-1", "page-2", "page-3").forEach { assertNotNull(documents.findByProviderAndProviderDocumentId("polygon", it)) }
+    }
+
+    @Test
+    fun `page bound marks the run truncated without using the fallback provider`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        stubPage(null, pageOf("page-1", "p2"))
+        stubPage("p2", pageOf("page-2", "p3"))
+        stubPage("p3", pageOf("page-3", null))
+
+        val result = service(maxPagesPerChunk = 2).ingestCycle()
+
+        val run = result.runs.single()
+        assertEquals(IngestionStatus.PARTIAL, run.status)
+        assertEquals(IngestionService.WINDOW_TRUNCATED, run.errorCode)
+        assertEquals(2, run.added)
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/api/v1/company-news")))
+    }
+
+    @Test
+    fun `a repeated provider cursor stops paging`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        stubPage(null, pageOf("page-1", "loop"))
+        stubPage("loop", pageOf("page-2", "loop"))
+
+        val run = service().ingestCycle().runs.single()
+
+        assertEquals(IngestionService.WINDOW_TRUNCATED, run.errorCode)
+        wireMock.verify(2, getRequestedFor(urlPathEqualTo("/v2/reference/news")))
     }
 
     @Test

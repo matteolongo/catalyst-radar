@@ -202,6 +202,16 @@ class OperationsSummaryStoreTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `a truncated ingestion window is not a provider failure observation`() {
+        val now = Instant.parse("2042-10-04T12:00:00Z")
+        ingestion(now.minusSeconds(200), now.minusSeconds(100), "PARTIAL", code = "WINDOW_TRUNCATED")
+        val polygon = store.read(ActivityWindow(now.minusSeconds(1), now), now, emptySet()).dependencyObservations[0]
+        assertEquals(0L, polygon.failedObservations)
+        assertEquals(true, polygon.latestSucceeded)
+        assertNull(polygon.lastErrorCode)
+    }
+
+    @Test
     fun `a cancelled model call is not an OpenAI failure observation`() {
         val now = Instant.parse("2041-10-04T12:00:00Z")
         fixtures.model(now.minusSeconds(120), null, null, null)
