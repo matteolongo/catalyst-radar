@@ -46,6 +46,8 @@ data class OperationsConfigResponse(
     val pipelineRetryDelaySeconds: Long,
     val providers: List<ProviderConfigResponse>,
     val versions: ArtifactVersionsResponse,
+    /** Documents extracted in parallel per cycle. */
+    val pipelineConcurrency: Int,
 )
 fun OperationsConfig.toResponse() = OperationsConfigResponse(
     generatedAt = generatedAt,
@@ -58,6 +60,7 @@ fun OperationsConfig.toResponse() = OperationsConfigResponse(
     pipelineBatchSize = pipelineBatchSize,
     pipelineMaxAttempts = pipelineMaxAttempts,
     pipelineRetryDelaySeconds = pipelineRetryDelaySeconds,
+    pipelineConcurrency = pipelineConcurrency,
     providers = providers.map { ProviderConfigResponse(name = it.name, configured = it.configured) },
     versions = ArtifactVersionsResponse(
         score = versions.score,

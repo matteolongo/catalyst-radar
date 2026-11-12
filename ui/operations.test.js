@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { startDashboard, modelSummaryFixture, modelCallFixture, modelCallsPageFixture, operationRunFixture,
+const { startDashboard, overviewFixture, configFixture, modelSummaryFixture, modelCallFixture, modelCallsPageFixture, operationRunFixture,
   operationRunsPageFixture, operationRunDetailFixture, operationIssuesPageFixture, operationRunIdFixture,
   operationWindowFixture, ingestionRunFixture, ingestionRunsPageFixture, ingestionRunIdFixture, pipelineResultFixture } = require('./test-support');
 const DOC_A = '11111111-1111-4111-8111-111111111111';
@@ -961,7 +961,7 @@ test('cycle ingestion resumes an interrupted first read when polling is disabled
   assert.match(dashboard.html('runIngestionRows'), new RegExp(ingestionRunIdFixture));
 });
 
-test('successful primary refresh advances freshness while retaining the pipeline POST outcome', async () => {
+test('a pipeline POST outcome survives the reload it triggers and clears on the next successful refresh', async () => {
   let generatedAt = '2026-10-04T12:05:00Z';
   const dashboard = startOperations({ storedAdmin: 'admin-secret', deferPipeline: false,
     pipelineResult: { status: 'SKIPPED', alreadyRunning: true, runId: null },
@@ -971,14 +971,15 @@ test('successful primary refresh advances freshness while retaining the pipeline
   await dashboard.openPipeline();
   dashboard.click('runNow');
   await dashboard.flush();
+  assert.equal(dashboard.text('pipelineStatus'), 'A pipeline cycle is already running');
   const before = dashboard.text('lastRefresh');
   generatedAt = '2026-10-04T13:05:00Z';
   await dashboard.refresh();
-  assert.equal(dashboard.text('pipelineStatus'), 'A pipeline cycle is already running');
+  assert.notEqual(dashboard.text('pipelineStatus'), 'A pipeline cycle is already running');
   assert.notEqual(dashboard.text('lastRefresh'), before);
 });
 
-test('failed primary reads retain freshness even after a pipeline POST outcome', async () => {
+test('failed primary reads retain freshness and are reported over a pipeline POST outcome', async () => {
   let failIngestion = false;
   let generatedAt = '2026-10-04T12:05:00Z';
   const dashboard = startOperations({ storedAdmin: 'admin-secret', deferPipeline: false,
@@ -993,7 +994,7 @@ test('failed primary reads retain freshness even after a pipeline POST outcome',
   generatedAt = '2026-10-04T13:05:00Z';
   failIngestion = true;
   await dashboard.refresh();
-  assert.equal(dashboard.text('pipelineStatus'), 'A pipeline cycle is already running');
+  assert.notEqual(dashboard.text('pipelineStatus'), 'A pipeline cycle is already running', 'a failing read is not hidden by the POST outcome');
   assert.equal(dashboard.text('lastRefresh'), before);
 });
 
@@ -1789,4 +1790,75 @@ test('no-admin Documents show access guidance and issue no protected reads', asy
   assert.equal(dashboard.element('documentFilters').hidden, true);
   assert.equal(dashboard.element('documentRows').hidden, true);
   assert.equal(dashboard.requests.some((entry) => new URL(entry.url).pathname.startsWith('/internal/operations/documents')), false);
+});
+
+test('a started pipeline outcome clears once its run is no longer active', async () => {
+  let started = false;
+  let active = true;
+  const run = () => operationRunFixture(operationRunIdFixture, active
+    ? { status: 'RUNNING', active: true, phase: 'PROCESSING', finishedAt: null, durationMs: null, captureComplete: false }
+    : {});
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', deferPipeline: false,
+    pipelineResult: () => { started = true; return { ...pipelineResultFixture, status: 'RUNNING', runId: operationRunIdFixture }; },
+    operationRuns: () => operationRunsPageFixture(started ? 1 : 0, { items: started ? [run()] : [] }),
+    operationRunDetail: () => ({ ...operationRunDetailFixture(), run: run() }),
+  });
+  await dashboard.openPipeline();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  assert.match(dashboard.text('pipelineStatus'), /Pipeline started/);
+  await dashboard.refresh();
+  assert.match(dashboard.text('pipelineStatus'), /Pipeline started/, 'still running: the outcome stays');
+
+  active = false;
+  await dashboard.refresh();
+  assert.doesNotMatch(dashboard.text('pipelineStatus'), /Pipeline started/);
+});
+
+test('a failing history read is reported instead of a started pipeline outcome', async () => {
+  let started = false;
+  let failRuns = false;
+  const run = operationRunFixture(operationRunIdFixture, { status: 'RUNNING', active: true, phase: 'PROCESSING', finishedAt: null, durationMs: null });
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', deferPipeline: false,
+    pipelineResult: () => { started = true; return { ...pipelineResultFixture, status: 'RUNNING', runId: operationRunIdFixture }; },
+    operationRuns: () => failRuns ? 'error' : operationRunsPageFixture(started ? 1 : 0, { items: started ? [run] : [] }),
+    operationRunDetail: () => ({ ...operationRunDetailFixture(), run }),
+  });
+  await dashboard.openPipeline();
+  dashboard.click('runNow');
+  await dashboard.flush();
+  assert.match(dashboard.text('pipelineStatus'), /Pipeline started/);
+  failRuns = true;
+  await dashboard.refresh();
+  assert.doesNotMatch(dashboard.text('pipelineStatus'), /Pipeline started/);
+});
+
+test('overview placeholders name the same tiles the loaded overview shows', async () => {
+  const titles = (markup) => Array.from(markup.matchAll(/<h2>([^<]+)<\/h2>/g), (match) => match[1]);
+  const dashboard = startOperations({});
+  const initial = titles(dashboard.html('overviewMetrics'));
+  await dashboard.openOverview();
+  const placeholders = titles(dashboard.html('overviewMetrics'));
+  assert.deepEqual(initial, placeholders, 'static and cleared placeholders agree');
+  const loaded = startOperations({ storedAdmin: 'admin-secret', overview: overviewFixture });
+  await loaded.openOverview();
+  assert.deepEqual(placeholders, titles(loaded.html('overviewMetrics')));
+});
+
+test('overview activity shows provider fetch and duplicate counts and scopes the cycle caveat', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', overview: { ...overviewFixture,
+    activity: { ...overviewFixture.activity, documentsFetched: 120, documentsDuplicate: 45 } } });
+  await dashboard.openOverview();
+  const activity = dashboard.html('overviewActivity');
+  assert.match(activity, /Fetched from providers<\/dt><dd>120 articles/);
+  assert.match(activity, /Duplicates skipped<\/dt><dd>45 articles/);
+  assert.match(activity, /Recalculations<\/dt><dd>[^<]*<span[^>]*>Recorded complete cycles only/);
+});
+
+test('access settings show pipeline concurrency and describe deployment as configuration', async () => {
+  const dashboard = startOperations({ storedAdmin: 'admin-secret', config: { ...configFixture, pipelineConcurrency: 4 } });
+  dashboard.popstate('?view=settings');
+  await dashboard.flush();
+  assert.match(dashboard.html('settingsConfig'), /concurrency 4/);
+  assert.match(dashboard.html('settingsConfig'), /Configured for a single application instance/);
 });

@@ -27,6 +27,7 @@ data class OperationsConfig(
     val ingestion: ScheduleConfig, val snapshots: ScheduleConfig, val primaryNewsProvider: String,
     val fallbackNewsProvider: String, val pipelineBatchSize: Int, val pipelineMaxAttempts: Int,
     val pipelineRetryDelaySeconds: Long, val providers: List<ProviderConfig>, val versions: ArtifactVersions,
+    val pipelineConcurrency: Int = 1,
 )
 data class Freshness(val status: FreshnessStatus, val lastSuccessAt: Instant?, val ageSeconds: Long?, val expectedIntervalSeconds: Long, val staleAfterSeconds: Long)
 data class QueueSummary(
