@@ -62,3 +62,31 @@ test('compact leaderboard keeps timestamps and distinguishes missing values from
   assert.match(markup, /2026-10-22/);
   assert.doesNotMatch(markup, /Events discovered|<th[^>]*>Sector/);
 });
+
+test('a change without a seven-day baseline is not shown as zero', () => {
+  const markup = window.CatalystLeaderboard.render({ ...page, results: [
+    { ...page.results[1], velocity7d: 0, velocity7dBaselineAvailable: false },
+  ] }, { sort: 'VELOCITY' });
+  assert.match(markup, /No 7-day baseline/);
+  assert.doesNotMatch(markup, />0\.0</);
+  assert.doesNotMatch(markup, /change-positive|change-negative/);
+});
+
+test('an older server without the baseline field keeps the numeric change', () => {
+  const markup = window.CatalystLeaderboard.render({ ...page, results: [page.results[0]] }, { sort: 'SCORE' });
+  assert.match(markup, /−2\.0/);
+  assert.doesNotMatch(markup, /No 7-day baseline/);
+});
+
+test('rows saved long before the ranking are marked stale with an explanation', () => {
+  const markup = window.CatalystLeaderboard.render({ ...page, results: [
+    { ...page.results[0], asOf: '2026-10-20T08:00:00Z' }, page.results[1],
+  ] }, { sort: 'SCORE' });
+  assert.equal((markup.match(/stale-marker/g) || []).length, 1);
+  assert.match(markup, /saved more than 36 hours before this ranking/);
+});
+
+test('fresh rankings carry no stale marker or note', () => {
+  const markup = window.CatalystLeaderboard.render(page, { compact: true, sort: 'SCORE' });
+  assert.doesNotMatch(markup, /stale-marker|ranking-stale-note/);
+});

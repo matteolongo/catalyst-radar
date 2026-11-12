@@ -357,6 +357,11 @@
     return (Number(value) > 0 ? '+' : '') + Number(value).toFixed(1).replace('-', '−');
   }
 
+  /** A 0.0 change with no snapshot 7 days earlier means "nothing to compare", not "flat". */
+  function fmtChange7d(entry) {
+    return entry && entry.velocity7dBaselineAvailable === false ? 'No 7-day baseline' : fmtChange(entry && entry.velocity7d);
+  }
+
   function fmtFactor(value) {
     return value === null || value === undefined || !Number.isFinite(Number(value)) ? '–' : String(value);
   }
@@ -431,7 +436,7 @@
       '<span>State range: ' + esc(fmtScore(band.minScore)) + '–' + esc(fmtScore(band.maxScore)) + (band.maxInclusive ? ' inclusive' : ' exclusive upper bound') + '</span></div>' +
       '<dl class="fact-grid"><div><dt>1-day change (points)</dt><dd>' + esc(fmtChange(data.velocity1d)) + '</dd></div>' +
       '<div><dt>3-day change (points)</dt><dd>' + esc(fmtChange(data.velocity3d)) + '</dd></div>' +
-      '<div><dt>7-day change (points)</dt><dd>' + esc(fmtChange(data.velocity7d)) + '</dd></div>' +
+      '<div><dt>7-day change (points)</dt><dd>' + esc(fmtChange7d(data)) + '</dd></div>' +
       '<div><dt>Total events</dt><dd>' + esc(fmtInt(data.totalEvents)) + '</dd></div>' +
       '<div><dt>Events 7d</dt><dd>' + esc(fmtInt(data.events7d)) + '</dd></div>' +
       '<div><dt>Saved as of</dt><dd>' + timeLabel(data.asOf) + '</dd></div>' +
@@ -445,7 +450,9 @@
       return;
     }
     var calculation = data.scoreCalculation || {};
-    var summary = '<dl class="fact-grid"><div><dt>Positive summary</dt><dd>' + esc(fmtScore(data.positiveScore)) + '</dd></div>' +
+    var summary = '<p class="muted small summary-note">Each summary maps one subset of contributions to the 0–100 scale on its own, ' +
+      'without the convergence multiplier. They do not add up to the score.</p>' +
+      '<dl class="fact-grid"><div><dt>Positive summary</dt><dd>' + esc(fmtScore(data.positiveScore)) + '</dd></div>' +
       '<div><dt>Negative summary</dt><dd>' + esc(fmtScore(data.negativeScore)) + '</dd></div>' +
       '<div><dt>Direct summary</dt><dd>' + esc(fmtScore(data.directScore)) + '</dd></div>' +
       '<div><dt>Inferred summary</dt><dd>' + esc(fmtScore(data.inferredScore)) + '</dd></div></dl>';
@@ -483,7 +490,15 @@
     return query;
   }
 
+  function historyTruncationNote(data) {
+    var cut = [data.snapshotsTruncated ? 'snapshots' : null, data.transitionsTruncated ? 'transitions' : null].filter(Boolean);
+    if (!cut.length) return;
+    $('historyRangeNote').textContent = 'Showing the most recent 200 ' + cut.join(' and ') +
+      ' in this range; older entries are not shown.';
+  }
+
   function renderHistory(data) {
+    historyTruncationNote(data);
     var snapshots = (data.snapshots || []).slice(0, 200).sort(function (a, b) { return new Date(a.asOf) - new Date(b.asOf); });
     var transitions = (data.transitions || []).slice(0, 200).sort(function (a, b) { return new Date(a.at) - new Date(b.at); });
     var transitionList = transitions.length ? '<p>State transitions at persisted times:</p><ul>' + transitions.map(function (t) {
@@ -739,7 +754,7 @@
     panel.innerHTML = '<p class="eyebrow">Company snapshot</p><h2>' + esc(entry.ticker) + '</h2>' +
       '<p class="muted">' + esc(entry.name) + '</p><div class="preview-score"><strong class="score-number">' + esc(fmtScore(entry.score)) +
       '</strong><span class="muted small">/ 100</span>' + statusPill(entry.state) + '</div>' +
-      '<dl class="preview-facts"><div><dt>7-day change (points)</dt><dd>' + esc(fmtChange(entry.velocity7d)) + '</dd></div>' +
+      '<dl class="preview-facts"><div><dt>7-day change (points)</dt><dd>' + esc(fmtChange7d(entry)) + '</dd></div>' +
       '<div><dt>Events discovered · 7d</dt><dd>' + esc(fmtInt(entry.events7d)) + '</dd></div>' +
       '<div><dt>Saved at</dt><dd>' + timeLabel(entry.asOf) + '</dd></div></dl>' +
       '<p class="muted small preview-versions">' + esc(entry.scoreVersion || 'Score version unavailable') +

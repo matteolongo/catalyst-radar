@@ -2,6 +2,9 @@
   'use strict';
 
   var STATES = ['NORMAL', 'WATCH', 'BUILDING', 'CATALYZED', 'HIGH'];
+  // Scores are not decayed between snapshots, so rows saved this long before
+  // the ranking are not directly comparable with fresh ones.
+  var STALE_AFTER_HOURS = 36;
 
   function invalid(field, message) {
     var error = new Error(message);
@@ -53,6 +56,22 @@
     return '<time datetime="' + esc(value) + '">' + new Date(value).toISOString().replace('T', ' ').slice(0, 19) + ' UTC</time>';
   }
 
+  function sevenDayChange(entry) {
+    if (entry.velocity7dBaselineAvailable === false) return { text: 'No 7-day baseline', className: '' };
+    var className = entry.velocity7d > 0 ? ' change-positive' : entry.velocity7d < 0 ? ' change-negative' : '';
+    return { text: number(entry.velocity7d, true), className: className };
+  }
+
+  function isStale(entry, rankedAt) {
+    var saved = Date.parse(entry.asOf);
+    var ranked = Date.parse(rankedAt);
+    return Number.isFinite(saved) && Number.isFinite(ranked) && ranked - saved > STALE_AFTER_HOURS * 3600000;
+  }
+
+  function staleMarker() {
+    return ' <span class="pill warn stale-marker" title="Score and 7-day change were computed when this snapshot was saved and have not decayed since.">Stale</span>';
+  }
+
   function render(page, options) {
     options = options || {};
     var compact = !!options.compact;
@@ -61,10 +80,13 @@
       '<th scope="col" class="num"' + (sort === 'SCORE' ? ' aria-sort="descending"' : '') + '>Score</th><th scope="col">State</th>' +
       '<th scope="col" class="num"' + (sort === 'VELOCITY' ? ' aria-sort="descending"' : '') + '>7-day change <span class="muted">(points)</span></th>' +
       (compact ? '' : '<th scope="col" class="num">Events discovered · 7d</th>') + '<th scope="col" class="saved-heading">Saved at</th>' + (compact ? '' : '<th scope="col">Versions</th>');
+    var anyStale = false;
     var rows = (page.results || []).map(function (entry) {
       var stateClass = STATES.includes(entry.state) ? entry.state.toLowerCase() : 'unknown';
-      var changeClass = entry.velocity7d > 0 ? ' change-positive' : entry.velocity7d < 0 ? ' change-negative' : '';
-      var savedAt = time(entry.asOf);
+      var change = sevenDayChange(entry);
+      var stale = isStale(entry, page.asOf);
+      if (stale) anyStale = true;
+      var savedAt = time(entry.asOf) + (stale ? staleMarker() : '');
       return '<tr><td><a href="?view=company&amp;ticker=' + encodeURIComponent(entry.ticker) + '" data-ticker="' + esc(entry.ticker) + '">' + esc(entry.ticker) + '</a>' +
         '<span class="cell-secondary">' + esc(entry.name) + '</span>' +
         (compact && entry.sector ? '<span class="cell-secondary ranking-sector">' + esc(entry.sector) + '</span>' : '') +
@@ -72,14 +94,16 @@
         (compact ? '' : '<td>' + esc(entry.sector || 'Unavailable') + '</td>') +
         '<td class="num score-value">' + number(entry.score) + '</td>' +
         '<td><span class="pill catalyst-state ' + stateClass + '">' + esc(entry.state) + '</span></td>' +
-        '<td class="num' + changeClass + '">' + number(entry.velocity7d, true) + '</td>' +
+        '<td class="num' + change.className + '">' + esc(change.text) + '</td>' +
         (compact ? '' : '<td class="num">' + esc(entry.events7d) + '</td>') +
         '<td class="saved-time">' + savedAt + '</td>' +
         (compact ? '' : '<td class="small">' + esc(entry.scoreVersion) + '<span class="cell-secondary">' + esc(entry.taxonomyVersion) + '</span></td>') + '</tr>';
     }).join('');
     return '<div class="table-scroll" tabindex="0" role="region" aria-label="Company leaderboard"><table class="leaderboard-table' + (compact ? ' compact' : '') + '">' +
-      '<caption class="sr-only">Latest stored company snapshots. Company as of times appear in Saved at.</caption><thead><tr>' + columns + '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+      '<caption class="sr-only">Latest stored company snapshots. Company as of times appear in Saved at.</caption><thead><tr>' + columns + '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      (anyStale ? '<p class="muted small ranking-stale-note">Some scores were saved more than ' + STALE_AFTER_HOURS +
+        ' hours before this ranking. Their score and 7-day change were computed then and have not decayed since. Enable daily snapshots to keep the ranking comparable.</p>' : '');
   }
 
-  window.CatalystLeaderboard = Object.freeze({ query: query, render: render });
+  window.CatalystLeaderboard = Object.freeze({ query: query, render: render, sevenDayChange: sevenDayChange });
 })();

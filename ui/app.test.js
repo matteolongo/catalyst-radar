@@ -410,6 +410,37 @@ test('history renders at most 200 stored snapshots and transitions without repla
   assert.equal(dashboard.requests.some(({ method, url }) => method !== 'GET' || /replay|recalculate/.test(url)), false);
 });
 
+test('history says which lists the server truncated', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/timeline': {
+    ticker: 'DELL', snapshots: [{ score: 44, state: 'WATCH', asOf: '2026-10-01T12:00:00Z' }], transitions: [],
+    snapshotsTruncated: true, transitionsTruncated: false,
+  } } });
+  await dashboard.flush();
+  assert.match(dashboard.text('historyRangeNote'), /most recent 200 snapshots in this range; older entries are not shown/);
+});
+
+test('company score shows no baseline instead of a zero seven-day change', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: {
+    '/catalyst': { ...companyFixture['/catalyst'], velocity7d: 0, velocity7dBaselineAvailable: false },
+  } });
+  await dashboard.flush();
+  assert.match(dashboard.html('companyScore'), /7-day change \(points\)<\/dt><dd>No 7-day baseline/);
+});
+
+test('direction summaries are labelled as separate scales, not a breakdown', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL' });
+  await dashboard.flush();
+  assert.match(dashboard.html('companyExplanation'), /They do not add up to the score/);
+});
+
+test('radar preview shows no baseline instead of a zero seven-day change', async () => {
+  const dashboard = startDashboard({ discovery: { asOf: '2026-10-02T12:02:00Z', total: 1, limit: 20, offset: 0, results: [
+    { ticker: 'DELL', name: 'Dell', sector: 'Technology', score: 30, state: 'WATCH', velocity7d: 0, velocity7dBaselineAvailable: false,
+      events7d: 1, scoreVersion: 'score-v1', asOf: '2026-10-02T12:00:00Z' }] } });
+  await dashboard.flush();
+  assert.match(dashboard.html('discoveryResults'), /No 7-day baseline/);
+});
+
 test('stored-history chart tooltips and date columns display UTC even for offset instants', async () => {
   const dashboard = startDashboard({ search: '?view=company&ticker=DELL', company: { '/timeline': {
     ticker: 'DELL', snapshots: [{ score: 44, state: 'WATCH', asOf: '2026-10-01T23:30:00-05:00' }],
