@@ -1,5 +1,7 @@
 package com.catalystradar.application.operations
 
+import com.catalystradar.common.InvalidInputException
+import com.catalystradar.common.requireValidInput
 import com.catalystradar.application.ingestion.IngestionStatus
 import com.catalystradar.domain.company.normalizeTicker
 import java.nio.charset.StandardCharsets.UTF_8
@@ -12,7 +14,7 @@ import java.util.UUID
 
 enum class WindowPreset(val duration: Duration) { HOURS_24(Duration.ofHours(24)), DAYS_7(Duration.ofDays(7)) }
 data class PageRequest(val limit: Int = 25, val cursor: String? = null) {
-    init { require(limit in 1..100) { "limit must be between 1 and 100" } }
+    init { requireValidInput(limit in 1..100) { "limit must be between 1 and 100" } }
 }
 data class DocumentQuery(
     val states: Set<DocumentState> = emptySet(), val provider: String? = null, val ticker: String? = null,
@@ -21,9 +23,9 @@ data class DocumentQuery(
     val page: PageRequest = PageRequest(),
 ) {
     init {
-        require(provider == null || provider in NEWS_PROVIDERS) { "unsupported provider" }
-        require(from == null || to == null || from < to) { "from must precede to" }
-        if (title != null) require(title.trim().let { it.isNotEmpty() && it.length <= 120 && it.none(Char::isISOControl) }) { "invalid title" }
+        requireValidInput(provider == null || provider in NEWS_PROVIDERS) { "unsupported provider" }
+        requireValidInput(from == null || to == null || from < to) { "from must precede to" }
+        if (title != null) requireValidInput(title.trim().let { it.isNotEmpty() && it.length <= 120 && it.none(Char::isISOControl) }) { "invalid title" }
     }
     val normalizedTicker: String? = ticker?.let(::normalizeTicker)
     val normalizedTitle: String? = title?.trim()
@@ -34,9 +36,9 @@ data class ModelQuery(
     val attemptId: UUID? = null, val runId: UUID? = null, val page: PageRequest = PageRequest(),
 ) {
     init {
-        require(provider == null || provider == "openai") { "unsupported provider" }
-        require(operation == null || operation in MODEL_OPERATIONS) { "unsupported operation" }
-        require(model == null || model.length in 1..128) { "invalid model" }
+        requireValidInput(provider == null || provider == "openai") { "unsupported provider" }
+        requireValidInput(operation == null || operation in MODEL_OPERATIONS) { "unsupported operation" }
+        requireValidInput(model == null || model.length in 1..128) { "invalid model" }
     }
 }
 data class RunQuery(val window: ActivityWindow, val kind: OperationKind? = null, val status: OperationStatus? = null, val page: PageRequest = PageRequest())
@@ -45,8 +47,8 @@ data class IngestionQuery(
     val runId: UUID? = null, val ingestionRunId: UUID? = null, val page: PageRequest = PageRequest(),
 ) {
     init {
-        require(provider == null || provider in NEWS_PROVIDERS) { "unsupported provider" }
-        if (ingestionRunId != null) require(window == null && provider == null && status == null && runId == null && page.cursor == null) {
+        requireValidInput(provider == null || provider in NEWS_PROVIDERS) { "unsupported provider" }
+        if (ingestionRunId != null) requireValidInput(window == null && provider == null && status == null && runId == null && page.cursor == null) {
             "exact ingestion lookup cannot be combined with filters or a cursor"
         }
     }
@@ -61,13 +63,14 @@ class OperationsCursor {
     }
 
     fun decode(token: String, kind: String, filters: Map<String, String>): CursorPosition {
-        require(token.length <= 1024 && kind in CURSOR_KINDS) { "invalid cursor" }
+        require(kind in CURSOR_KINDS) { "unsupported cursor kind" }
+        requireValidInput(token.length <= 1024) { "invalid cursor" }
         return try {
             val parts = Base64.getUrlDecoder().decode(token).toString(UTF_8).split('|')
             require(parts.size == 5 && parts[0] == "v1" && parts[1] == kind && parts[4] == filterHash(filters)) { "invalid cursor" }
             CursorPosition(Instant.parse(parts[2]), UUID.fromString(parts[3]))
         } catch (e: RuntimeException) {
-            throw IllegalArgumentException("invalid cursor", e)
+            throw InvalidInputException("invalid cursor")
         }
     }
 
@@ -79,14 +82,14 @@ class OperationsCursor {
 
 class ActivityWindowResolver {
     fun resolve(preset: WindowPreset?, from: Instant?, to: Instant?, now: Instant): ActivityWindow {
-        require((from == null) == (to == null)) { "from and to must be supplied together" }
-        require(preset == null || from == null) { "preset and explicit boundaries cannot be combined" }
+        requireValidInput((from == null) == (to == null)) { "from and to must be supplied together" }
+        requireValidInput(preset == null || from == null) { "preset and explicit boundaries cannot be combined" }
         val current = now.truncatedTo(ChronoUnit.MICROS)
         val window = if (from != null && to != null) ActivityWindow(from, to)
         else ActivityWindow(current.minus(preset?.duration ?: WindowPreset.HOURS_24.duration), current)
-        require(window.from < window.to) { "from must precede to" }
-        require(Duration.between(window.from, window.to) <= Duration.ofDays(7)) { "window cannot exceed seven days" }
-        require(window.to <= now.plusSeconds(5)) { "to cannot be more than five seconds in the future" }
+        requireValidInput(window.from < window.to) { "from must precede to" }
+        requireValidInput(Duration.between(window.from, window.to) <= Duration.ofDays(7)) { "window cannot exceed seven days" }
+        requireValidInput(window.to <= now.plusSeconds(5)) { "to cannot be more than five seconds in the future" }
         return window
     }
 }

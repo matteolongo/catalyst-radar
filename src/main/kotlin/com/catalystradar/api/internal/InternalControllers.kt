@@ -1,5 +1,6 @@
 package com.catalystradar.api.internal
 
+import com.catalystradar.common.requireValidInput
 import com.catalystradar.api.dto.CatalystResponse
 import com.catalystradar.api.dto.CreateApiClientRequest
 import com.catalystradar.api.dto.CreatedApiClientResponse
@@ -64,8 +65,8 @@ class InternalReplayController(
 
     @PostMapping
     fun replay(@RequestBody request: InternalReplayRequest): ReplayResponse {
-        require(request.ticker.isNotBlank()) { "ticker must not be blank" }
-        require(!request.cutoff.isAfter(Instant.now())) { "cutoff must not be in the future" }
+        requireValidInput(request.ticker.isNotBlank()) { "ticker must not be blank" }
+        requireValidInput(!request.cutoff.isAfter(Instant.now())) { "cutoff must not be in the future" }
         return runBlocking {
             replay.replay(
                 ReplayRequest(ticker = request.ticker.trim(), cutoff = request.cutoff),
@@ -97,7 +98,7 @@ class InternalApiClientController(private val keys: ApiKeyService) {
 
     @PostMapping
     fun create(@RequestBody request: CreateApiClientRequest): ResponseEntity<CreatedApiClientResponse> {
-        require(request.name.isNotBlank()) { "name must not be blank" }
+        requireValidInput(request.name.isNotBlank()) { "name must not be blank" }
         return ResponseEntity.ok()
             .cacheControl(CacheControl.noStore())
             .body(keys.create(request.name.trim()).toResponse())

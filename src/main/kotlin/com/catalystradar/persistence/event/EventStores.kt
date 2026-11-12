@@ -1,5 +1,7 @@
 package com.catalystradar.persistence.event
 
+import com.catalystradar.common.InvalidInputException
+import com.catalystradar.common.requireValidInput
 import com.catalystradar.application.catalyst.CompanyEventSource
 import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.EventCluster
@@ -72,7 +74,7 @@ class EventStore(
      * whether a next page exists.
      */
     fun searchEvents(query: EventSearch): EventSearchPage {
-        require(query.limit in 1..100) { "limit must be within 1..100" }
+        requireValidInput(query.limit in 1..100) { "limit must be within 1..100" }
         val decoded = query.cursor?.let { decodeCursor(it) }
         val rows = repository.search(
             ticker = query.ticker,
@@ -101,11 +103,11 @@ class EventStore(
 
     private fun decodeCursor(cursor: String): Pair<Instant, UUID> {
         val parts = cursor.split("|")
-        if (parts.size != 2) throw IllegalArgumentException("invalid cursor: $cursor")
+        if (parts.size != 2) throw InvalidInputException("invalid cursor")
         try {
             return Instant.parse(parts[0]) to UUID.fromString(parts[1])
         } catch (e: RuntimeException) {
-            throw IllegalArgumentException("invalid cursor: $cursor")
+            throw InvalidInputException("invalid cursor")
         }
     }
 

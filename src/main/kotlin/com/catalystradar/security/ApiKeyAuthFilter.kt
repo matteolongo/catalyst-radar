@@ -1,5 +1,6 @@
 package com.catalystradar.security
 
+import com.catalystradar.api.RequestIdFilter
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -80,8 +81,7 @@ class ApiKeyAuthFilter(
     ) {
         response.status = status.value()
         response.contentType = MediaType.APPLICATION_JSON_VALUE
-        val requestId = request.getHeader("X-Request-Id")?.takeIf { it.isNotBlank() }
-            ?: java.util.UUID.randomUUID().toString()
+        val requestId = RequestIdFilter.of(request)
         mapper.writeValue(
             response.outputStream,
             mapOf(

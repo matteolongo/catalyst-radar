@@ -64,7 +64,7 @@ class CompanyControllerTest {
 
     @Test
     fun `invalid ticker returns problem response`() {
-        `when`(service.findByTicker("!!!")).thenThrow(IllegalArgumentException("invalid ticker: !!!"))
+        `when`(service.findByTicker("!!!")).thenThrow(com.catalystradar.common.InvalidInputException("invalid ticker"))
 
         mockMvc.get("/v1/companies/!!!") {
             accept = MediaType.APPLICATION_JSON

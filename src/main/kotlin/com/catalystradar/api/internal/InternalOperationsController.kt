@@ -1,5 +1,7 @@
 package com.catalystradar.api.internal
 
+import com.catalystradar.common.InvalidInputException
+import com.catalystradar.common.requireValidInput
 import com.catalystradar.api.dto.*
 import com.catalystradar.application.ingestion.IngestionStatus
 import com.catalystradar.application.operations.*
@@ -136,7 +138,7 @@ class InternalOperationsController(
     ): ResponseEntity<OperationsPageResponse<IngestionRunResponse>> {
         val page = PageRequest(limit, cursor)
         val query = if (ingestionRunId != null) {
-            require(range == null && from == null && to == null) { "exact ingestion lookup cannot include a window" }
+            requireValidInput(range == null && from == null && to == null) { "exact ingestion lookup cannot include a window" }
             IngestionQuery(window = null, provider = provider, status = status, runId = runId, ingestionRunId = ingestionRunId, page = page)
         } else {
             val window = if (range == null && from == null && to == null && runId != null) null else resolveWindow(range, from, to)
@@ -267,7 +269,7 @@ class InternalOperationsController(
             null -> null
             "24h" -> WindowPreset.HOURS_24
             "7d" -> WindowPreset.DAYS_7
-            else -> throw IllegalArgumentException("range must be 24h or 7d")
+            else -> throw InvalidInputException("range must be 24h or 7d")
         }
         return windowResolver.resolve(preset, from, to, clock.instant())
     }

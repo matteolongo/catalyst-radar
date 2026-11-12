@@ -86,7 +86,7 @@ class EventsControllerTest {
     @Test
     fun `bad cursor returns 400`() {
         `when`(events.searchEvents(argThat { cursor == "junk" }))
-            .thenThrow(IllegalArgumentException("invalid cursor: junk"))
+            .thenThrow(com.catalystradar.common.InvalidInputException("invalid cursor"))
 
         mockMvc.get("/v1/events?cursor=junk") {
             accept = MediaType.APPLICATION_JSON

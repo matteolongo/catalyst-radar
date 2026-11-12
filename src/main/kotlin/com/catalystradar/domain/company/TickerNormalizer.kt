@@ -1,5 +1,7 @@
 package com.catalystradar.domain.company
 
+import com.catalystradar.common.requireValidInput
+
 private val TICKER_PATTERN = Regex("^[A-Z0-9][A-Z0-9.\\-]{0,15}$")
 
 /**
@@ -9,7 +11,7 @@ private val TICKER_PATTERN = Regex("^[A-Z0-9][A-Z0-9.\\-]{0,15}$")
  */
 fun normalizeTicker(raw: String): String {
     val normalized = raw.trim().uppercase()
-    require(normalized.isNotBlank()) { "ticker must not be blank" }
-    require(TICKER_PATTERN.matches(normalized)) { "invalid ticker" }
+    requireValidInput(normalized.isNotBlank()) { "ticker must not be blank" }
+    requireValidInput(TICKER_PATTERN.matches(normalized)) { "invalid ticker" }
     return normalized
 }

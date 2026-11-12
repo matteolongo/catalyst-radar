@@ -358,6 +358,15 @@ requires `X-Admin-Key`. `catalyst.pipeline.concurrency` (default 1, max 16) boun
 many documents are extracted in parallel. The Micrometer registry records bounded-cardinality pipeline,
 document-processing, retry, daily-snapshot, replay, provider, and LLM metrics.
 No metric tags include a ticker, company ID, document body, prompt, or secret.
+
+Every response carries an `X-Request-Id` header. A caller-supplied
+`X-Request-Id` is kept when it is 1–64 characters of `A-Z a-z 0-9 . _ -`;
+otherwise the server generates one. Error bodies return the same value as
+`requestId`, and log lines include it in brackets after the level. An
+unexpected failure returns `500 INTERNAL_ERROR` without internal detail and is
+logged once at ERROR with its stack trace under that request ID. Only
+caller-input validation returns `400 INVALID_REQUEST`; unknown routes return
+`404 NOT_FOUND` and unsupported methods `405 METHOD_NOT_ALLOWED`.
 Connect the registry to the deployment's chosen monitoring backend rather than
 logging raw provider payloads.
 

@@ -10,6 +10,11 @@ spring:
 server:
   port: 8080
 
+logging:
+  pattern:
+    # Request ID from RequestIdFilter, so an error body can be matched to its log lines.
+    level: "%5p [%X{requestId:-}]"
+
 management:
   endpoints:
     web:
