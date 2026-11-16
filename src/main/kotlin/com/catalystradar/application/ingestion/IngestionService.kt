@@ -55,8 +55,8 @@ class IngestionService(
             return IngestionCycleResult(emptyList())
         }
         log.info(
-            "ingestion cycle started tickers={} primary={} lookback={}",
-            tickers.size, properties.provider, properties.lookback,
+            "ingestion cycle started tickers={} primary={} lookback={} scanMode={}",
+            tickers.size, properties.provider, properties.lookback, properties.scanMode,
         )
         val primary = providersByName[properties.provider]
         if (primary == null) {
@@ -64,7 +64,7 @@ class IngestionService(
             runs.finishRun(runId, IngestionStatus.FAILED, 0, 0, 0, OperationalErrors.message("INGESTION_FAILURE"), "INGESTION_FAILURE")
             return IngestionCycleResult(listOfNotNull(runs.findById(runId)))
         }
-        val outcomes = mutableListOf(runProvider(primary, tickers, now, operationRunId))
+        val outcomes = mutableListOf(runProvider(primary, primaryScope(primary, tickers), now, operationRunId))
         val last = outcomes.last()
         // A truncated window is not a provider failure, and the fallback
         // costs one call per ticker, so truncation alone does not use it.
@@ -72,12 +72,24 @@ class IngestionService(
             last.record.errorCode != WINDOW_TRUNCATED &&
             properties.fallbackProvider != primary.name
         ) {
-            providersByName[properties.fallbackProvider]?.let { outcomes += runProvider(it, tickers, now, operationRunId) }
+            // The fallback always asks per ticker: it may not support a market-wide scan.
+            providersByName[properties.fallbackProvider]?.let { outcomes += runProvider(it, tickers.chunked(TICKER_CHUNK_SIZE), now, operationRunId) }
         }
         return IngestionCycleResult(
             runs = outcomes.map { it.record },
             newDocuments = outcomes.flatMap { it.newDocuments },
         )
+    }
+
+    /**
+     * Requests the primary provider makes: one ticker-less request in market
+     * mode when the provider supports it, otherwise one per ticker chunk.
+     */
+    private fun primaryScope(primary: NewsProvider, tickers: List<String>): List<List<String>> {
+        if (properties.scanMode != ScanMode.MARKET) return tickers.chunked(TICKER_CHUNK_SIZE)
+        if (primary.supportsMarketScan) return listOf(emptyList())
+        log.warn("ingestion scan-mode=market unsupported by provider={}; fetching per ticker", primary.name)
+        return tickers.chunked(TICKER_CHUNK_SIZE)
     }
 
     private data class ProviderOutcome(
@@ -88,14 +100,14 @@ class IngestionService(
     /** Exactly one duration sample per provider run, whichever way it ends. */
     private suspend fun runProvider(
         provider: NewsProvider,
-        tickers: List<String>,
+        chunks: List<List<String>>,
         now: Instant,
         operationRunId: UUID?,
     ): ProviderOutcome {
         val started = System.nanoTime()
         var outcome = "failed"
         try {
-            return fetchProvider(provider, tickers, now, operationRunId)
+            return fetchProvider(provider, chunks, now, operationRunId)
                 .also { outcome = it.record.status.name.lowercase() }
         } catch (e: CancellationException) {
             outcome = "cancelled"
@@ -107,7 +119,7 @@ class IngestionService(
 
     private suspend fun fetchProvider(
         provider: NewsProvider,
-        tickers: List<String>,
+        chunks: List<List<String>>,
         now: Instant,
         operationRunId: UUID?,
     ): ProviderOutcome {
@@ -120,7 +132,7 @@ class IngestionService(
         var truncated = false
         val fresh = mutableListOf<NewDocument>()
         try {
-            for (chunk in tickers.chunked(TICKER_CHUNK_SIZE)) {
+            for (chunk in chunks) {
                 var cursor: String? = null
                 val seenCursors = mutableSetOf<String>()
                 var pages = 0

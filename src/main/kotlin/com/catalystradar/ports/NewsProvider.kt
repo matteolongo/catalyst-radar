@@ -11,6 +11,9 @@ interface NewsProvider {
     /** Stable provider name used for orchestration and provenance. */
     val name: String
 
+    /** True when a request with no tickers returns market-wide news rather than nothing. */
+    val supportsMarketScan: Boolean get() = false
+
     suspend fun fetch(request: NewsFetchRequest): NewsFetchResult
 }
 

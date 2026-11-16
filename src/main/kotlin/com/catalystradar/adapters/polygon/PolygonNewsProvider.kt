@@ -37,6 +37,9 @@ class PolygonNewsProvider(
 
     override val name: String = "polygon"
 
+    /** The ticker filter is optional on /v2/reference/news; without it the window covers all news. */
+    override val supportsMarketScan: Boolean = true
+
     override suspend fun fetch(request: NewsFetchRequest): NewsFetchResult =
         withContext(Dispatchers.IO) {
             try {

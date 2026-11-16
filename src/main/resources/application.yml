@@ -76,6 +76,9 @@ catalyst:
     fallback-provider: finnhub
     page-size: 50
     max-pages-per-chunk: 10
+    # tickers: news per active ticker. market: all news in the window from the
+    # primary provider; untracked tickers become candidates (ADR 0002).
+    scan-mode: ${CATALYST_INGESTION_SCAN_MODE:tickers}
   pipeline:
     # Bounded durable-queue draining and retry behavior.
     batch-size: 50

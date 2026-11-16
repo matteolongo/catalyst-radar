@@ -80,6 +80,22 @@ before `tracked_since`. The Candidates screen offers **Track** with an explicit
 confirmation, because every tracked company adds provider and model cost to
 each cycle.
 
+### Market-wide scan
+
+`catalyst.ingestion.scan-mode` (`CATALYST_INGESTION_SCAN_MODE`) is `tickers` by
+default: the primary provider is asked for news per chunk of 20 active tickers.
+With `market`, a primary provider that supports it (Polygon) is asked once per
+cycle for all news in the lookback window, without a ticker filter, following
+pages up to `max-pages-per-chunk`; a cut-off window is reported as
+`WINDOW_TRUNCATED` as before. Articles naming tracked companies are queued as
+usual; articles naming only untracked tickers are stored and appear as
+candidates. Extraction cost therefore still follows tracked companies only,
+but provider quota follows market-wide news volume, so raise `page-size` (up
+to 1000) rather than the page bound. The fallback provider, and a primary
+without market support (Finnhub), always fetch per ticker. That Polygon
+returns market-wide news when the ticker filter is omitted is unverified
+against the live API; check one cycle's `fetched` count before relying on it.
+
 ## Filters, windows and cursors
 
 Overview/runs/ingestion/models accept `range=24h|7d`, or a complete ISO-8601 UTC
