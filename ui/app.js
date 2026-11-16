@@ -19,6 +19,9 @@
   var discoveryLoading = false;
   var renderedDiscoveryPath = null;
   var discoveryPage = null;
+  var changesRequest = 0;
+  var LAST_VISIT_KEY = 'catalyst-radar-last-visit';
+  var previousVisit = readLastVisit();
   var companyRequest = 0;
   var historyRequest = 0;
   var currentCompany = '';
@@ -236,6 +239,7 @@
   function invalidatePublicCredentials() {
     abortPublicReads();
     discoveryRequest++;
+    changesRequest++;
     renderedDiscoveryPath = null;
     discoveryPage = null;
     renderRadarPreview();
@@ -251,7 +255,7 @@
     companyNextCursor = null;
     eventItems = [];
     eventNextCursor = null;
-    ['discoveryResults', 'discoveryAsOf', 'pageSummary', 'companyOverview', 'companyScore', 'companyHistory',
+    ['discoveryResults', 'discoveryAsOf', 'pageSummary', 'changesResults', 'changesStatus', 'companyOverview', 'companyScore', 'companyHistory',
       'companyExplanation', 'companyEvents', 'companyEventsStatus', 'eventResults', 'eventFilterError', 'companyLookupStatus'].forEach(function (id) {
       $(id).innerHTML = '';
       $(id).textContent = '';
@@ -833,6 +837,32 @@
     renderRadarPreview();
   }
 
+  /** Stored by this browser only; a missing or unreadable value just disables "New" markers. */
+  function readLastVisit() {
+    try { return window.localStorage.getItem(LAST_VISIT_KEY); } catch (_) { return null; }
+  }
+
+  async function refreshChanges() {
+    var request = ++changesRequest;
+    var revision = credentialRevision;
+    var page;
+    var path = '/v1/discovery/transitions?' + window.CatalystChanges.query({ range: $('changesRange').value }).toString();
+    $('changesStatus').textContent = 'Loading changes…';
+    try {
+      page = await api(path);
+    } catch (err) {
+      if (revision !== credentialRevision || request !== changesRequest || currentView !== 'discover') return;
+      $('changesResults').innerHTML = '';
+      $('changesStatus').textContent = err.status === 401 || err.status === 403 ?
+        'Changes need the public API key. Set it in Access.' : 'Unable to load changes.';
+      return;
+    }
+    if (revision !== credentialRevision || request !== changesRequest || currentView !== 'discover') return;
+    $('changesStatus').textContent = 'State changes since ' + fmtTime(page.since) + (page.since ? ' UTC' : '');
+    $('changesResults').innerHTML = window.CatalystChanges.render(page, { lastVisit: previousVisit });
+    try { if (page.asOf) window.localStorage.setItem(LAST_VISIT_KEY, page.asOf); } catch (_) { /* Markers stay relative to the previous visit. */ }
+  }
+
   function routeView(route) {
     var requested = route.get('view') || 'discover';
     if (requested === 'operations') return 'pipeline';
@@ -923,6 +953,7 @@
   }
 
   function refreshPublicView() {
+    if (currentView === 'discover') refreshChanges();
     if (currentView === 'discover' && restoreDiscovery(new URLSearchParams(window.location.search))) return refreshDiscovery();
     if (currentView === 'events') return showEvents(new URLSearchParams(window.location.search), true);
     if (currentView === 'company') return refreshCompany(new URLSearchParams(window.location.search).get('ticker').toUpperCase());
@@ -937,6 +968,7 @@
       invalidTicker = true;
     }
     if (!['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view)) view = 'discover';
+    var enteringDiscover = view === 'discover' && (currentView !== 'discover' || !changesRequest);
     if (currentView !== view) {
       abortPublicReads();
       if (currentView === 'events' && eventLoading) {
@@ -983,6 +1015,7 @@
       historyRequest++;
       currentCompany = '';
     }
+    if (enteringDiscover) refreshChanges();
     if (view === 'discover' && restoreDiscovery(route)) {
       var discoverRead = refreshDiscovery();
       var validationRequest = discoveryRequest;
@@ -1132,6 +1165,14 @@
         return;
       }
       navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker), { returnSearch: window.location.search || '?view=discover' });
+    });
+    $('changesRange').addEventListener('change', function () { return refreshChanges(); });
+    $('changesResults').addEventListener('click', function (event) {
+      if (!ordinaryClick(event)) return;
+      var link = event.target.closest('[data-change-ticker]');
+      if (!link) return;
+      if (event.preventDefault) event.preventDefault();
+      navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.changeTicker), { returnSearch: window.location.search || '?view=discover' });
     });
     $('radarPreview').addEventListener('click', function (event) {
       if (!ordinaryClick(event)) return;

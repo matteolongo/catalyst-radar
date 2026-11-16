@@ -540,7 +540,8 @@ test('the dashboard sends requests only to the origin serving it', async () => {
     stored: { 'catalyst-admin-key': 'admin-secret' },
   });
   await waitForRequests(dashboard.requests, 2);
-  assert.ok(dashboard.requests.every(({ url }) => url.startsWith('https://ops.example/')));
+  assert.ok(dashboard.requests.concat(dashboard.changeRequests).every(({ url }) => url.startsWith('https://ops.example/')));
+  assert.equal(dashboard.changeRequests.length, 1);
 });
 
 test('each credential is sent only to the API routes that need it', async () => {
@@ -1308,4 +1309,41 @@ test('shared API helper adds JSON content type only to explicit POST bodies', as
   assert.equal(request.body, JSON.stringify({ start: true }));
   dashboard.completePipeline();
   await post;
+});
+
+test('radar loads what changed once on entry and marks changes newer than the last visit', async () => {
+  const dashboard = startDashboard({ search: '?view=discover', localStored: { 'catalyst-radar-last-visit': '2026-10-22T08:00:00Z' } });
+  await dashboard.flush();
+  assert.equal(dashboard.changeRequests.length, 1);
+  assert.ok(new URL(dashboard.changeRequests[0].url).searchParams.get('since'));
+  assert.equal(new URL(dashboard.changeRequests[0].url).searchParams.get('limit'), '50');
+  assert.match(dashboard.html('changesResults'), /Moved up/);
+  assert.match(dashboard.html('changesResults'), /change-new/);
+  assert.match(dashboard.text('changesStatus'), /State changes since/);
+  assert.equal(dashboard.localValues.get('catalyst-radar-last-visit'), '2026-10-22T10:00:00Z');
+  dashboard.element('discoverySort').value = 'SCORE';
+  await dashboard.element('discoverySort').trigger('change');
+  await dashboard.flush();
+  assert.equal(dashboard.changeRequests.length, 1);
+});
+
+test('changing the period reloads changes and a ticker opens the company record', async () => {
+  const dashboard = startDashboard({ search: '?view=discover' });
+  await dashboard.flush();
+  dashboard.element('changesRange').value = '7d';
+  await dashboard.element('changesRange').trigger('change');
+  await dashboard.flush();
+  assert.equal(dashboard.changeRequests.length, 2);
+  dashboard.element('changesResults').trigger('click', { target: { closest: (selector) => selector === '[data-change-ticker]' ? { dataset: { changeTicker: 'DELL' } } : null } });
+  assert.equal(dashboard.window.location.search, '?view=company&ticker=DELL');
+});
+
+test('changes report denied access and survive unavailable browser storage', async () => {
+  const denied = startDashboard({ search: '?view=discover', transitions: 'forbidden' });
+  await denied.flush();
+  assert.match(denied.text('changesStatus'), /public API key/);
+  const noStorage = startDashboard({ search: '?view=discover', localStorageFailure: true });
+  await noStorage.flush();
+  assert.match(noStorage.html('changesResults'), /Moved up/);
+  assert.doesNotMatch(noStorage.html('changesResults'), /change-new/);
 });

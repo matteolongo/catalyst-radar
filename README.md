@@ -696,6 +696,8 @@ GET /v1/events
 
 GET /v1/discovery/catalyzed
 
+GET /v1/discovery/transitions
+
 GET /actuator/health
 ```
 
@@ -739,7 +741,16 @@ to compare against, not because the score was flat. `downsideScore` (0–100)
 is the strength of negative catalysts alone: the headline `score` nets them
 against positive ones and floors at 0, so a company dominated by bad news has
 a low score and a high downside. Use `sort=DOWNSIDE` and `minDownside` to rank
-or filter by it. Snapshots saved before V6 carry `downsideScore = 0`. `/timeline` returns the
+or filter by it. Snapshots saved before V6 carry `downsideScore = 0`.
+
+`/v1/discovery/transitions` is the "what changed" feed: state transitions of
+active companies, newest first, each with `fromState`, `toState`, `direction`
+(`UPGRADE` or `DOWNGRADE`, from the state order), score and `transitionedAt`.
+`since` defaults to 24 hours ago and may reach back at most 30 days; filter
+with `direction` and repeated `state` (target state). Pages hold at most 100
+rows (`limit`, default 50) and continue with `cursor` from `nextCursor`. A
+transition is a band crossing: a large move inside one state does not appear
+here. `/timeline` returns the
 newest snapshots and transitions in the window (transitions in ascending
 order); `snapshotsTruncated` and `transitionsTruncated` report that older
 entries exist beyond `limit`.

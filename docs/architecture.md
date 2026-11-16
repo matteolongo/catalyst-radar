@@ -341,7 +341,8 @@ The initial Flyway schema contains companies, aliases, source_documents, model_r
 | GET /v1/companies/{ticker}/catalyst           | Current catalyst score, state, velocity and dominant drivers.                     |
 | GET /v1/companies/{ticker}/timeline           | Historical snapshots/transitions.                                                 |
 | GET /v1/events                                | Filterable event feed.                                                            |
-| GET /v1/discovery/catalyzed                   | Primary discovery endpoint; filter by state, score, velocity, sector, pagination. |
+| GET /v1/discovery/catalyzed                   | Primary discovery endpoint; filter by state, score, velocity, downside, sector, pagination. |
+| GET /v1/discovery/transitions                 | Cross-company state transitions in a bounded recent window, cursor-paged.         |
 | POST /internal/ingestion/run                  | Protected development/admin endpoint to trigger ingestion.                        |
 | POST /internal/companies/{ticker}/recalculate | Protected development/admin recomputation endpoint.                               |
 

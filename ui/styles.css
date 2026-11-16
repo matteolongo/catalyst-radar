@@ -173,6 +173,13 @@ footer { padding: 0 var(--gutter) 24px; }
 .radar-intro p { margin: 4px 0 0; }
 .radar-intro .company-lookup { margin: 0; }
 .radar-intro .company-lookup p:empty { display: none; }
+.radar-changes { border: 1px solid var(--line, #d9dde3); border-radius: 8px; padding: 0 16px 8px; margin-bottom: 20px; }
+.radar-changes h3 { margin: 0; }
+.change-columns { display: grid; gap: 8px 24px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.change-list h3 { font-size: 15px; margin: 4px 0 8px; }
+.change-list ul { list-style: none; margin: 0; padding: 0; }
+.change-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 0; border-top: 1px solid var(--line, #d9dde3); }
+.change-states { display: inline-flex; align-items: center; gap: 4px; }
 .radar-layout { display: grid; gap: 20px; align-items: start; }
 .radar-rankings, .radar-preview { min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
 .radar-rankings { padding: 0 20px; }

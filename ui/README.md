@@ -7,7 +7,13 @@ frontend build. See the [operator/API reference](../docs/operations-backoffice.m
 
 ## Radar, Events and Operations
 
-**Radar** opens first with companies ranked by highest 7-day score change.
+**Radar** opens first. Its **What changed** section lists companies that moved
+to a higher or lower state in the last 24 hours or 7 days, newest first, from
+`GET /v1/discovery/transitions`. Entries newer than your previous Radar visit in
+this browser are marked **New**; the visit time is kept in `localStorage` and
+nothing is stored on the server. A change is a move between states; a large
+move within one state shows in the 7-day change ranking instead. Below it,
+companies are ranked by highest 7-day score change.
 Choose **Highest score** to rank by current score, or **Highest downside** to
 rank by the strength of negative catalysts alone: the headline score nets them
 against positive ones and stops at 0, so bad-news build-ups only show there.

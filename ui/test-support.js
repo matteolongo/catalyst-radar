@@ -13,8 +13,11 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
   deferDocuments = false, deferDocumentList = false, modelSummary, modelCalls, modelDetail,
   modelPageSize = 25, deferModelSummary = false, deferModelCalls = false, deferModelDetails = false,
   operationRuns, operationRunDetail, operationIssues, ingestionRuns, pipelineResult, deferPipeline = true,
-  deferPublicPaths = [], localStored = {}, localStorageFailure = false } = {}) {
+  deferPublicPaths = [], transitions, localStored = {}, localStorageFailure = false } = {}) {
   const requests = [];
+  // The Radar "What changed" read runs beside discovery; it is recorded apart so
+  // request counts in discovery tests keep describing discovery.
+  const changeRequests = [];
   const values = new Map(Object.entries(stored));
   const localValues = new Map(Object.entries(localStored));
   const elements = new Map();
@@ -155,7 +158,8 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
   async function fetch(url, options) {
     const requestUrl = new URL(url, origin);
     const method = (options.method || 'GET').toUpperCase();
-    requests.push({ url: requestUrl.href, method, headers: options.headers || {}, body: options.body, signal: options.signal });
+    const recorded = requestUrl.pathname === '/v1/discovery/transitions' ? changeRequests : requests;
+    recorded.push({ url: requestUrl.href, method, headers: options.headers || {}, body: options.body, signal: options.signal });
     const route = requestUrl.pathname;
     if (deferPublicPaths.includes(route) && method === 'GET') return new Promise((resolve) => {
       const queued = publicResolvers.get(route) || [];
@@ -306,6 +310,12 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
       if (discovery === 'error') return response({ detail: 'Discovery unavailable' }, 503);
       return response(typeof discovery === 'function' ? discovery(requestUrl) : discovery || discoveryFixture);
     }
+    if (route === '/v1/discovery/transitions' && method === 'GET') {
+      const answer = typeof transitions === 'function' ? transitions(requestUrl) : transitions;
+      return answer === 'error' ? response({ detail: 'Transitions unavailable' }, 503)
+        : answer === 'forbidden' ? response({ detail: 'Public key required' }, 403)
+          : response(answer || transitionsFixture);
+    }
     if (route === '/v1/events' && method === 'GET') {
       const answer = typeof events === 'function' ? events(requestUrl) : events;
       return answer === 'error' ? response({ detail: 'Events unavailable' }, 503) : response(answer || eventFixture);
@@ -317,7 +327,7 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
     throw new Error('Unrecognized API request: ' + method + ' ' + route);
   }
   const context = { window, document, fetch, URLSearchParams, URL, AbortController, Promise, setImmediate };
-  for (const file of ['operations-model.js', 'operations.js', 'leaderboard.js', 'notebooks.js', 'app.js']) {
+  for (const file of ['operations-model.js', 'operations.js', 'leaderboard.js', 'changes.js', 'notebooks.js', 'app.js']) {
     const filePath = path.join(__dirname, file);
     if (fs.existsSync(filePath)) {
       let source = fs.readFileSync(filePath, 'utf8');
@@ -330,7 +340,7 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
   }
   ready();
   return {
-    requests, elements, values, localValues, window, document, html, context,
+    requests, changeRequests, elements, values, localValues, window, document, html, context,
     clickOnboarding(action) {
       const markup = elementFor('onboarding').innerHTML;
       assert.ok(Array.from(markup.matchAll(/<button\b[^>]*data-onboarding-action="([^"]+)"[^>]*>/g))
@@ -375,6 +385,11 @@ async function waitForRequests(requests, count) {
   assert.equal(requests.length, count);
   await new Promise(setImmediate);
 }
+
+const transitionsFixture = { since: '2026-10-21T10:00:00Z', asOf: '2026-10-22T10:00:00Z', nextCursor: null, transitions: [
+  { ticker: 'DELL', name: 'Dell', sector: 'Technology', fromState: 'WATCH', toState: 'BUILDING', direction: 'UPGRADE',
+    score: 46.6, scoreVersion: 'score-v1', transitionedAt: '2026-10-22T09:00:00Z' },
+] };
 
 const companyFixture = {
   metadata: { ticker: 'DELL', name: 'Dell Technologies', exchange: 'NYSE', sector: 'Technology', industry: 'Hardware', country: 'US', active: true },
