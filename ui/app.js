@@ -259,7 +259,7 @@
     companyNextCursor = null;
     eventItems = [];
     eventNextCursor = null;
-    ['discoveryResults', 'discoveryAsOf', 'pageSummary', 'changesResults', 'changesStatus', 'universeResults', 'universeStatus', 'universePageSummary', 'companyOverview', 'companyScore', 'companyHistory',
+    ['discoveryResults', 'discoveryAsOf', 'pageSummary', 'changesResults', 'changesStatus', 'universeResults', 'universeStatus', 'universePageSummary', 'universePromotion', 'companyOverview', 'companyScore', 'companyHistory',
       'companyExplanation', 'companyEvents', 'companyEventsStatus', 'eventResults', 'eventFilterError', 'companyLookupStatus'].forEach(function (id) {
       $(id).innerHTML = '';
       $(id).textContent = '';
@@ -971,6 +971,41 @@
     $('universeNext').disabled = offset + window.CatalystUniverse.PAGE_SIZE >= page.total;
   }
 
+  function promotionMessage(ticker, err) {
+    if (err.code === 'NOT_A_US_EQUITY') return ticker + ' is not listed as an active US common stock, so it stays a candidate.';
+    if (err.code === 'UNIVERSE_CAP_REACHED') return 'The universe is at its configured maximum. Raise catalyst.universe.max-active-companies or deactivate a company first.';
+    if (err.code === 'PROVIDER_UNAVAILABLE') return 'The reference provider could not confirm ' + ticker + '. Try again later.';
+    if (err.status === 403) return 'The admin key was refused. Check it in Access.';
+    return 'Unable to track ' + ticker + '.';
+  }
+
+  /** Two steps: tracking adds provider and model cost to every later pipeline cycle. */
+  function askToPromote(ticker) {
+    $('universePromotion').innerHTML = '<p>Track <strong>' + esc(ticker) + '</strong>? Its stored news that names no tracked company is queued, ' +
+      'and later pipeline runs fetch and extract its news. That adds provider and model cost to every cycle.</p>' +
+      '<div class="button-row"><button type="button" data-confirm-promote="' + esc(ticker) + '">Confirm and track ' + esc(ticker) + '</button>' +
+      '<button type="button" class="ghost" data-cancel-promote>Cancel</button></div>';
+  }
+
+  async function promote(ticker) {
+    var revision = credentialRevision;
+    $('universePromotion').textContent = 'Checking ' + ticker + ' with the reference provider…';
+    var result;
+    try {
+      result = await api('/internal/universe/promotions', { method: 'POST', body: { ticker: ticker } });
+    } catch (err) {
+      if (revision !== credentialRevision) return;
+      $('universePromotion').textContent = promotionMessage(ticker, err);
+      return;
+    }
+    if (revision !== credentialRevision) return;
+    $('universePromotion').textContent = result.created ?
+      result.ticker + ' is now tracked. ' + result.documentsLinked + ' stored documents linked, ' + result.documentsQueued +
+        ' queued for extraction. The next pipeline run processes them.' :
+      result.ticker + ' was already tracked. Nothing changed.';
+    if (currentView === 'universe') refreshUniverse(new URLSearchParams(window.location.search));
+  }
+
   function universeOffsetRoute(offset) {
     navigate('?view=universe&offset=' + offset);
   }
@@ -1308,6 +1343,16 @@
     $('universeNext').addEventListener('click', function () {
       var offset = window.CatalystUniverse.offset(new URLSearchParams(window.location.search).get('offset'));
       if (offset + window.CatalystUniverse.PAGE_SIZE < universeTotal) universeOffsetRoute(offset + window.CatalystUniverse.PAGE_SIZE);
+    });
+    $('universeResults').addEventListener('click', function (event) {
+      var button = event.target.closest('[data-promote-ticker]');
+      if (!button || !button.dataset.promoteTicker) return;
+      askToPromote(button.dataset.promoteTicker);
+    });
+    $('universePromotion').addEventListener('click', function (event) {
+      var confirm = event.target.closest('[data-confirm-promote]');
+      if (confirm && confirm.dataset.confirmPromote) return promote(confirm.dataset.confirmPromote);
+      if (event.target.closest('[data-cancel-promote]')) $('universePromotion').innerHTML = '';
     });
     $('universeStatus').addEventListener('click', function (event) {
       if (!ordinaryClick(event) || !event.target.closest('[data-universe-access]')) return;

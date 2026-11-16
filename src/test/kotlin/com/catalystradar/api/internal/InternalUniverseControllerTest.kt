@@ -31,6 +31,9 @@ class InternalUniverseControllerTest {
     @MockitoBean
     private lateinit var unresolved: UnresolvedTickerStore
 
+    @MockitoBean
+    private lateinit var promotions: com.catalystradar.application.universe.UniversePromotionService
+
     @Test
     fun `lists candidates with document counts that are not event counts`() {
         val at = Instant.parse("2026-11-16T10:00:00Z")

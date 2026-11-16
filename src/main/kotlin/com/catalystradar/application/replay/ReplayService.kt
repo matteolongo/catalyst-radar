@@ -1,5 +1,6 @@
 package com.catalystradar.application.replay
 
+import com.catalystradar.common.requireValidInput
 import com.catalystradar.application.catalyst.CanonicalEventSelector
 import com.catalystradar.application.catalyst.scoreChangeSince
 import com.catalystradar.application.catalyst.stateForScore
@@ -19,6 +20,7 @@ import com.catalystradar.domain.event.CatalystEvent
 import com.catalystradar.domain.event.EventType
 import com.catalystradar.observability.CatalystMetrics
 import com.catalystradar.persistence.catalyst.CatalystSnapshotStore
+import com.catalystradar.persistence.company.CompanyStore
 import com.catalystradar.persistence.document.SourceDocumentCompanyStore
 import com.catalystradar.ports.Embedding
 import com.catalystradar.ports.EmbeddingProvider
@@ -66,6 +68,7 @@ data class ReplayResult(
 @Service
 class ReplayService(
     private val companies: CompanyService,
+    private val companyStore: CompanyStore,
     private val documentCompanies: SourceDocumentCompanyStore,
     private val snapshots: CatalystSnapshotStore,
     private val validator: ExtractionValidator,
@@ -91,6 +94,12 @@ class ReplayService(
         }
         validateDedupProperties()
         val company = companies.findByTicker(request.ticker) ?: throw CompanyNotFoundException(request.ticker)
+        // Choosing a promoted company used news from after this cutoff (ADR 0002).
+        companyStore.findTrackedSince(company.id)?.let { trackedSince ->
+            requireValidInput(!request.cutoff.isBefore(trackedSince)) {
+                "${company.ticker} was promoted into the universe at $trackedSince; replay cutoffs before that are refused"
+            }
+        }
         val documents = documentCompanies.findDocumentsAvailableByCutoff(company.id, request.cutoff)
         val clusterer = InMemoryReplayClusterer(company.ticker, embeddings, dedup)
         var documentsSkipped = 0

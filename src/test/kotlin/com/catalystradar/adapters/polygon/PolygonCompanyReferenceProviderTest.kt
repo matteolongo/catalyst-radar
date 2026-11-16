@@ -10,6 +10,9 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
 import org.springframework.web.client.RestClient
+import com.catalystradar.ports.ProviderException
+import com.github.tomakehurst.wiremock.client.WireMock.aResponse
+import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -40,6 +43,54 @@ class PolygonCompanyReferenceProviderTest {
         assertNull(page.values[1].industry)
         assertNull(page.nextCursor)
     }
+
+    @Test
+    fun `finds one active US common stock by exact ticker`() = runTest {
+        wireMock.stubFor(
+            get(urlPathEqualTo("/v3/reference/tickers"))
+                .withQueryParam("ticker", equalTo("SMCI"))
+                .withQueryParam("type", equalTo("CS"))
+                .withQueryParam("active", equalTo("true"))
+                .withQueryParam("limit", equalTo("1"))
+                .willReturn(okJson(single("SMCI", type = "CS", locale = "us"))),
+        )
+
+        val reference = provider.findUsEquity("SMCI")
+
+        assertEquals("SMCI", reference?.ticker)
+        assertEquals("Super Micro Computer", reference?.name)
+        assertEquals("Nasdaq", reference?.exchange)
+    }
+
+    @Test
+    fun `rejects other types, other locales, other symbols and empty results`() = runTest {
+        for ((ticker, body) in listOf(
+            "SPY" to single("SPY", type = "ETF", locale = "us"),
+            "BABA" to single("BABA", type = "CS", locale = "global"),
+            "ABC" to single("ABCD", type = "CS", locale = "us"),
+            "NONE" to "{\"results\": []}",
+        )) {
+            wireMock.stubFor(
+                get(urlPathEqualTo("/v3/reference/tickers")).withQueryParam("ticker", equalTo(ticker)).willReturn(okJson(body)),
+            )
+            assertNull(provider.findUsEquity(ticker), ticker)
+        }
+    }
+
+    @Test
+    fun `maps lookup failures to provider errors`() = runTest {
+        wireMock.stubFor(
+            get(urlPathEqualTo("/v3/reference/tickers")).withQueryParam("ticker", equalTo("SMCI"))
+                .willReturn(aResponse().withStatus(401)),
+        )
+
+        assertThrows<ProviderException.AuthenticationFailed> { provider.findUsEquity("SMCI") }
+    }
+
+    private fun single(ticker: String, type: String, locale: String) = """{
+  "results": [{"ticker": "$ticker", "name": "Super Micro Computer", "market": "stocks", "locale": "$locale",
+    "primary_exchange": "XNAS", "type": "$type", "active": true}]
+}"""
 
     companion object {
         @RegisterExtension

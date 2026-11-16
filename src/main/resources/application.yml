@@ -64,6 +64,9 @@ catalyst:
   internal:
     # Always required for /internal/*, even locally. Never commit a real value.
     admin-key: ${CATALYST_INTERNAL_ADMIN_KEY:}
+  universe:
+    # Promotion refuses new companies at this many active ones (ADR 0002).
+    max-active-companies: ${CATALYST_UNIVERSE_MAX_ACTIVE:1000}
   ingestion:
     # Opt in only for one POC process; disabled avoids unconfigured provider calls.
     enabled: false

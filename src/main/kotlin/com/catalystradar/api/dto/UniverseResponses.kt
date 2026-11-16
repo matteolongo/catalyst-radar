@@ -37,3 +37,23 @@ fun CandidatePage.toResponse(since: Instant, limit: Int, offset: Int) = Candidat
     offset = offset,
     candidates = candidates.map { it.toResponse() },
 )
+
+data class PromotionRequest(val ticker: String)
+
+data class PromotionResponse(
+    val ticker: String,
+    val name: String,
+    val created: Boolean,
+    val documentsLinked: Int,
+    val documentsQueued: Int,
+    val trackedSince: Instant?,
+)
+
+fun com.catalystradar.application.universe.PromotionResult.toResponse() = PromotionResponse(
+    ticker = company.ticker,
+    name = company.name,
+    created = created,
+    documentsLinked = documentsLinked,
+    documentsQueued = documentsQueued,
+    trackedSince = trackedSince,
+)

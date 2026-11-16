@@ -54,6 +54,23 @@ class UnresolvedTickerStore(private val jdbc: JdbcClient) {
             .query { rs, _ -> rs.getString("ticker") }
             .list()
 
+    /** Every stored document naming [ticker], oldest first. */
+    fun documentIds(ticker: String): List<UUID> =
+        jdbc.sql(
+            """
+            SELECT u.source_document_id
+            FROM source_document_unresolved_tickers u
+            JOIN source_documents sd ON sd.id = u.source_document_id
+            WHERE u.ticker = :ticker
+            ORDER BY sd.discovered_at, sd.id
+            """.trimIndent(),
+        ).param("ticker", ticker).query { rs, _ -> rs.getObject("source_document_id", UUID::class.java) }.list()
+
+    /** The ticker is now explained by a configured company, so it stops being a candidate. */
+    fun clear(ticker: String) {
+        jdbc.sql("DELETE FROM source_document_unresolved_tickers WHERE ticker = :ticker").param("ticker", ticker).update()
+    }
+
     /**
      * Ranked by stored documents, then ticker. Tickers that have since become
      * configured companies drop out. Offset paging is bounded, as for discovery.

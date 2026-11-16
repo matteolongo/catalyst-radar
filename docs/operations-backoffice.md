@@ -64,6 +64,22 @@ ledger is written at registration and was backfilled from `raw_payload` by V10.
 The Operations → **Candidates** screen shows it. It requires `X-Admin-Key` and
 sends `Cache-Control: no-store`.
 
+`POST /internal/universe/promotions` with `{"ticker": "SMCI"}` tracks a
+candidate. It refuses at `catalyst.universe.max-active-companies`
+(`CATALYST_UNIVERSE_MAX_ACTIVE`, default 1000) with 409 `UNIVERSE_CAP_REACHED`,
+then asks the Polygon tickers reference for an exact, active, `CS` (common
+stock) row with locale `us`; anything else is 422 `NOT_A_US_EQUITY`, and a
+provider failure is 502 `PROVIDER_UNAVAILABLE` without the provider's payload.
+On success (201) it creates the company with `origin = PROMOTED` and
+`tracked_since`, links every stored document naming the ticker, queues only the
+documents that were never queued, and clears the candidate. Documents already
+processed for another company are linked but not re-extracted. Promoting an
+existing company answers 200 and changes nothing. The next pipeline run
+extracts the queued documents. Replay of a promoted company refuses cutoffs
+before `tracked_since`. The Candidates screen offers **Track** with an explicit
+confirmation, because every tracked company adds provider and model cost to
+each cycle.
+
 ## Filters, windows and cursors
 
 Overview/runs/ingestion/models accept `range=24h|7d`, or a complete ISO-8601 UTC

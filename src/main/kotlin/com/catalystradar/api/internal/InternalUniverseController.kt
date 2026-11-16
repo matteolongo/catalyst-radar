@@ -1,6 +1,13 @@
 package com.catalystradar.api.internal
 
 import com.catalystradar.api.dto.CandidatesResponse
+import com.catalystradar.api.dto.PromotionRequest
+import com.catalystradar.api.dto.PromotionResponse
+import com.catalystradar.application.universe.UniversePromotionService
+import kotlinx.coroutines.runBlocking
+import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
 import com.catalystradar.api.dto.toResponse
 import com.catalystradar.common.requireValidInput
 import com.catalystradar.persistence.universe.CandidateQuery
@@ -17,7 +24,23 @@ import java.time.Instant
 /** Universe expansion reads and actions (ADR 0002). Admin key required by the auth filter. */
 @RestController
 @RequestMapping("/internal/universe")
-class InternalUniverseController(private val unresolved: UnresolvedTickerStore) {
+class InternalUniverseController(
+    private val unresolved: UnresolvedTickerStore,
+    private val promotions: UniversePromotionService,
+) {
+
+    /**
+     * Tracks a candidate ticker. 201 when the company was added, 200 when it
+     * already existed (nothing changed). Calls the reference provider once.
+     */
+    @PostMapping("/promotions")
+    fun promote(@RequestBody request: PromotionRequest): ResponseEntity<PromotionResponse> {
+        requireValidInput(request.ticker.isNotBlank()) { "ticker must not be blank" }
+        val result = runBlocking { promotions.promote(request.ticker) }
+        return ResponseEntity.status(if (result.created) HttpStatus.CREATED else HttpStatus.OK)
+            .cacheControl(CacheControl.noStore())
+            .body(result.toResponse())
+    }
 
     @GetMapping("/candidates")
     fun candidates(

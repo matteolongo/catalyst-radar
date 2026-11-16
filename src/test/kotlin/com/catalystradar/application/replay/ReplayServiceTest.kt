@@ -36,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import kotlin.math.pow
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 @Import(ReplayServiceTest.ReplayTestConfiguration::class)
 @Transactional
@@ -90,6 +91,22 @@ class ReplayServiceTest : PostgresIntegrationTest() {
         )
         assertEquals(100 * contribution / (contribution + 30.0), result.score, 1e-9)
         assertEquals(0, events.findByCompanyId(company.id).size)
+    }
+
+    @Test
+    fun `replay of a promoted company refuses cutoffs before it was tracked`() = runTest {
+        val company = companies.save(Company(ticker = "SMCI", name = "Super Micro"))
+        val document = documents.save(newDocument("poly-1", t0.minusSeconds(5L * 86_400)))
+        documentCompanies.link(document.id, company.id)
+        val promotedAt = t0.plusSeconds(86_400)
+        companies.markPromoted(company.id, promotedAt)
+
+        assertFailsWith<com.catalystradar.common.InvalidInputException> {
+            replay.replay(ReplayRequest(ticker = "SMCI", cutoff = t0), FixedExtractionProvider)
+        }
+        val result = replay.replay(ReplayRequest(ticker = "SMCI", cutoff = promotedAt), FixedExtractionProvider)
+
+        assertEquals(1, result.documentsConsidered)
     }
 
     @Test

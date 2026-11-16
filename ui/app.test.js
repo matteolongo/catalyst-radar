@@ -1428,3 +1428,29 @@ test('candidates need the admin key and then list untracked tickers', async () =
   assert.equal(dashboard.element('navUniverse').getAttribute('aria-current'), 'page');
   assert.equal(dashboard.text('pageTitle'), 'Candidates');
 });
+
+test('tracking a candidate asks for confirmation, posts once and reports the result', async () => {
+  const bodies = [];
+  const dashboard = startDashboard({ search: '?view=universe', stored: { 'catalyst-admin-key': 'admin-secret' },
+    promotion: (url, body) => { bodies.push(JSON.parse(body)); return undefined; } });
+  await dashboard.flush();
+  dashboard.element('universeResults').trigger('click', { target: { closest: (selector) =>
+    selector === '[data-promote-ticker]' ? { dataset: { promoteTicker: 'SMCI' } } : null } });
+  assert.match(dashboard.html('universePromotion'), /Confirm and track SMCI/);
+  assert.equal(bodies.length, 0);
+  await dashboard.element('universePromotion').trigger('click', { target: { closest: (selector) =>
+    selector === '[data-confirm-promote]' ? { dataset: { confirmPromote: 'SMCI' } } : null } });
+  await dashboard.flush();
+  assert.deepEqual(bodies, [{ ticker: 'SMCI' }]);
+  assert.match(dashboard.text('universePromotion'), /SMCI is now tracked\. 4 stored documents linked, 1 queued/);
+});
+
+test('a refused promotion explains why', async () => {
+  const dashboard = startDashboard({ search: '?view=universe', stored: { 'catalyst-admin-key': 'admin-secret' },
+    promotion: { status: 422, body: { code: 'NOT_A_US_EQUITY', detail: 'no' } } });
+  await dashboard.flush();
+  await dashboard.element('universePromotion').trigger('click', { target: { closest: (selector) =>
+    selector === '[data-confirm-promote]' ? { dataset: { confirmPromote: 'SPY' } } : null } });
+  await dashboard.flush();
+  assert.match(dashboard.text('universePromotion'), /SPY is not listed as an active US common stock/);
+});
