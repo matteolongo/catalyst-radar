@@ -97,4 +97,16 @@ class TransitionFeedControllerTest {
             }
         }
     }
+
+    @Test
+    fun `passes a normalized ticker filter to the store`() {
+        `when`(transitions.find(any())).thenReturn(TransitionFeedPage(emptyList(), null))
+
+        mockMvc.get("/v1/discovery/transitions?ticker=dell") {
+            accept = MediaType.APPLICATION_JSON
+        }.andExpect { status { isOk() } }
+
+        val query = argumentCaptor<TransitionFeedQuery>().also { verify(transitions).find(it.capture()) }.firstValue
+        assertEquals(setOf("DELL"), query.tickers)
+    }
 }

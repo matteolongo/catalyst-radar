@@ -131,3 +131,11 @@ test('first-run checklist keeps unread checks unknown', () => {
   assert.equal((markup.match(/>Unknown</g) || []).length, 3);
   assert.match(markup, /could not be read/);
 });
+
+test('leaderboard marks followed companies only when following is enabled', () => {
+  const markup = window.CatalystLeaderboard.render(page, { sort: 'SCORE', following: ['AAA'] });
+  assert.match(markup, /data-follow-ticker="AAA" aria-pressed="true"/);
+  assert.match(markup, /data-follow-ticker="ZZZ" aria-pressed="false"/);
+  assert.doesNotMatch(window.CatalystLeaderboard.render(page, { sort: 'SCORE' }), /data-follow-ticker/);
+  assert.equal(window.CatalystLeaderboard.query({ following: true }).get('following'), '1');
+});

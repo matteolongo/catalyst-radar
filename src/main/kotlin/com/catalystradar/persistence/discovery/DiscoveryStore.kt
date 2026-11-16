@@ -18,6 +18,7 @@ data class DiscoveryQuery(
     val minVelocity7d: Double? = null,
     val minDownside: Double? = null,
     val sector: String? = null,
+    val tickers: Set<String>? = null,
     val sort: DiscoverySort = DiscoverySort.SCORE,
     val limit: Int = 20,
     val offset: Int = 0,
@@ -84,6 +85,10 @@ class DiscoveryStore(private val jdbc: JdbcClient) {
         query.sector?.let {
             conditions += "c.sector = :sector"
             params["sector"] = it
+        }
+        query.tickers?.takeIf { it.isNotEmpty() }?.let {
+            conditions += "c.ticker IN (:tickers)"
+            params["tickers"] = it.toList()
         }
         val order = when (query.sort) {
             DiscoverySort.SCORE -> "s.score DESC"

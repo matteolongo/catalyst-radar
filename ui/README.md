@@ -15,6 +15,12 @@ nothing is stored on the server. A change is a move between states; a large
 move within one state shows in the 7-day change ranking instead. Below it,
 companies are ranked by highest 7-day score change.
 
+Select ☆ next to a ticker, or **Follow** on a company record, to follow it.
+**Following only** narrows both What changed and the ranking to followed
+companies by sending their tickers to the server. The list, at most 50
+tickers, lives in this browser's `localStorage`; it is not stored on the
+server and does not follow you to another browser.
+
 When no score has been saved yet and no filter is applied, Radar shows **Get
 Radar started**: save the admin key, configure news and model providers, run
 the pipeline, enable daily snapshots. With an admin key it checks the steps

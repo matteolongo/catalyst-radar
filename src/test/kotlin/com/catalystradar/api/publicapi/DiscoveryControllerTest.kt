@@ -126,4 +126,24 @@ class DiscoveryControllerTest {
             status { isBadRequest() }
         }
     }
+
+    @Test
+    fun `normalizes repeated tickers and bounds the list`() {
+        `when`(discovery.discover(any())).thenReturn(DiscoveryPage(emptyList(), 0))
+
+        mockMvc.get("/v1/discovery/catalyzed?ticker=dell&ticker=NVDA") {
+            accept = MediaType.APPLICATION_JSON
+        }.andExpect { status { isOk() } }
+        val query = org.mockito.kotlin.argumentCaptor<DiscoveryQuery>()
+            .also { org.mockito.kotlin.verify(discovery).discover(it.capture()) }.firstValue
+        kotlin.test.assertEquals(setOf("DELL", "NVDA"), query.tickers)
+
+        val tooMany = (1..51).joinToString("&") { "ticker=T$it" }
+        mockMvc.get("/v1/discovery/catalyzed?$tooMany") {
+            accept = MediaType.APPLICATION_JSON
+        }.andExpect { status { isBadRequest() } }
+        mockMvc.get("/v1/discovery/catalyzed?ticker=bad%20ticker") {
+            accept = MediaType.APPLICATION_JSON
+        }.andExpect { status { isBadRequest() } }
+    }
 }

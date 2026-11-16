@@ -28,6 +28,7 @@ class TransitionFeedController(private val transitions: TransitionFeedStore) {
         @RequestParam(required = false) since: Instant?,
         @RequestParam(required = false) direction: TransitionDirection?,
         @RequestParam(required = false) state: List<CatalystState>?,
+        @RequestParam(required = false) ticker: List<String>?,
         @RequestParam(defaultValue = "50") limit: Int,
         @RequestParam(required = false) cursor: String?,
     ): TransitionFeedResponse {
@@ -42,6 +43,7 @@ class TransitionFeedController(private val transitions: TransitionFeedStore) {
                 asOf = asOf,
                 direction = direction,
                 toStates = state?.toSet(),
+                tickers = tickerFilter(ticker),
                 limit = limit,
                 cursor = cursor,
             ),

@@ -22,6 +22,7 @@
   var changesRequest = 0;
   var LAST_VISIT_KEY = 'catalyst-radar-last-visit';
   var previousVisit = readLastVisit();
+  var FOLLOWING_KEY = 'catalyst-following';
   var companyRequest = 0;
   var historyRequest = 0;
   var currentCompany = '';
@@ -283,7 +284,8 @@
     return window.CatalystLeaderboard.query({
       states: Array.from($('discoveryStates').selectedOptions || []).map(function (option) { return option.value; }),
       minScore: $('minScore').value, minVelocity7d: $('minVelocity7d').value, minDownside: $('minDownside').value, sector: $('sector').value,
-      sort: $('discoverySort').value || DEFAULT_RADAR_SORT, limit: Number($('pageSize').value) || 20
+      sort: $('discoverySort').value || DEFAULT_RADAR_SORT, limit: Number($('pageSize').value) || 20,
+      following: $('followingOnly').checked
     });
   }
 
@@ -325,9 +327,11 @@
     var sort = route.get('sort') || DEFAULT_RADAR_SORT;
     $('discoverySort').value = sort;
     $('pageSize').value = route.get('limit') || '20';
+    $('followingOnly').checked = route.get('following') === '1';
     try {
       appliedDiscoveryFilters = window.CatalystLeaderboard.query({ states: states, minScore: route.get('minScore'),
         minVelocity7d: route.get('minVelocity7d'), minDownside: route.get('minDownside'), sector: route.get('sector'), sort: sort,
+        following: route.get('following') === '1',
         limit: route.get('limit') || 20, offset: route.get('offset') || 0 });
       if (![20, 50, 100].includes(Number(appliedDiscoveryFilters.get('limit')))) {
         var error = new Error('Choose 20, 50, or 100 results per page.'); error.field = 'pageSize'; throw error;
@@ -689,6 +693,8 @@
   }
 
   function refreshCompany(ticker) {
+    renderFollowButton(ticker);
+    $('followStatus').textContent = '';
     var request = ++companyRequest;
     var revision = credentialRevision;
     var sameCompany = currentCompany === ticker;
@@ -727,10 +733,43 @@
     loadCompanyEvents(ticker, request, true);
   }
 
+  /** Kept in this browser only; unreadable storage means following nobody. */
+  function followedTickers() {
+    try { return window.CatalystFollowing.parse(window.localStorage.getItem(FOLLOWING_KEY)); } catch (_) { return []; }
+  }
+
+  function saveFollowed(list) {
+    try { window.localStorage.setItem(FOLLOWING_KEY, JSON.stringify(list)); return true; } catch (_) { return false; }
+  }
+
+  /** Follows or unfollows; returns a message when the change could not be kept. */
+  function toggleFollow(ticker) {
+    var next = window.CatalystFollowing.toggle(followedTickers(), ticker);
+    if (next === null) return 'You can follow at most ' + window.CatalystFollowing.LIMIT + ' companies. Stop following one first.';
+    if (!saveFollowed(next)) return 'This browser cannot store the following list.';
+    return '';
+  }
+
+  function followingOnly() { return !!appliedDiscoveryFilters && appliedDiscoveryFilters.get('following') === '1'; }
+
   function discoveryPath() {
     var query = new URLSearchParams(appliedDiscoveryFilters);
     query.set('offset', String(discoveryOffset));
+    query.delete('following');
+    if (followingOnly()) followedTickers().forEach(function (ticker) { query.append('ticker', ticker); });
     return '/v1/discovery/catalyzed?' + query.toString();
+  }
+
+  function renderDiscoveryRows() {
+    $('discoveryResults').innerHTML = window.CatalystLeaderboard.render(discoveryPage,
+      { compact: true, sort: appliedDiscoveryFilters.get('sort'), following: followedTickers() });
+  }
+
+  function renderFollowButton(ticker) {
+    var followed = followedTickers().includes(ticker);
+    $('followCompany').textContent = followed ? '★ Following' : '☆ Follow';
+    $('followCompany').setAttribute('aria-pressed', String(followed));
+    $('followCompany').setAttribute('aria-label', (followed ? 'Stop following ' : 'Follow ') + ticker);
   }
 
   function renderRadarPreview() {
@@ -776,6 +815,19 @@
     var path = discoveryPath();
     var requestOffset = discoveryOffset;
     var requestLimit = discoveryLimit;
+    if (followingOnly() && !followedTickers().length) {
+      discoveryLoading = false;
+      discoveryPage = null;
+      renderedDiscoveryPath = null;
+      renderRadarPreview();
+      $('discoveryResults').innerHTML = '';
+      $('pageSummary').textContent = '';
+      $('discoveryAsOf').textContent = '';
+      $('previousPage').disabled = true;
+      $('nextPage').disabled = true;
+      $('discoveryStatus').textContent = 'You are not following any company yet. Select ☆ next to a ticker to follow it.';
+      return;
+    }
     var retainRows = renderedDiscoveryPath === path && $('discoveryResults').innerHTML !== '';
     discoveryLoading = true;
     if (!retainRows) {
@@ -826,7 +878,7 @@
     $('nextPage').disabled = requestOffset + requestLimit >= discoveryTotal;
     $('firstPage').classList.toggle('hidden', requestOffset === 0 || page.results.length > 0);
     if (!page.results.length) {
-      var hasFilters = ['state', 'minScore', 'minVelocity7d', 'minDownside', 'sector'].some(function (name) { return appliedDiscoveryFilters.has(name); });
+      var hasFilters = ['state', 'minScore', 'minVelocity7d', 'minDownside', 'sector', 'following'].some(function (name) { return appliedDiscoveryFilters.has(name); });
       $('discoveryStatus').textContent = hasFilters || requestOffset > 0 ? 'No companies match these filters.' : 'No company scores have been saved yet.';
       $('discoveryResults').innerHTML = '';
       renderRadarPreview();
@@ -834,7 +886,7 @@
       return;
     }
     $('discoveryStatus').textContent = page.total + ' matching companies';
-    $('discoveryResults').innerHTML = window.CatalystLeaderboard.render(page, { compact: true, sort: appliedDiscoveryFilters.get('sort') });
+    renderDiscoveryRows();
     renderRadarPreview();
   }
 
@@ -847,7 +899,14 @@
     var request = ++changesRequest;
     var revision = credentialRevision;
     var page;
-    var path = '/v1/discovery/transitions?' + window.CatalystChanges.query({ range: $('changesRange').value }).toString();
+    var onlyFollowed = $('followingOnly').checked;
+    var tickers = onlyFollowed ? followedTickers() : [];
+    if (onlyFollowed && !tickers.length) {
+      $('changesResults').innerHTML = '';
+      $('changesStatus').textContent = 'You are not following any company yet.';
+      return;
+    }
+    var path = '/v1/discovery/transitions?' + window.CatalystChanges.query({ range: $('changesRange').value, tickers: tickers }).toString();
     $('changesStatus').textContent = 'Loading changes…';
     try {
       page = await api(path);
@@ -967,8 +1026,12 @@
   }
 
   function refreshPublicView() {
-    if (currentView === 'discover') refreshChanges();
-    if (currentView === 'discover' && restoreDiscovery(new URLSearchParams(window.location.search))) return refreshDiscovery();
+    if (currentView === 'discover') {
+      var restored = restoreDiscovery(new URLSearchParams(window.location.search));
+      refreshChanges();
+      if (restored) return refreshDiscovery();
+      return;
+    }
     if (currentView === 'events') return showEvents(new URLSearchParams(window.location.search), true);
     if (currentView === 'company') return refreshCompany(new URLSearchParams(window.location.search).get('ticker').toUpperCase());
   }
@@ -1029,8 +1092,9 @@
       historyRequest++;
       currentCompany = '';
     }
+    var discoverRestored = view === 'discover' && restoreDiscovery(route);
     if (enteringDiscover) refreshChanges();
-    if (view === 'discover' && restoreDiscovery(route)) {
+    if (discoverRestored) {
       var discoverRead = refreshDiscovery();
       var validationRequest = discoveryRequest;
       var validationRevision = credentialRevision;
@@ -1164,6 +1228,15 @@
     });
     $('discoveryResults').addEventListener('click', function (event) {
       if (!ordinaryClick(event)) return;
+      var follow = event.target.closest('[data-follow-ticker]');
+      if (follow && follow.dataset.followTicker) {
+        if (event.preventDefault) event.preventDefault();
+        var problem = toggleFollow(follow.dataset.followTicker);
+        if (problem) showError(problem);
+        if (followingOnly()) return refreshDiscovery();
+        if (discoveryPage) renderDiscoveryRows();
+        return;
+      }
       var setup = event.target.closest('[data-radar-route]');
       if (setup && setup.dataset.radarRoute) {
         if (event.preventDefault) event.preventDefault();
@@ -1187,6 +1260,20 @@
       navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker), { returnSearch: window.location.search || '?view=discover' });
     });
     $('changesRange').addEventListener('change', function () { return refreshChanges(); });
+    $('followingOnly').addEventListener('change', function (event) {
+      if (!appliedDiscoveryFilters) return;
+      if (event.target.checked) appliedDiscoveryFilters.set('following', '1');
+      else appliedDiscoveryFilters.delete('following');
+      discoveryOffset = 0;
+      clearError();
+      refreshChanges();
+      return updateDiscoveryRoute();
+    });
+    $('followCompany').addEventListener('click', function () {
+      if (!currentCompany) return;
+      $('followStatus').textContent = toggleFollow(currentCompany);
+      renderFollowButton(currentCompany);
+    });
     $('changesResults').addEventListener('click', function (event) {
       if (!ordinaryClick(event)) return;
       var link = event.target.closest('[data-change-ticker]');

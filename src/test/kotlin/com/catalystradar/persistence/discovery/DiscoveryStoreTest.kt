@@ -223,6 +223,16 @@ class DiscoveryStoreTest : PostgresIntegrationTest() {
         assertEquals(listOf("INTC"), page.results.map { it.ticker })
     }
 
+    @Test
+    fun `narrows the ranking to requested tickers`() {
+        seed()
+
+        val page = store.discover(DiscoveryQuery(tickers = setOf("HPQ", "DELL"), limit = 10, offset = 0))
+
+        assertEquals(listOf("DELL", "HPQ"), page.results.map { it.ticker })
+        assertEquals(2, page.total)
+    }
+
     private fun seed() {
         val dell = companies.save(Company(ticker = "DELL", name = "Dell", sector = "Industrials"))
         val nvda = companies.save(Company(ticker = "NVDA", name = "Nvidia", sector = "Technology"))

@@ -1371,3 +1371,45 @@ test('a filtered empty Radar shows no setup checklist', async () => {
   assert.doesNotMatch(dashboard.html('discoveryResults'), /Get Radar started/);
   assert.match(dashboard.text('discoveryStatus'), /No companies match these filters/);
 });
+
+test('following only sends the followed tickers to discovery and changes', async () => {
+  const dashboard = startDashboard({ search: '?view=discover&following=1', localStored: { 'catalyst-following': '["NVDA","DELL"]' } });
+  await dashboard.flush();
+  const discovery = dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').at(-1);
+  const query = new URL(discovery.url).searchParams;
+  assert.deepEqual(query.getAll('ticker'), ['DELL', 'NVDA']);
+  assert.equal(query.get('following'), null);
+  assert.deepEqual(new URL(dashboard.changeRequests.at(-1).url).searchParams.getAll('ticker'), ['DELL', 'NVDA']);
+  assert.equal(dashboard.element('followingOnly').checked, true);
+});
+
+test('following only with an empty list explains instead of reading', async () => {
+  const dashboard = startDashboard({ search: '?view=discover&following=1' });
+  await dashboard.flush();
+  assert.equal(dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').length, 0);
+  assert.equal(dashboard.changeRequests.length, 0);
+  assert.match(dashboard.text('discoveryStatus'), /not following any company yet/);
+});
+
+test('the star in a ranking row follows a company without reloading the ranking', async () => {
+  const dashboard = startDashboard({ search: '?view=discover' });
+  await dashboard.flush();
+  const reads = () => dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').length;
+  const before = reads();
+  dashboard.element('discoveryResults').trigger('click', { target: { closest: (selector) =>
+    selector === '[data-follow-ticker]' ? { dataset: { followTicker: 'DELL' } } : null } });
+  assert.equal(dashboard.localValues.get('catalyst-following'), '["DELL"]');
+  assert.equal(reads(), before);
+  assert.match(dashboard.html('discoveryResults'), /data-follow-ticker="DELL" aria-pressed="true"/);
+});
+
+test('the company record follows and unfollows its ticker', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL' });
+  await dashboard.flush();
+  assert.match(dashboard.text('followCompany'), /Follow/);
+  dashboard.click('followCompany');
+  assert.equal(dashboard.localValues.get('catalyst-following'), '["DELL"]');
+  assert.match(dashboard.text('followCompany'), /Following/);
+  dashboard.click('followCompany');
+  assert.equal(dashboard.localValues.get('catalyst-following'), '[]');
+});

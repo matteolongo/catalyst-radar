@@ -294,6 +294,7 @@
             <div class="radar-rankings">
               <div class="ranking-toolbar">
                 <div><p id="discoveryStatus" role="status">Loading company rankings…</p><p id="discoveryAsOf" class="muted small"></p></div>
+                <label class="following-control"><input id="followingOnly" type="checkbox"> Following only</label>
                 <label class="range-control">Rank by <select id="discoverySort"><option value="VELOCITY">7-day change</option><option value="SCORE">Highest score</option><option value="DOWNSIDE">Highest downside</option></select></label>
               </div>
               <details id="radarFilters" class="radar-filters">
@@ -322,7 +323,8 @@
         </section>
         <section id="companyView" class="view hidden" aria-labelledby="companyTitle">
           <button id="backToResults" type="button" class="ghost">← Return to results</button>
-          <h2 id="companyTitle" tabindex="-1">Company analysis</h2>
+          <div class="card-head"><h2 id="companyTitle" tabindex="-1">Company analysis</h2><button id="followCompany" type="button" class="ghost" aria-pressed="false">☆ Follow</button></div>
+          <p id="followStatus" class="muted small" role="status"></p>
           <nav id="companySections" class="company-sections" aria-label="Company analysis sections">
             <a href="#companySummaryTitle" data-company-section="companySummaryTitle">Current snapshot</a>
             <a href="#historyTitle" data-company-section="historyTitle">Score history</a>
@@ -506,6 +508,7 @@
   <script src="operations.js"></script>
   <script src="leaderboard.js"></script>
   <script src="changes.js"></script>
+  <script src="following.js"></script>
   <script src="notebooks.js"></script>
   <script src="app.js"></script>
 </body>

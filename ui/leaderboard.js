@@ -27,6 +27,7 @@
       result.set(entry[0], String(Number(value)));
     });
     if (filters.sector && filters.sector.trim()) result.set('sector', filters.sector.trim());
+    if (filters.following) result.set('following', '1');
     var sort = filters.sort === undefined ? 'SCORE' : filters.sort;
     if (!['SCORE', 'VELOCITY', 'DOWNSIDE'].includes(sort)) invalid('discoverySort', 'Choose Highest score, Highest 7-day change or Highest downside.');
     var limit = filters.limit === undefined ? 20 : Number(filters.limit);
@@ -76,6 +77,7 @@
     options = options || {};
     var compact = !!options.compact;
     var sort = options.sort || 'SCORE';
+    var following = options.following || [];
     var columns = '<th scope="col">Company</th>' + (compact ? '' : '<th scope="col">Sector</th>') +
       '<th scope="col" class="num"' + (sort === 'SCORE' ? ' aria-sort="descending"' : '') + '>Score</th><th scope="col">State</th>' +
       '<th scope="col" class="num"' + (sort === 'VELOCITY' ? ' aria-sort="descending"' : '') + '>7-day change <span class="muted">(points)</span></th>' +
@@ -88,7 +90,10 @@
       var stale = isStale(entry, page.asOf);
       if (stale) anyStale = true;
       var savedAt = time(entry.asOf) + (stale ? staleMarker() : '');
+      var followed = following.includes(entry.ticker);
       return '<tr><td><a href="?view=company&amp;ticker=' + encodeURIComponent(entry.ticker) + '" data-ticker="' + esc(entry.ticker) + '">' + esc(entry.ticker) + '</a>' +
+        (options.following ? ' <button type="button" class="follow-toggle" data-follow-ticker="' + esc(entry.ticker) + '" aria-pressed="' + followed +
+          '" aria-label="' + (followed ? 'Stop following ' : 'Follow ') + esc(entry.ticker) + '">' + (followed ? '★' : '☆') + '</button>' : '') +
         '<span class="cell-secondary">' + esc(entry.name) + '</span>' +
         (compact && entry.sector ? '<span class="cell-secondary ranking-sector">' + esc(entry.sector) + '</span>' : '') +
         (compact ? '<span class="cell-secondary ranking-saved-inline">Saved ' + savedAt + '</span>' : '') + '</td>' +

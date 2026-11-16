@@ -748,6 +748,8 @@ is the strength of negative catalysts alone: the headline `score` nets them
 against positive ones and floors at 0, so a company dominated by bad news has
 a low score and a high downside. Use `sort=DOWNSIDE` and `minDownside` to rank
 or filter by it. Snapshots saved before V6 carry `downsideScore = 0`.
+Both discovery reads accept a repeated `ticker` parameter (at most 50) to
+narrow results to a chosen list, such as the companies followed in the UI.
 
 `/v1/discovery/transitions` is the "what changed" feed: state transitions of
 active companies, newest first, each with `fromState`, `toState`, `direction`

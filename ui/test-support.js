@@ -327,7 +327,7 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
     throw new Error('Unrecognized API request: ' + method + ' ' + route);
   }
   const context = { window, document, fetch, URLSearchParams, URL, AbortController, Promise, setImmediate };
-  for (const file of ['operations-model.js', 'operations.js', 'leaderboard.js', 'changes.js', 'notebooks.js', 'app.js']) {
+  for (const file of ['operations-model.js', 'operations.js', 'leaderboard.js', 'changes.js', 'following.js', 'notebooks.js', 'app.js']) {
     const filePath = path.join(__dirname, file);
     if (fs.existsSync(filePath)) {
       let source = fs.readFileSync(filePath, 'utf8');
