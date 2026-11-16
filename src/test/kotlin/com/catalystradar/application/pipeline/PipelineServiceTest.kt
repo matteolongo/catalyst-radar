@@ -131,6 +131,9 @@ class PipelineServiceTest : PostgresIntegrationTest() {
     @Autowired
     private lateinit var jdbc: JdbcClient
 
+    @Autowired private lateinit var unresolvedTickers: com.catalystradar.persistence.universe.UnresolvedTickerStore
+    @Autowired private lateinit var promotionWriter: com.catalystradar.application.universe.UniversePromotionWriter
+
     private val meterRegistry = SimpleMeterRegistry()
     private val metrics = CatalystMetrics(meterRegistry)
 
@@ -141,6 +144,7 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         pipelineProperties: PipelineProperties = PipelineProperties(),
         catalyst: CatalystService = this.catalyst,
         recorder: OperationRunRecorder = this.recorder,
+        autoPromotion: com.catalystradar.application.universe.AutoPromotionService? = null,
     ) = PipelineService(
         ingestion = IngestionService(
             providers = providers,
@@ -170,6 +174,7 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         recorder = recorder,
         attempts = attempts,
         steps = steps,
+        autoPromotion = autoPromotion,
     )
 
     private fun polygon() = PolygonNewsProvider(
@@ -237,6 +242,37 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         assertEquals(1, result.companiesRescored)
         val snapshot = snapshots.latestSnapshot(companies.findByTicker("DELL")!!.id)
         assertEquals(CatalystState.BUILDING, snapshot?.state)
+    }
+
+    @Test
+    fun `an auto-promoted candidate is extracted and scored in the same cycle`() = runTest {
+        companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val published = Instant.now().minusSeconds(3600)
+        repeat(2) { i ->
+            registrations.registerIfNew(
+                "polygon",
+                com.catalystradar.ports.RawArticle("polygon", "smci-$i", null, "SMCI raise story $i", "SMCI raised its outlook $i.", published, listOf("SMCI")),
+                published,
+            )
+        }
+        val lookup = object : com.catalystradar.ports.CompanyLookupProvider {
+            override suspend fun findUsEquity(ticker: String) = com.catalystradar.ports.CompanyReference(ticker = ticker, name = "Super Micro Computer")
+        }
+        val autoPromotion = com.catalystradar.application.universe.AutoPromotionService(
+            com.catalystradar.application.universe.AutoPromotionProperties(enabled = true, minDocuments = 2),
+            unresolvedTickers,
+            com.catalystradar.application.universe.UniversePromotionService(
+                companyStore, lookup, promotionWriter, com.catalystradar.application.universe.UniverseProperties(),
+            ),
+            metrics,
+        )
+
+        val result = pipeline(providers = listOf(NoNewsProvider), ingestionProperties = IngestionProperties(provider = NoNewsProvider.name, fallbackProvider = "none"), autoPromotion = autoPromotion).runCycle()
+
+        val smci = assertNotNull(companies.findByTicker("SMCI"))
+        assertEquals(2, result.documentsProcessed)
+        assertNotNull(snapshots.latestSnapshot(smci.id))
+        assertEquals(1.0, meterRegistry.counter("catalyst_universe_auto_promotions_total", "outcome", "promoted").count())
     }
 
     @Test

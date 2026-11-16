@@ -80,6 +80,21 @@ before `tracked_since`. The Candidates screen offers **Track** with an explicit
 confirmation, because every tracked company adds provider and model cost to
 each cycle.
 
+### Automatic promotion
+
+`catalyst.universe.auto-promotion.enabled` (`CATALYST_UNIVERSE_AUTO_PROMOTION`)
+is `false` by default. When enabled, each pipeline cycle, after ingestion and
+before processing, promotes candidates named by at least `min-documents`
+(default 5) stored documents within `window` (default `P7D`), at most
+`max-per-cycle` (default 3, up to 20) per cycle, through the same service as
+**Track**. Their queued documents are extracted in the same cycle. At most
+three reference lookups are made per allowed promotion; a rejected ticker stays
+a candidate and is checked again in later cycles. The cap or a provider failure
+stops the cycle's promotions. Outcomes are counted in
+`catalyst_universe_auto_promotions_total{outcome}` and promoted companies carry
+`origin = PROMOTED` and `tracked_since`. They are not recorded as pipeline
+issues, because they are not failures.
+
 ### Market-wide scan
 
 `catalyst.ingestion.scan-mode` (`CATALYST_INGESTION_SCAN_MODE`) is `tickers` by

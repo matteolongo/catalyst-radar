@@ -187,6 +187,7 @@ environment variables. Never commit a real key, token, or database password.
 | Daily decay snapshots | `CATALYST_SNAPSHOTS_ENABLED`, `CATALYST_SNAPSHOTS_INTERVAL` |
 | Universe cap for promotion | `CATALYST_UNIVERSE_MAX_ACTIVE` |
 | Ingestion scope (`tickers` or `market`) | `CATALYST_INGESTION_SCAN_MODE` |
+| Automatic universe promotion | `CATALYST_UNIVERSE_AUTO_PROMOTION` |
 
 The local profile uses the demo admin key `local-dev-secret`; never expose it
 remotely. For other profiles, set `CATALYST_INTERNAL_ADMIN_KEY` yourself.

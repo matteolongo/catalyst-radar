@@ -2,6 +2,7 @@ package com.catalystradar.application.pipeline
 
 import com.catalystradar.application.catalyst.CatalystService
 import com.catalystradar.application.extraction.ExtractionResultCache
+import com.catalystradar.application.universe.AutoPromotionService
 import com.catalystradar.application.clustering.EventClusteringService
 import com.catalystradar.application.event.EventNormalizationService
 import com.catalystradar.application.ingestion.DocumentProcessingStatus
@@ -73,6 +74,7 @@ class PipelineService(
     private val attempts: ProcessingAttemptService,
     private val steps: DocumentStepStore,
     extractionCache: ExtractionResultCache? = null,
+    private val autoPromotion: AutoPromotionService? = null,
 ) {
     private val processor = DocumentProcessor(
         extraction, normalization, clustering, persistence, documents, documentCompanies, companies,
@@ -157,6 +159,14 @@ class PipelineService(
                 val code = providerRun.errorCode ?: "UNKNOWN_FAILURE"
                 if (firstErrorCode == null) firstErrorCode = code
                 recorder.issue(id, phase, code, provider = providerRun.provider)
+            }
+            // Promoted candidates' stored documents are queued here, so this cycle extracts them.
+            try {
+                autoPromotion?.promoteEligible(now)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: RuntimeException) {
+                log.warn("pipeline auto-promotion failed for run {}", id)
             }
             phase = OperationPhase.PROCESSING
             recorder.phase(id, phase)
