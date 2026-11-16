@@ -8,6 +8,33 @@ without the operator having to understand the pipeline.
 
 **Read before starting:** `AGENTS.md`, `docs/architecture.md`, `docs/implementation-v0.1.md`.
 
+## Implementation status (2026-11-16)
+
+All eight items are implemented as one commit each on `claude/intelligent-gauss-5y9ddj`
+rather than eight stacked branches. Deviations from the plan below:
+
+- **PR 3:** daily snapshots stay off in Compose. The snapshot scheduler runs at startup and
+  saves a snapshot for every active company, so enabling it on a fresh install fills Radar with
+  ~600 zero scores before any news exists and hides the setup checklist. The checklist and the
+  README tell the operator to enable it after the first pipeline run.
+- **PR 4:** the following-only flag lives in the Radar URL as `following=1`; the ticker list is
+  expanded from browser storage when the request is built, so URLs stay short.
+- **PR 5:** candidates use bounded offset paging (`offset` ≤ 10,000), not a cursor: the ranking is
+  by an aggregate count, which has no stable keyset. Unresolved tickers are recorded for every
+  stored document, including documents that also name a tracked company, because in `tickers`
+  scan mode almost every article names one.
+- **PR 6:** the lookup is a separate port, `CompanyLookupProvider`, implemented by the Polygon
+  adapter only, on the existing `/v3/reference/tickers` endpoint with `ticker=` and `type=CS`.
+  Documents already processed for another company are linked but not re-extracted (the
+  extraction cache is keyed by document, not by company set). Provider failures map to 502
+  `PROVIDER_UNAVAILABLE` for this endpoint only. Replay refuses cutoffs before `tracked_since`.
+- **PR 8:** promotions are counted in a metric and visible through `companies.origin` /
+  `tracked_since`, not recorded as pipeline issues, because they are not failures.
+
+Still unverified against live providers: that Polygon returns market-wide news when the
+`ticker` filter is omitted, and the exact behaviour of `/v3/reference/tickers?ticker=` for
+unknown symbols. Both are covered by WireMock tests only.
+
 ## Gaps this plan closes
 
 | # | Gap | Today |
