@@ -1,5 +1,7 @@
 package com.catalystradar.adapters.openai
 
+import com.catalystradar.adapters.http.ProviderRateLimits
+import com.catalystradar.adapters.http.rateLimited
 import com.catalystradar.adapters.http.mapHttpClientError
 import com.catalystradar.adapters.http.mapTransportError
 import com.catalystradar.adapters.http.timeouts
@@ -44,10 +46,12 @@ class OpenAiEventExtractionProvider(
     private val resources: ResourceLoader,
     private val metrics: CatalystMetrics,
     private val tracing: LlmTracing,
+    limits: ProviderRateLimits = ProviderRateLimits.none(),
 ) : EventExtractionProvider {
 
     private val client = builder.baseUrl(properties.baseUrl)
         .requestFactory(timeouts(properties.connectTimeout, properties.extractionReadTimeout))
+        .rateLimited(limits, "openai")
         .build()
 
     private val systemPrompt: String by lazy {

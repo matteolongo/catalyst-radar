@@ -80,11 +80,36 @@ catalyst:
     lookback: PT2H
     provider: polygon
     fallback-provider: finnhub
-    page-size: 50
+    # Results per Polygon page (at most 1000); Finnhub has no paging and ignores it.
+    page-size: ${CATALYST_INGESTION_PAGE_SIZE:1000}
     max-pages-per-chunk: 10
-    # tickers: news per active ticker. market: all news in the window from the
-    # primary provider; untracked tickers become candidates (ADR 0002).
-    scan-mode: ${CATALYST_INGESTION_SCAN_MODE:tickers}
+    # market: all news in the window from the primary provider, a few requests
+    # per cycle; untracked tickers become candidates (ADR 0002).
+    # tickers: one request per active ticker, which a 5-per-minute plan cannot
+    # cover within one interval.
+    scan-mode: ${CATALYST_INGESTION_SCAN_MODE:market}
+  rate-limits:
+    # Request budget per provider, shared by every client of that provider.
+    # requests-per-minute: requests started in any rolling minute; 0 = unpaced.
+    # max-retries: a 429 is retried this many times, waiting for Retry-After
+    # (or one minute without it), unless the wait exceeds max-retry-wait.
+    providers:
+      polygon:
+        # Free plan: 5 requests per minute. Raise for a paid plan.
+        requests-per-minute: ${CATALYST_POLYGON_REQUESTS_PER_MINUTE:5}
+        max-retries: ${CATALYST_POLYGON_MAX_RETRIES:2}
+        max-retry-wait: PT65S
+      finnhub:
+        # Free plan: 60 requests per minute.
+        requests-per-minute: ${CATALYST_FINNHUB_REQUESTS_PER_MINUTE:60}
+        max-retries: ${CATALYST_FINNHUB_MAX_RETRIES:2}
+        max-retry-wait: PT65S
+      openai:
+        # Unpaced by default; limits depend on the account tier. A 429 is not
+        # retried here because the processing queue already reschedules it.
+        requests-per-minute: ${CATALYST_OPENAI_REQUESTS_PER_MINUTE:0}
+        max-retries: ${CATALYST_OPENAI_MAX_RETRIES:0}
+        max-retry-wait: PT65S
   pipeline:
     # Bounded durable-queue draining and retry behavior.
     batch-size: 50

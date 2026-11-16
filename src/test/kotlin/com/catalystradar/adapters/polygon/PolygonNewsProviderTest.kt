@@ -44,6 +44,14 @@ class PolygonNewsProviderTest {
     }
 
     @Test
+    fun `refuses more than one ticker because polygon matches a comma list against nothing`() = runTest {
+        kotlin.test.assertFailsWith<IllegalArgumentException> {
+            provider.fetch(NewsFetchRequest(tickers = listOf("AAPL", "MSFT")))
+        }
+        assertEquals(0, wireMock.allServeEvents.size)
+    }
+
+    @Test
     fun `follows provider cursor`() = runTest {
         val nextUrl = "${wireMock.baseUrl()}/v2/reference/news?cursor=abc"
         wireMock.stubFor(

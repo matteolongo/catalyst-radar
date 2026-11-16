@@ -14,6 +14,14 @@ interface NewsProvider {
     /** True when a request with no tickers returns market-wide news rather than nothing. */
     val supportsMarketScan: Boolean get() = false
 
+    /**
+     * Tickers one request may name. Polygon's `ticker` filter takes a single
+     * symbol (a comma-separated list matches nothing) and Finnhub's endpoint
+     * is per symbol, so the default is one: a rate-limited request then loses
+     * at most one ticker's news.
+     */
+    val maxTickersPerRequest: Int get() = 1
+
     suspend fun fetch(request: NewsFetchRequest): NewsFetchResult
 }
 

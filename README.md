@@ -186,7 +186,10 @@ environment variables. Never commit a real key, token, or database password.
 | Processing safety | `CATALYST_PIPELINE_BATCH_SIZE`, `CATALYST_PIPELINE_MAX_ATTEMPTS`, `CATALYST_PIPELINE_RETRY_DELAY` |
 | Daily decay snapshots | `CATALYST_SNAPSHOTS_ENABLED`, `CATALYST_SNAPSHOTS_INTERVAL` |
 | Universe cap for promotion | `CATALYST_UNIVERSE_MAX_ACTIVE` |
-| Ingestion scope (`tickers` or `market`) | `CATALYST_INGESTION_SCAN_MODE` |
+| Ingestion scope (`market`, default, or `tickers`) | `CATALYST_INGESTION_SCAN_MODE` |
+| Results per Polygon page (default 1000) | `CATALYST_INGESTION_PAGE_SIZE` |
+| Provider requests per rolling minute (0 = unpaced) | `CATALYST_POLYGON_REQUESTS_PER_MINUTE` (default 5), `CATALYST_FINNHUB_REQUESTS_PER_MINUTE` (60), `CATALYST_OPENAI_REQUESTS_PER_MINUTE` (0) |
+| Retries of a provider 429 | `CATALYST_POLYGON_MAX_RETRIES` (2), `CATALYST_FINNHUB_MAX_RETRIES` (2), `CATALYST_OPENAI_MAX_RETRIES` (0) |
 | Automatic universe promotion | `CATALYST_UNIVERSE_AUTO_PROMOTION` |
 
 The local profile uses the demo admin key `local-dev-secret`; never expose it

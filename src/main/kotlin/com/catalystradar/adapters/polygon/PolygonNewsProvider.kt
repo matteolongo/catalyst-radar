@@ -1,5 +1,7 @@
 package com.catalystradar.adapters.polygon
 
+import com.catalystradar.adapters.http.ProviderRateLimits
+import com.catalystradar.adapters.http.rateLimited
 import com.catalystradar.adapters.http.mapHttpClientError
 import com.catalystradar.adapters.http.mapTransportError
 import com.catalystradar.adapters.http.timeouts
@@ -29,10 +31,12 @@ import java.time.Instant
 class PolygonNewsProvider(
     builder: RestClient.Builder,
     private val properties: PolygonProperties,
+    limits: ProviderRateLimits = ProviderRateLimits.none(),
 ) : NewsProvider {
 
     private val client = builder.baseUrl(properties.baseUrl)
         .requestFactory(timeouts(properties.connectTimeout, properties.readTimeout))
+        .rateLimited(limits, "polygon")
         .build()
 
     override val name: String = "polygon"
@@ -58,14 +62,13 @@ class PolygonNewsProvider(
         }
 
     private fun getPage(request: NewsFetchRequest): PolygonNewsPage {
+        require(request.tickers.size <= maxTickersPerRequest) { "polygon news accepts one ticker per request" }
         if (request.cursor != null && request.cursor.startsWith("http")) {
             return get(request.cursor)
         }
         val response = client.get().uri { uri ->
             uri.path("/v2/reference/news")
-            if (request.tickers.isNotEmpty()) {
-                uri.queryParam("ticker", request.tickers.joinToString(","))
-            }
+            request.tickers.singleOrNull()?.let { uri.queryParam("ticker", it) }
             request.from?.let { uri.queryParam("published_utc.gte", it.toString()) }
             request.to?.let { uri.queryParam("published_utc.lte", it.toString()) }
             request.cursor?.let { uri.queryParam("cursor", it) }

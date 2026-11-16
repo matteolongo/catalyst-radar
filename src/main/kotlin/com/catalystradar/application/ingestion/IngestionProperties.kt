@@ -12,11 +12,11 @@ data class IngestionProperties(
     var lookback: Duration = Duration.ofHours(2),
     var provider: String = "polygon",
     var fallbackProvider: String = "finnhub",
-    var pageSize: Int = 50,
+    var pageSize: Int = 1000,
     /** Provider pages followed per ticker chunk before the run is marked truncated. */
     var maxPagesPerChunk: Int = 10,
     /** How the primary provider is asked for news (ADR 0002). */
-    var scanMode: ScanMode = ScanMode.TICKERS,
+    var scanMode: ScanMode = ScanMode.MARKET,
 )
 
 enum class ScanMode {
