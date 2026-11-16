@@ -49,6 +49,7 @@
         <a id="navPipeline" href="?view=pipeline">Pipeline runs</a>
         <a id="navDocuments" href="?view=documents">Documents</a>
         <a id="navModels" href="?view=models">Models &amp; costs</a>
+        <a id="navUniverse" href="?view=universe">Candidates</a>
       </nav>
 
       <div id="banner" class="banner hidden" role="alert"></div>
@@ -271,6 +272,14 @@
             <p>Six guided notebooks explain how company news becomes catalyst scores and saved history.</p>
             <button id="restartOnboarding" type="button" class="ghost">Open process notebooks</button>
           </section>
+        </section>
+
+        <section id="universeView" class="view hidden" aria-labelledby="universeTitle">
+          <h2 id="universeTitle" tabindex="-1">Untracked tickers in the news</h2>
+          <p class="muted">Tickers named by stored articles in the last 30 days that no tracked company explains. Counts are documents, not events. Requires the admin key.</p>
+          <p id="universeStatus" role="status"></p>
+          <div id="universeResults"></div>
+          <div class="pager"><button id="universePrevious" type="button" class="ghost" disabled>Previous</button><span id="universePageSummary" aria-live="polite"></span><button id="universeNext" type="button" class="ghost" disabled>Next</button></div>
         </section>
 
         <section id="discoverView" class="view" aria-labelledby="discoverTitle">
@@ -509,6 +518,7 @@
   <script src="leaderboard.js"></script>
   <script src="changes.js"></script>
   <script src="following.js"></script>
+  <script src="universe.js"></script>
   <script src="notebooks.js"></script>
   <script src="app.js"></script>
 </body>

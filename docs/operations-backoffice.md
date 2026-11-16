@@ -51,6 +51,19 @@ and a correction prompt, without enum class names or internal conversion errors.
 The Events UI offers the existing taxonomy-v1 types as a family-grouped selector;
 invalid filters remain in the form with an inline correction message.
 
+## Universe candidates (ADR 0002)
+
+`GET /internal/universe/candidates` lists provider tickers named by stored
+documents that no configured company explains, ranked by `documentsStored`
+then ticker. Parameters: `since` (default 30 days ago, at most 90), `minDocuments`
+(default 1), `limit` 1–100 (default 50) and `offset` 0–10,000. Counts are
+documents, not events: syndicated copies each count. `documentsNeverQueued` is
+the subset stored as unresolved, which tracking the ticker would queue for
+extraction. A ticker drops out once a company with that ticker exists. The
+ledger is written at registration and was backfilled from `raw_payload` by V10.
+The Operations → **Candidates** screen shows it. It requires `X-Admin-Key` and
+sends `Cache-Control: no-store`.
+
 ## Filters, windows and cursors
 
 Overview/runs/ingestion/models accept `range=24h|7d`, or a complete ISO-8601 UTC

@@ -8,6 +8,7 @@ import com.catalystradar.persistence.document.DocumentProcessingStore
 import com.catalystradar.persistence.document.SourceDocumentCompanyStore
 import com.catalystradar.persistence.document.SourceDocumentStore
 import com.catalystradar.persistence.jdbc.toJsonB
+import com.catalystradar.persistence.universe.UnresolvedTickerStore
 import com.catalystradar.ports.RawArticle
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -46,6 +47,7 @@ class SourceDocumentRegistrationService(
     private val documentCompanies: SourceDocumentCompanyStore,
     private val processing: DocumentProcessingStore,
     private val steps: DocumentStepStore,
+    private val unresolvedTickers: UnresolvedTickerStore,
 ) {
 
     @Transactional
@@ -83,12 +85,11 @@ class SourceDocumentRegistrationService(
                 outputCount = 1, finishedAt = registrationFinished)
         }
         val resolution = operationRunId?.let { steps.start(it, document.id, null, DocumentStage.COMPANY_RESOLUTION, inputCount = article.tickers.size) }
-        val companyIds = article.tickers.mapNotNull { ticker ->
-            runCatching { normalizeTicker(ticker) }.getOrNull()
-                ?.let(companies::findByTicker)
-                ?.id
-        }.toSet()
+        val providerTickers = article.tickers.mapNotNull { ticker -> runCatching { normalizeTicker(ticker) }.getOrNull() }.distinct()
+        val resolved = providerTickers.associateWith { companies.findByTicker(it)?.id }
+        val companyIds = resolved.values.filterNotNull().toSet()
         documentCompanies.link(document.id, companyIds)
+        unresolvedTickers.record(document.id, resolved.filterValues { it == null }.keys)
         resolution?.let { steps.finish(it, outputCount = companyIds.size) }
         if (companyIds.isEmpty()) return DocumentRegistration.Unresolved(document.id)
         processing.ensurePending(document.id, now)

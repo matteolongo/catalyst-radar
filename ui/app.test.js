@@ -1413,3 +1413,18 @@ test('the company record follows and unfollows its ticker', async () => {
   dashboard.click('followCompany');
   assert.equal(dashboard.localValues.get('catalyst-following'), '[]');
 });
+
+test('candidates need the admin key and then list untracked tickers', async () => {
+  const anonymous = startDashboard({ search: '?view=universe' });
+  await anonymous.flush();
+  assert.match(anonymous.html('universeStatus'), /admin key/);
+  assert.equal(anonymous.requests.filter(({ url }) => new URL(url).pathname === '/internal/universe/candidates').length, 0);
+  const dashboard = startDashboard({ search: '?view=universe', stored: { 'catalyst-admin-key': 'admin-secret' } });
+  await dashboard.flush();
+  const read = dashboard.requests.find(({ url }) => new URL(url).pathname === '/internal/universe/candidates');
+  assert.equal(read.headers['X-Admin-Key'], 'admin-secret');
+  assert.equal(new URL(read.url).searchParams.get('limit'), '50');
+  assert.match(dashboard.html('universeResults'), /SMCI/);
+  assert.equal(dashboard.element('navUniverse').getAttribute('aria-current'), 'page');
+  assert.equal(dashboard.text('pageTitle'), 'Candidates');
+});

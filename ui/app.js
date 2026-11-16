@@ -20,6 +20,8 @@
   var renderedDiscoveryPath = null;
   var discoveryPage = null;
   var changesRequest = 0;
+  var universeRequest = 0;
+  var universeTotal = 0;
   var LAST_VISIT_KEY = 'catalyst-radar-last-visit';
   var previousVisit = readLastVisit();
   var FOLLOWING_KEY = 'catalyst-following';
@@ -241,6 +243,7 @@
     abortPublicReads();
     discoveryRequest++;
     changesRequest++;
+    universeRequest++;
     renderedDiscoveryPath = null;
     discoveryPage = null;
     renderRadarPreview();
@@ -256,7 +259,7 @@
     companyNextCursor = null;
     eventItems = [];
     eventNextCursor = null;
-    ['discoveryResults', 'discoveryAsOf', 'pageSummary', 'changesResults', 'changesStatus', 'companyOverview', 'companyScore', 'companyHistory',
+    ['discoveryResults', 'discoveryAsOf', 'pageSummary', 'changesResults', 'changesStatus', 'universeResults', 'universeStatus', 'universePageSummary', 'companyOverview', 'companyScore', 'companyHistory',
       'companyExplanation', 'companyEvents', 'companyEventsStatus', 'eventResults', 'eventFilterError', 'companyLookupStatus'].forEach(function (id) {
       $(id).innerHTML = '';
       $(id).textContent = '';
@@ -936,6 +939,42 @@
     $('discoveryResults').innerHTML = window.CatalystLeaderboard.firstRun(status);
   }
 
+  async function refreshUniverse(route) {
+    var request = ++universeRequest;
+    var revision = credentialRevision;
+    var offset = window.CatalystUniverse.offset(route.get('offset'));
+    var page;
+    $('universePrevious').disabled = true;
+    $('universeNext').disabled = true;
+    if (!window.sessionStorage.getItem(ADMIN_KEY_NAME)) {
+      $('universeResults').innerHTML = '';
+      $('universePageSummary').textContent = '';
+      $('universeStatus').innerHTML = 'Candidates need the admin key. <a href="?view=settings" data-universe-access>Save it in Access.</a>';
+      return;
+    }
+    $('universeStatus').textContent = 'Loading untracked tickers…';
+    try {
+      page = await api('/internal/universe/candidates?' + window.CatalystUniverse.query({ offset: offset }).toString());
+    } catch (err) {
+      if (revision !== credentialRevision || request !== universeRequest || currentView !== 'universe') return;
+      $('universeResults').innerHTML = '';
+      $('universePageSummary').textContent = '';
+      $('universeStatus').textContent = err.status === 403 ? 'The admin key was refused. Check it in Access.' : 'Unable to load untracked tickers.';
+      return;
+    }
+    if (revision !== credentialRevision || request !== universeRequest || currentView !== 'universe') return;
+    universeTotal = page.total;
+    $('universeStatus').textContent = page.total ? page.total + ' untracked tickers since ' + fmtTime(page.since) + ' UTC' : '';
+    $('universeResults').innerHTML = window.CatalystUniverse.render(page, { promote: true });
+    $('universePageSummary').textContent = page.total ? (offset + 1) + '–' + (offset + page.candidates.length) + ' of ' + page.total : '';
+    $('universePrevious').disabled = offset === 0;
+    $('universeNext').disabled = offset + window.CatalystUniverse.PAGE_SIZE >= page.total;
+  }
+
+  function universeOffsetRoute(offset) {
+    navigate('?view=universe&offset=' + offset);
+  }
+
   function routeView(route) {
     var requested = route.get('view') || 'discover';
     if (requested === 'operations') return 'pipeline';
@@ -952,7 +991,7 @@
     if (typeof value !== 'string' || !value.startsWith('?') || value.startsWith('??') || value.indexOf('#') >= 0 || value.indexOf('\\') >= 0) return null;
     var view = new URLSearchParams(value.slice(1)).get('view') || 'discover';
     if (view === 'operations') view = 'pipeline';
-    return ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view) ? value : null;
+    return ['overview', 'pipeline', 'documents', 'models', 'universe', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view) ? value : null;
   }
 
   function localSearch(value) {
@@ -1033,6 +1072,7 @@
       return;
     }
     if (currentView === 'events') return showEvents(new URLSearchParams(window.location.search), true);
+    if (currentView === 'universe') return refreshUniverse(new URLSearchParams(window.location.search));
     if (currentView === 'company') return refreshCompany(new URLSearchParams(window.location.search).get('ticker').toUpperCase());
   }
 
@@ -1044,7 +1084,7 @@
       view = 'discover';
       invalidTicker = true;
     }
-    if (!['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view)) view = 'discover';
+    if (!['overview', 'pipeline', 'documents', 'models', 'universe', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view)) view = 'discover';
     var enteringDiscover = view === 'discover' && (currentView !== 'discover' || !changesRequest);
     if (currentView !== view) {
       abortPublicReads();
@@ -1057,14 +1097,14 @@
     }
     currentView = view;
 
-    ['overview', 'pipeline', 'documents', 'models', 'settings', 'discover', 'company', 'events', 'notebooks'].forEach(function (name) {
+    ['overview', 'pipeline', 'documents', 'models', 'universe', 'settings', 'discover', 'company', 'events', 'notebooks'].forEach(function (name) {
       $(name + 'View').classList.toggle('hidden', name !== view);
     });
 
     var titles = { overview: 'Operations', pipeline: 'Pipeline', documents: 'Documents', models: 'Models & costs',
-      settings: 'Access', discover: 'Radar', company: 'Company record', events: 'Events', notebooks: 'Process notebooks' };
+      settings: 'Access', discover: 'Radar', company: 'Company record', events: 'Events', notebooks: 'Process notebooks', universe: 'Candidates' };
     $('pageTitle').textContent = titles[view];
-    var operationsNav = { overview: 'navOperationsHome', pipeline: 'navPipeline', documents: 'navDocuments', models: 'navModels' };
+    var operationsNav = { overview: 'navOperationsHome', pipeline: 'navPipeline', documents: 'navDocuments', models: 'navModels', universe: 'navUniverse' };
     var operationView = Object.hasOwn(operationsNav, view);
     $('refresh').classList.toggle('hidden', view === 'notebooks');
     $('lastRefresh').classList.toggle('hidden', !operationView);
@@ -1105,6 +1145,7 @@
       });
     }
     if (view === 'events') showEvents(route);
+    if (view === 'universe') refreshUniverse(route);
     if (operations) operations.show({ view: view, params: route, fromHistory: !!fromHistory });
     onboarding.show(view);
 
@@ -1260,6 +1301,19 @@
       navigate('?view=company&ticker=' + encodeURIComponent(link.dataset.ticker), { returnSearch: window.location.search || '?view=discover' });
     });
     $('changesRange').addEventListener('change', function () { return refreshChanges(); });
+    $('universePrevious').addEventListener('click', function () {
+      var offset = window.CatalystUniverse.offset(new URLSearchParams(window.location.search).get('offset'));
+      if (offset > 0) universeOffsetRoute(Math.max(0, offset - window.CatalystUniverse.PAGE_SIZE));
+    });
+    $('universeNext').addEventListener('click', function () {
+      var offset = window.CatalystUniverse.offset(new URLSearchParams(window.location.search).get('offset'));
+      if (offset + window.CatalystUniverse.PAGE_SIZE < universeTotal) universeOffsetRoute(offset + window.CatalystUniverse.PAGE_SIZE);
+    });
+    $('universeStatus').addEventListener('click', function (event) {
+      if (!ordinaryClick(event) || !event.target.closest('[data-universe-access]')) return;
+      event.preventDefault();
+      navigate('?view=settings', { returnSearch: '?view=universe' });
+    });
     $('followingOnly').addEventListener('change', function (event) {
       if (!appliedDiscoveryFilters) return;
       if (event.target.checked) appliedDiscoveryFilters.set('following', '1');

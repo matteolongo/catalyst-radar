@@ -13,7 +13,7 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
   deferDocuments = false, deferDocumentList = false, modelSummary, modelCalls, modelDetail,
   modelPageSize = 25, deferModelSummary = false, deferModelCalls = false, deferModelDetails = false,
   operationRuns, operationRunDetail, operationIssues, ingestionRuns, pipelineResult, deferPipeline = true,
-  deferPublicPaths = [], transitions, localStored = {}, localStorageFailure = false } = {}) {
+  deferPublicPaths = [], transitions, candidates, promotion, localStored = {}, localStorageFailure = false } = {}) {
   const requests = [];
   // The Radar "What changed" read runs beside discovery; it is recorded apart so
   // request counts in discovery tests keep describing discovery.
@@ -306,6 +306,15 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
     if (route.startsWith('/internal/') && !options.headers?.['X-Admin-Key']) {
       return response({ detail: 'Admin key required' }, 403);
     }
+    if (route === '/internal/universe/candidates' && method === 'GET') {
+      const answer = typeof candidates === 'function' ? candidates(requestUrl) : candidates;
+      return answer === 'error' ? response({ detail: 'Candidates unavailable' }, 503) : response(answer || candidatesFixture);
+    }
+    if (route === '/internal/universe/promotions' && method === 'POST') {
+      const answer = typeof promotion === 'function' ? promotion(requestUrl, options.body) : promotion;
+      if (answer && answer.status) return response(answer.body, answer.status);
+      return response(answer || promotionFixture, 201);
+    }
     if (route === '/v1/discovery/catalyzed' && method === 'GET') {
       if (discovery === 'error') return response({ detail: 'Discovery unavailable' }, 503);
       return response(typeof discovery === 'function' ? discovery(requestUrl) : discovery || discoveryFixture);
@@ -327,7 +336,7 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
     throw new Error('Unrecognized API request: ' + method + ' ' + route);
   }
   const context = { window, document, fetch, URLSearchParams, URL, AbortController, Promise, setImmediate };
-  for (const file of ['operations-model.js', 'operations.js', 'leaderboard.js', 'changes.js', 'following.js', 'notebooks.js', 'app.js']) {
+  for (const file of ['operations-model.js', 'operations.js', 'leaderboard.js', 'changes.js', 'following.js', 'universe.js', 'notebooks.js', 'app.js']) {
     const filePath = path.join(__dirname, file);
     if (fs.existsSync(filePath)) {
       let source = fs.readFileSync(filePath, 'utf8');
@@ -390,6 +399,11 @@ const transitionsFixture = { since: '2026-10-21T10:00:00Z', asOf: '2026-10-22T10
   { ticker: 'DELL', name: 'Dell', sector: 'Technology', fromState: 'WATCH', toState: 'BUILDING', direction: 'UPGRADE',
     score: 46.6, scoreVersion: 'score-v1', transitionedAt: '2026-10-22T09:00:00Z' },
 ] };
+
+const candidatesFixture = { since: '2026-09-22T10:00:00Z', total: 1, limit: 50, offset: 0, candidates: [
+  { ticker: 'SMCI', documentsStored: 4, documentsNeverQueued: 1, firstDiscoveredAt: '2026-10-20T10:00:00Z', lastDiscoveredAt: '2026-10-22T09:00:00Z' },
+] };
+const promotionFixture = { ticker: 'SMCI', name: 'Super Micro Computer', created: true, documentsLinked: 4, documentsQueued: 1, trackedSince: '2026-10-22T10:00:00Z' };
 
 const companyFixture = {
   metadata: { ticker: 'DELL', name: 'Dell Technologies', exchange: 'NYSE', sector: 'Technology', industry: 'Hardware', country: 'US', active: true },
