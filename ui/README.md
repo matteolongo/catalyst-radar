@@ -8,8 +8,10 @@ frontend build. See the [operator/API reference](../docs/operations-backoffice.m
 ## Radar, Events and Operations
 
 **Radar** opens first with companies ranked by highest 7-day score change.
-Choose **Highest score** to rank by current score. Each row shows the saved
-score, state, signed change and snapshot time. A company with no snapshot 7
+Choose **Highest score** to rank by current score, or **Highest downside** to
+rank by the strength of negative catalysts alone: the headline score nets them
+against positive ones and stops at 0, so bad-news build-ups only show there.
+Each row shows the saved score, state, signed change, downside and snapshot time. A company with no snapshot 7
 days before its latest one shows **No 7-day baseline** instead of a change of
 0.0. A row saved more than 36 hours before the ranking is marked **Stale**: its
 score and change were computed then and have not decayed since, so it is not
@@ -54,7 +56,7 @@ rules.
 - **Models & costs** shows full server period totals, coverage and bounded calls.
   Detail shows safe errors and recorded source/attempt/run IDs.
 - **Radar** (`?view=discover`) uses the server ranking and bounded pagination.
-  Applied state, score, signed change,
+  Applied state, score, signed change, downside,
   exact-sector, page-size and offset filters live in the URL. Invalid edits
   leave the last applied ranking available. Reset returns to the first page.
   **Open company** accepts a known ticker and opens its saved record

@@ -671,6 +671,19 @@ test('discovery filters serialize repeated states and zero velocity', async () =
     '/v1/discovery/catalyzed?state=CATALYZED&state=HIGH&minScore=65&minVelocity7d=0&sector=Technology&sort=VELOCITY&limit=20&offset=0');
 });
 
+test('discovery filters send minimum downside and the downside sort', async () => {
+  const dashboard = startDashboard();
+  await waitForRequests(dashboard.requests, 2);
+  dashboard.elements.get('minDownside').value = '40';
+  dashboard.elements.get('discoverySort').value = 'DOWNSIDE';
+  await dashboard.elements.get('discoveryFilters').trigger('submit', { preventDefault() {} });
+  const query = new URL(dashboard.requests.at(-1).url).searchParams;
+  assert.equal(query.get('minDownside'), '40');
+  assert.equal(query.get('sort'), 'DOWNSIDE');
+  assert.equal(new URLSearchParams(dashboard.window.location.search).get('minDownside'), '40');
+  assert.match(dashboard.text('radarFilterCount'), /1 applied/);
+});
+
 test('desktop companies restores applied filters and server sorting from its route', async () => {
   const dashboard = startDashboard({ search: '?view=discover&state=HIGH&sector=Technology&sort=VELOCITY&limit=50&offset=50' });
   await dashboard.flush();

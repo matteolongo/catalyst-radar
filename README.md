@@ -723,6 +723,7 @@ Example response:
       "velocity7d": 18.7,
       "velocity7dBaselineAvailable": true,
       "events7d": 6,
+      "downsideScore": 4.2,
       "confidence": 0.88
     }
   ]
@@ -734,7 +735,11 @@ Discovery ranks active companies only. `events7d` (in discovery and in
 counted individually, discovered in the 7 days ending at that company's
 snapshot `asOf`. `velocity7dBaselineAvailable` is `false` when no snapshot
 exists 7 days before `asOf`; `velocity7d` is then `0` because there is nothing
-to compare against, not because the score was flat. `/timeline` returns the
+to compare against, not because the score was flat. `downsideScore` (0–100)
+is the strength of negative catalysts alone: the headline `score` nets them
+against positive ones and floors at 0, so a company dominated by bad news has
+a low score and a high downside. Use `sort=DOWNSIDE` and `minDownside` to rank
+or filter by it. Snapshots saved before V6 carry `downsideScore = 0`. `/timeline` returns the
 newest snapshots and transitions in the window (transitions in ascending
 order); `snapshotsTruncated` and `transitionsTruncated` report that older
 entries exist beyond `limit`.

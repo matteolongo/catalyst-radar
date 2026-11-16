@@ -286,7 +286,7 @@
             <div class="radar-rankings">
               <div class="ranking-toolbar">
                 <div><p id="discoveryStatus" role="status">Loading company rankings…</p><p id="discoveryAsOf" class="muted small"></p></div>
-                <label class="range-control">Rank by <select id="discoverySort"><option value="VELOCITY">7-day change</option><option value="SCORE">Highest score</option></select></label>
+                <label class="range-control">Rank by <select id="discoverySort"><option value="VELOCITY">7-day change</option><option value="SCORE">Highest score</option><option value="DOWNSIDE">Highest downside</option></select></label>
               </div>
               <details id="radarFilters" class="radar-filters">
                 <summary>Ranking filters<span id="radarFilterCount"></span></summary>
@@ -299,6 +299,7 @@
                   </label>
                   <label>Minimum score <input id="minScore" type="number" min="0" max="100" step="any" inputmode="decimal" aria-describedby="discoveryFilterError"></label>
                   <label>Minimum 7-day change <input id="minVelocity7d" type="number" step="any" inputmode="decimal" aria-describedby="discoveryFilterError"></label>
+                  <label>Minimum downside <input id="minDownside" type="number" min="0" max="100" step="any" inputmode="decimal" aria-describedby="discoveryFilterError"></label>
                   <label>Sector (exact match) <input id="sector" type="text"></label>
                   <label>Results per page <select id="pageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label>
                   <div class="button-row"><button type="submit">Apply filters</button><button id="resetDiscovery" type="button" class="ghost">Reset filters</button></div>

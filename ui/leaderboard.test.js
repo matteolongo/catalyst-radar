@@ -90,3 +90,21 @@ test('fresh rankings carry no stale marker or note', () => {
   const markup = window.CatalystLeaderboard.render(page, { compact: true, sort: 'SCORE' });
   assert.doesNotMatch(markup, /stale-marker|ranking-stale-note/);
 });
+
+test('leaderboard query supports downside sort and a bounded minimum downside', () => {
+  const query = window.CatalystLeaderboard.query({ sort: 'DOWNSIDE', minDownside: 30 });
+  assert.equal(query.get('sort'), 'DOWNSIDE');
+  assert.equal(query.get('minDownside'), '30');
+  for (const minDownside of [-1, 101, 'NaN']) {
+    assert.throws(() => window.CatalystLeaderboard.query({ minDownside }));
+  }
+});
+
+test('leaderboard shows downside next to a netted zero score', () => {
+  const markup = window.CatalystLeaderboard.render({ ...page, results: [
+    { ...page.results[0], score: 0, downsideScore: 62 },
+  ] }, { sort: 'DOWNSIDE' });
+  assert.match(markup, /Downside/);
+  assert.match(markup, /downside-value">62\.0</);
+  assert.match(markup, /aria-sort="descending"[^>]*>Downside/);
+});

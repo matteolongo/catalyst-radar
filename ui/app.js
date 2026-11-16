@@ -271,21 +271,21 @@
   }
 
   function readDiscoveryFilters() {
-    ['minScore', 'minVelocity7d'].forEach(function (id) {
+    ['minScore', 'minVelocity7d', 'minDownside'].forEach(function (id) {
       if ($(id).validity && $(id).validity.badInput) {
         var error = new Error('Enter a complete number or clear the field.'); error.field = id; throw error;
       }
     });
     return window.CatalystLeaderboard.query({
       states: Array.from($('discoveryStates').selectedOptions || []).map(function (option) { return option.value; }),
-      minScore: $('minScore').value, minVelocity7d: $('minVelocity7d').value, sector: $('sector').value,
+      minScore: $('minScore').value, minVelocity7d: $('minVelocity7d').value, minDownside: $('minDownside').value, sector: $('sector').value,
       sort: $('discoverySort').value || DEFAULT_RADAR_SORT, limit: Number($('pageSize').value) || 20
     });
   }
 
   function clearDiscoveryValidation() {
     $('discoveryFilterError').textContent = '';
-    ['discoveryStates', 'minScore', 'minVelocity7d', 'discoverySort', 'pageSize'].forEach(function (id) { $(id).removeAttribute('aria-invalid'); });
+    ['discoveryStates', 'minScore', 'minVelocity7d', 'minDownside', 'discoverySort', 'pageSize'].forEach(function (id) { $(id).removeAttribute('aria-invalid'); });
   }
 
   function discoveryValidation(error) {
@@ -317,13 +317,13 @@
     var states = route.getAll('state');
     showDiscoveryFilterCount(route);
     Array.from($('discoveryStates').options).forEach(function (option) { option.selected = states.includes(option.value); });
-    ['minScore', 'minVelocity7d', 'sector'].forEach(function (id) { $(id).value = route.get(id) || ''; });
+    ['minScore', 'minVelocity7d', 'minDownside', 'sector'].forEach(function (id) { $(id).value = route.get(id) || ''; });
     var sort = route.get('sort') || DEFAULT_RADAR_SORT;
     $('discoverySort').value = sort;
     $('pageSize').value = route.get('limit') || '20';
     try {
       appliedDiscoveryFilters = window.CatalystLeaderboard.query({ states: states, minScore: route.get('minScore'),
-        minVelocity7d: route.get('minVelocity7d'), sector: route.get('sector'), sort: sort,
+        minVelocity7d: route.get('minVelocity7d'), minDownside: route.get('minDownside'), sector: route.get('sector'), sort: sort,
         limit: route.get('limit') || 20, offset: route.get('offset') || 0 });
       if (![20, 50, 100].includes(Number(appliedDiscoveryFilters.get('limit')))) {
         var error = new Error('Choose 20, 50, or 100 results per page.'); error.field = 'pageSize'; throw error;
@@ -336,7 +336,7 @@
   }
 
   function showDiscoveryFilterCount(query) {
-    var count = ['state', 'minScore', 'minVelocity7d', 'sector'].filter(function (name) { return query.has(name); }).length;
+    var count = ['state', 'minScore', 'minVelocity7d', 'minDownside', 'sector'].filter(function (name) { return query.has(name); }).length;
     $('radarFilterCount').textContent = count ? ' · ' + count + ' applied' : '';
   }
 
@@ -755,6 +755,7 @@
       '<p class="muted">' + esc(entry.name) + '</p><div class="preview-score"><strong class="score-number">' + esc(fmtScore(entry.score)) +
       '</strong><span class="muted small">/ 100</span>' + statusPill(entry.state) + '</div>' +
       '<dl class="preview-facts"><div><dt>7-day change (points)</dt><dd>' + esc(fmtChange7d(entry)) + '</dd></div>' +
+      '<div><dt>Downside</dt><dd>' + esc(fmtScore(entry.downsideScore)) + '</dd></div>' +
       '<div><dt>Events discovered · 7d</dt><dd>' + esc(fmtInt(entry.events7d)) + '</dd></div>' +
       '<div><dt>Saved at</dt><dd>' + timeLabel(entry.asOf) + '</dd></div></dl>' +
       '<p class="muted small preview-versions">' + esc(entry.scoreVersion || 'Score version unavailable') +
@@ -821,7 +822,7 @@
     $('nextPage').disabled = requestOffset + requestLimit >= discoveryTotal;
     $('firstPage').classList.toggle('hidden', requestOffset === 0 || page.results.length > 0);
     if (!page.results.length) {
-      var hasFilters = ['state', 'minScore', 'minVelocity7d', 'sector'].some(function (name) { return appliedDiscoveryFilters.has(name); });
+      var hasFilters = ['state', 'minScore', 'minVelocity7d', 'minDownside', 'sector'].some(function (name) { return appliedDiscoveryFilters.has(name); });
       $('discoveryStatus').textContent = hasFilters || requestOffset > 0 ? 'No companies match these filters.' : 'No company scores have been saved yet.';
       $('discoveryResults').innerHTML = '';
       renderRadarPreview();

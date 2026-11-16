@@ -9,12 +9,14 @@ import java.util.UUID
 enum class DiscoverySort {
     SCORE,
     VELOCITY,
+    DOWNSIDE,
 }
 
 data class DiscoveryQuery(
     val states: Set<CatalystState>? = null,
     val minScore: Double? = null,
     val minVelocity7d: Double? = null,
+    val minDownside: Double? = null,
     val sector: String? = null,
     val sort: DiscoverySort = DiscoverySort.SCORE,
     val limit: Int = 20,
@@ -36,6 +38,8 @@ data class DiscoveryRow(
     val asOf: Instant,
     /** False when no snapshot exists 7 days before [asOf], so a 0 change means "no baseline". */
     val velocity7dBaselineAvailable: Boolean = true,
+    /** Strength of negative catalysts alone (0..100); the headline score nets them away. */
+    val downsideScore: Double = 0.0,
 )
 
 data class DiscoveryPage(
@@ -73,6 +77,10 @@ class DiscoveryStore(private val jdbc: JdbcClient) {
             conditions += "s.velocity_7d >= :minVelocity7d"
             params["minVelocity7d"] = it
         }
+        query.minDownside?.let {
+            conditions += "s.downside_score >= :minDownside"
+            params["minDownside"] = it
+        }
         query.sector?.let {
             conditions += "c.sector = :sector"
             params["sector"] = it
@@ -80,6 +88,7 @@ class DiscoveryStore(private val jdbc: JdbcClient) {
         val order = when (query.sort) {
             DiscoverySort.SCORE -> "s.score DESC"
             DiscoverySort.VELOCITY -> "s.velocity_7d DESC"
+            DiscoverySort.DOWNSIDE -> "s.downside_score DESC"
         }
         params["limit"] = query.limit
         params["offset"] = query.offset
@@ -88,7 +97,7 @@ class DiscoveryStore(private val jdbc: JdbcClient) {
             SELECT COUNT(*) OVER() AS total,
               c.id AS company_id, c.ticker AS ticker, c.name AS name, c.sector AS sector,
               s.score AS score, s.score_version AS score_version, s.state AS state,
-              s.velocity_7d AS velocity_7d, s.taxonomy_version AS taxonomy_version, s.as_of AS as_of,
+              s.velocity_7d AS velocity_7d, s.downside_score AS downside_score, s.taxonomy_version AS taxonomy_version, s.as_of AS as_of,
               EXISTS (
                 SELECT 1 FROM catalyst_snapshots b
                 WHERE b.company_id = s.company_id AND b.as_of <= s.as_of - INTERVAL '7 days'
@@ -120,6 +129,7 @@ class DiscoveryStore(private val jdbc: JdbcClient) {
                 taxonomyVersion = rs.getString("taxonomy_version"),
                 asOf = rs.getTimestamp("as_of").toInstant(),
                 velocity7dBaselineAvailable = rs.getBoolean("has_baseline_7d"),
+                downsideScore = rs.getDouble("downside_score"),
             )
         }.list()
         if (page.isEmpty()) return DiscoveryPage(emptyList(), 0)

@@ -19,16 +19,16 @@
       if (!STATES.includes(state)) invalid('discoveryStates', 'Choose a supported catalyst state.');
       result.append('state', state);
     });
-    [['minScore', 'Minimum score'], ['minVelocity7d', 'Minimum 7-day change']].forEach(function (entry) {
+    [['minScore', 'Minimum score'], ['minVelocity7d', 'Minimum 7-day change'], ['minDownside', 'Minimum downside']].forEach(function (entry) {
       var value = filters[entry[0]];
       if (value === undefined || value === null || String(value).trim() === '') return;
       if (!Number.isFinite(Number(value))) invalid(entry[0], entry[1] + ' must be a finite number.');
-      if (entry[0] === 'minScore' && (Number(value) < 0 || Number(value) > 100)) invalid(entry[0], 'Minimum score must be between 0 and 100.');
+      if (entry[0] !== 'minVelocity7d' && (Number(value) < 0 || Number(value) > 100)) invalid(entry[0], entry[1] + ' must be between 0 and 100.');
       result.set(entry[0], String(Number(value)));
     });
     if (filters.sector && filters.sector.trim()) result.set('sector', filters.sector.trim());
     var sort = filters.sort === undefined ? 'SCORE' : filters.sort;
-    if (!['SCORE', 'VELOCITY'].includes(sort)) invalid('discoverySort', 'Choose Highest score or Highest 7-day change.');
+    if (!['SCORE', 'VELOCITY', 'DOWNSIDE'].includes(sort)) invalid('discoverySort', 'Choose Highest score, Highest 7-day change or Highest downside.');
     var limit = filters.limit === undefined ? 20 : Number(filters.limit);
     var offset = filters.offset === undefined ? 0 : Number(filters.offset);
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) invalid('pageSize', 'Results per page must be between 1 and 100.');
@@ -79,6 +79,7 @@
     var columns = '<th scope="col">Company</th>' + (compact ? '' : '<th scope="col">Sector</th>') +
       '<th scope="col" class="num"' + (sort === 'SCORE' ? ' aria-sort="descending"' : '') + '>Score</th><th scope="col">State</th>' +
       '<th scope="col" class="num"' + (sort === 'VELOCITY' ? ' aria-sort="descending"' : '') + '>7-day change <span class="muted">(points)</span></th>' +
+      '<th scope="col" class="num"' + (sort === 'DOWNSIDE' ? ' aria-sort="descending"' : '') + ' title="Strength of negative catalysts alone, 0–100. The headline score nets them against positive ones.">Downside</th>' +
       (compact ? '' : '<th scope="col" class="num">Events discovered · 7d</th>') + '<th scope="col" class="saved-heading">Saved at</th>' + (compact ? '' : '<th scope="col">Versions</th>');
     var anyStale = false;
     var rows = (page.results || []).map(function (entry) {
@@ -95,6 +96,7 @@
         '<td class="num score-value">' + number(entry.score) + '</td>' +
         '<td><span class="pill catalyst-state ' + stateClass + '">' + esc(entry.state) + '</span></td>' +
         '<td class="num' + change.className + '">' + esc(change.text) + '</td>' +
+        '<td class="num downside-value">' + number(entry.downsideScore) + '</td>' +
         (compact ? '' : '<td class="num">' + esc(entry.events7d) + '</td>') +
         '<td class="saved-time">' + savedAt + '</td>' +
         (compact ? '' : '<td class="small">' + esc(entry.scoreVersion) + '<span class="cell-secondary">' + esc(entry.taxonomyVersion) + '</span></td>') + '</tr>';

@@ -18,6 +18,8 @@ data class DiscoveryEntryResponse(
     val asOf: Instant,
     /** False when no snapshot exists 7 days before [asOf]; a 0 change then means "no baseline". */
     val velocity7dBaselineAvailable: Boolean,
+    /** Strength of negative catalysts alone (0..100); the headline score nets them away. */
+    val downsideScore: Double,
 )
 
 data class DiscoveryResponse(
@@ -40,6 +42,7 @@ fun DiscoveryRow.toResponse() = DiscoveryEntryResponse(
     taxonomyVersion = taxonomyVersion,
     asOf = asOf,
     velocity7dBaselineAvailable = velocity7dBaselineAvailable,
+    downsideScore = downsideScore,
 )
 
 fun DiscoveryPage.toResponse(limit: Int, offset: Int, asOf: Instant) = DiscoveryResponse(
