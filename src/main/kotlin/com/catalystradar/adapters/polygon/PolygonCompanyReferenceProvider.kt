@@ -3,6 +3,7 @@ package com.catalystradar.adapters.polygon
 import com.catalystradar.adapters.http.mapHttpClientError
 import com.catalystradar.adapters.http.mapTransportError
 import com.catalystradar.adapters.http.timeouts
+import com.catalystradar.ports.CompanyLookupProvider
 import com.catalystradar.ports.CompanyPage
 import com.catalystradar.ports.CompanyReference
 import com.catalystradar.ports.CompanyReferenceProvider
@@ -28,7 +29,7 @@ import org.springframework.web.client.body
 class PolygonCompanyReferenceProvider(
     builder: RestClient.Builder,
     private val properties: PolygonProperties,
-) : CompanyReferenceProvider {
+) : CompanyReferenceProvider, CompanyLookupProvider {
 
     private val client = builder.baseUrl(properties.baseUrl)
         .requestFactory(timeouts(properties.connectTimeout, properties.readTimeout))
@@ -42,6 +43,36 @@ class PolygonCompanyReferenceProvider(
                     values = page.results.orEmpty().mapNotNull { it.toReference() },
                     nextCursor = page.nextUrl,
                 )
+            } catch (e: HttpClientErrorException) {
+                throw mapHttpClientError("polygon", e)
+            } catch (e: HttpServerErrorException) {
+                throw ProviderException.TemporaryUnavailable("polygon: ${e.statusCode}", provider = "polygon")
+            } catch (e: RestClientException) {
+                throw mapTransportError("polygon", e)
+            }
+        }
+
+    /**
+     * Exact-ticker query on the same tickers endpoint the list uses. Only an
+     * active `CS` (common stock) row with locale `us` and the same symbol counts.
+     */
+    override suspend fun findUsEquity(ticker: String): CompanyReference? =
+        withContext(Dispatchers.IO) {
+            try {
+                val page = client.get().uri { uri ->
+                    uri.path("/v3/reference/tickers")
+                    uri.queryParam("ticker", ticker)
+                    uri.queryParam("market", "stocks")
+                    uri.queryParam("type", US_COMMON_STOCK)
+                    uri.queryParam("active", true)
+                    uri.queryParam("limit", 1)
+                    uri.queryParam("apiKey", properties.apiKey)
+                    uri.build()
+                }.retrieve().body<PolygonTickersPage>()
+                    ?: throw ProviderException.InvalidResponse("polygon: empty tickers page", provider = "polygon")
+                page.results.orEmpty()
+                    .firstOrNull { it.ticker == ticker && it.type == US_COMMON_STOCK && it.locale.equals("us", ignoreCase = true) && it.active != false }
+                    ?.toReference()
             } catch (e: HttpClientErrorException) {
                 throw mapHttpClientError("polygon", e)
             } catch (e: HttpServerErrorException) {
@@ -105,6 +136,8 @@ internal data class PolygonTicker(
         )
     }
 }
+
+private const val US_COMMON_STOCK = "CS"
 
 private val MIC_EXCHANGES = mapOf(
     "XNYS" to "NYSE",

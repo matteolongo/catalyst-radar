@@ -26,20 +26,25 @@ class DiscoveryController(private val discovery: DiscoveryStore) {
         @RequestParam(required = false) state: List<CatalystState>?,
         @RequestParam(required = false) minScore: Double?,
         @RequestParam(required = false) minVelocity7d: Double?,
+        @RequestParam(required = false) minDownside: Double?,
         @RequestParam(required = false) sector: String?,
+        @RequestParam(required = false) ticker: List<String>?,
         @RequestParam(required = false) sort: DiscoverySort?,
         @RequestParam(defaultValue = "20") limit: Int,
         @RequestParam(defaultValue = "0") offset: Int,
     ): DiscoveryResponse {
         requireValidInput(limit in 1..100) { "limit must be within 1..100" }
         requireValidInput(offset >= 0) { "offset must be non-negative" }
+        requireValidInput(minDownside == null || minDownside in 0.0..100.0) { "minDownside must be within 0..100" }
         val asOf = Instant.now()
         val page = discovery.discover(
             DiscoveryQuery(
                 states = state?.toSet(),
                 minScore = minScore,
                 minVelocity7d = minVelocity7d,
+                minDownside = minDownside,
                 sector = sector,
+                tickers = tickerFilter(ticker),
                 sort = sort ?: DiscoverySort.SCORE,
                 limit = limit,
                 offset = offset,

@@ -15,4 +15,14 @@ data class IngestionProperties(
     var pageSize: Int = 50,
     /** Provider pages followed per ticker chunk before the run is marked truncated. */
     var maxPagesPerChunk: Int = 10,
+    /** How the primary provider is asked for news (ADR 0002). */
+    var scanMode: ScanMode = ScanMode.TICKERS,
 )
+
+enum class ScanMode {
+    /** News per active ticker, in chunks: only tracked companies' news. */
+    TICKERS,
+
+    /** All news in the window, one paginated request; untracked tickers become candidates. */
+    MARKET,
+}

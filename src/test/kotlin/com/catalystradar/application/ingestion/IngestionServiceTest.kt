@@ -1,5 +1,7 @@
 package com.catalystradar.application.ingestion
 
+import kotlin.test.assertNull
+
 import com.catalystradar.adapters.finnhub.FinnhubNewsProvider
 import com.catalystradar.adapters.finnhub.FinnhubProperties
 import com.catalystradar.adapters.polygon.PolygonNewsProvider
@@ -78,9 +80,10 @@ class IngestionServiceTest : PostgresIntegrationTest() {
         fallback: String = "finnhub",
         maxPagesPerChunk: Int = 10,
         providers: List<NewsProvider> = listOf(polygon, finnhub),
+        scanMode: ScanMode = ScanMode.TICKERS,
     ) = IngestionService(
         providers = providers,
-        properties = IngestionProperties(provider = provider, fallbackProvider = fallback, maxPagesPerChunk = maxPagesPerChunk),
+        properties = IngestionProperties(provider = provider, fallbackProvider = fallback, maxPagesPerChunk = maxPagesPerChunk, scanMode = scanMode),
         companies = companies,
         registrations = registrations,
         runs = runs,
@@ -220,6 +223,62 @@ class IngestionServiceTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `market scan asks the primary once without tickers and keeps untracked tickers as candidates`() = runTest {
+        repeat(25) { companies.save(Company(ticker = "T$it", name = "Tracked $it")) }
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        wireMock.stubFor(get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson(MARKET_PAGE)))
+
+        val run = service(scanMode = ScanMode.MARKET).ingestCycle(Instant.parse("2026-09-16T15:00:00Z")).runs.single()
+
+        val requests = wireMock.findAll(getRequestedFor(urlPathEqualTo("/v2/reference/news")))
+        assertEquals(1, requests.size, "one request instead of one per ticker chunk")
+        assertTrue(requests.single().queryParams["ticker"] == null || !requests.single().queryParams["ticker"]!!.isPresent)
+        assertEquals(IngestionStatus.SUCCESS, run.status)
+        assertEquals(2, run.added)
+        assertEquals(1, run.unresolved)
+        val untracked = assertNotNull(documents.findByProviderAndProviderDocumentId("polygon", "m-2"))
+        assertNull(processing.findBySourceDocumentId(untracked.id))
+    }
+
+    @Test
+    fun `market scan falls back per ticker when the primary fails`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        wireMock.stubFor(get(urlPathEqualTo("/v2/reference/news")).willReturn(aResponse().withStatus(500)))
+        wireMock.stubFor(get(urlPathEqualTo("/api/v1/company-news")).willReturn(okJson(FINNHUB_NEWS)))
+
+        val result = service(scanMode = ScanMode.MARKET).ingestCycle(Instant.parse("2026-10-04T12:00:00Z"))
+
+        assertEquals(listOf("polygon", "finnhub"), result.runs.map { it.provider })
+        assertEquals(IngestionStatus.SUCCESS, result.runs[1].status)
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/api/v1/company-news")).withQueryParam("symbol", equalTo("DELL")))
+    }
+
+    @Test
+    fun `market scan on a provider without support fetches per ticker`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        wireMock.stubFor(get(urlPathEqualTo("/api/v1/company-news")).willReturn(okJson(FINNHUB_NEWS)))
+
+        val run = service(provider = "finnhub", fallback = "none", scanMode = ScanMode.MARKET)
+            .ingestCycle(Instant.parse("2026-10-04T12:00:00Z")).runs.single()
+
+        assertEquals(IngestionStatus.SUCCESS, run.status)
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/api/v1/company-news")).withQueryParam("symbol", equalTo("DELL")))
+    }
+
+    @Test
+    fun `the same article ingested in both modes is stored once`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        wireMock.stubFor(get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson(MARKET_PAGE)))
+        val now = Instant.parse("2026-09-16T15:00:00Z")
+
+        service(scanMode = ScanMode.TICKERS).ingestCycle(now)
+        val second = service(scanMode = ScanMode.MARKET).ingestCycle(now).runs.single()
+
+        assertEquals(0, second.added)
+        assertEquals(2, second.duplicates)
+    }
+
+    @Test
     fun `falls back to secondary provider when primary fails`() = runTest {
         companies.save(Company(ticker = "DELL", name = "Dell"))
         wireMock.stubFor(
@@ -310,6 +369,8 @@ class IngestionServiceTest : PostgresIntegrationTest() {
     }
 
     companion object {
+        const val MARKET_PAGE = """{"results": [{"id": "m-1", "title": "Dell market story", "description": "Dell body.", "article_url": "https://example.com/m-1", "published_utc": "2026-09-16T14:30:00Z", "tickers": ["DELL"]},{"id": "m-2", "title": "Untracked story", "description": "Other body.", "article_url": "https://example.com/m-2", "published_utc": "2026-09-16T14:40:00Z", "tickers": ["ZZQ"]}], "status": "OK"}"""
+
         @RegisterExtension
         @JvmField
         val wireMock: WireMockExtension = WireMockExtension.newInstance()

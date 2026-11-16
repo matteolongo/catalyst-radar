@@ -197,6 +197,42 @@ class DiscoveryStoreTest : PostgresIntegrationTest() {
         assertTrue(page.results.isEmpty())
     }
 
+    @Test
+    fun `a company netted to zero by negative catalysts leads the downside ranking`() {
+        seed()
+        val intc = companies.save(Company(ticker = "INTC", name = "Intel", sector = "Technology"))
+        snapshots.save(snapshot(intc.id, 0.0, CatalystState.NORMAL, t0, downside = 62.0))
+
+        val byScore = store.discover(DiscoveryQuery(limit = 10, offset = 0))
+        val byDownside = store.discover(DiscoveryQuery(sort = DiscoverySort.DOWNSIDE, limit = 10, offset = 0))
+
+        assertEquals("INTC", byScore.results.last().ticker)
+        assertEquals("INTC", byDownside.results.first().ticker)
+        assertEquals(62.0, byDownside.results.first().downsideScore)
+        assertEquals(listOf("INTC", "DELL", "HPQ", "NVDA"), byDownside.results.map { it.ticker })
+    }
+
+    @Test
+    fun `filters by minimum downside`() {
+        seed()
+        val intc = companies.save(Company(ticker = "INTC", name = "Intel"))
+        snapshots.save(snapshot(intc.id, 0.0, CatalystState.NORMAL, t0, downside = 62.0))
+
+        val page = store.discover(DiscoveryQuery(minDownside = 30.0, limit = 10, offset = 0))
+
+        assertEquals(listOf("INTC"), page.results.map { it.ticker })
+    }
+
+    @Test
+    fun `narrows the ranking to requested tickers`() {
+        seed()
+
+        val page = store.discover(DiscoveryQuery(tickers = setOf("HPQ", "DELL"), limit = 10, offset = 0))
+
+        assertEquals(listOf("DELL", "HPQ"), page.results.map { it.ticker })
+        assertEquals(2, page.total)
+    }
+
     private fun seed() {
         val dell = companies.save(Company(ticker = "DELL", name = "Dell", sector = "Industrials"))
         val nvda = companies.save(Company(ticker = "NVDA", name = "Nvidia", sector = "Technology"))
@@ -212,6 +248,7 @@ class DiscoveryStoreTest : PostgresIntegrationTest() {
         state: CatalystState,
         at: Instant,
         v7d: Double = 0.0,
+        downside: Double = 0.0,
     ) = CatalystSnapshot(
         companyId = companyId,
         score = CatalystScore(score, "score-v1"),
@@ -219,6 +256,7 @@ class DiscoveryStoreTest : PostgresIntegrationTest() {
         velocity = ScoreVelocity(0.0, 0.0, v7d),
         asOf = at,
         taxonomyVersion = "taxonomy-v1",
+        downsideScore = downside,
     )
 
     private fun event(

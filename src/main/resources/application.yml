@@ -64,6 +64,15 @@ catalyst:
   internal:
     # Always required for /internal/*, even locally. Never commit a real value.
     admin-key: ${CATALYST_INTERNAL_ADMIN_KEY:}
+  universe:
+    # Promotion refuses new companies at this many active ones (ADR 0002).
+    max-active-companies: ${CATALYST_UNIVERSE_MAX_ACTIVE:1000}
+    auto-promotion:
+      # Off by default: each promotion adds provider and model cost to later cycles.
+      enabled: ${CATALYST_UNIVERSE_AUTO_PROMOTION:false}
+      min-documents: 5
+      window: P7D
+      max-per-cycle: 3
   ingestion:
     # Opt in only for one POC process; disabled avoids unconfigured provider calls.
     enabled: false
@@ -73,6 +82,9 @@ catalyst:
     fallback-provider: finnhub
     page-size: 50
     max-pages-per-chunk: 10
+    # tickers: news per active ticker. market: all news in the window from the
+    # primary provider; untracked tickers become candidates (ADR 0002).
+    scan-mode: ${CATALYST_INGESTION_SCAN_MODE:tickers}
   pipeline:
     # Bounded durable-queue draining and retry behavior.
     batch-size: 50

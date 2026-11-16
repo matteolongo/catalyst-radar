@@ -90,3 +90,52 @@ test('fresh rankings carry no stale marker or note', () => {
   const markup = window.CatalystLeaderboard.render(page, { compact: true, sort: 'SCORE' });
   assert.doesNotMatch(markup, /stale-marker|ranking-stale-note/);
 });
+
+test('leaderboard query supports downside sort and a bounded minimum downside', () => {
+  const query = window.CatalystLeaderboard.query({ sort: 'DOWNSIDE', minDownside: 30 });
+  assert.equal(query.get('sort'), 'DOWNSIDE');
+  assert.equal(query.get('minDownside'), '30');
+  for (const minDownside of [-1, 101, 'NaN']) {
+    assert.throws(() => window.CatalystLeaderboard.query({ minDownside }));
+  }
+});
+
+test('leaderboard shows downside next to a netted zero score', () => {
+  const markup = window.CatalystLeaderboard.render({ ...page, results: [
+    { ...page.results[0], score: 0, downsideScore: 62 },
+  ] }, { sort: 'DOWNSIDE' });
+  assert.match(markup, /Downside/);
+  assert.match(markup, /downside-value">62\.0</);
+  assert.match(markup, /aria-sort="descending"[^>]*>Downside/);
+});
+
+test('first-run checklist without an admin key only marks the key step', () => {
+  const markup = window.CatalystLeaderboard.firstRun({ hasAdmin: false });
+  assert.equal((markup.match(/To do/g) || []).length, 1);
+  assert.equal((markup.match(/Unknown/g) || []).length, 3);
+  assert.match(markup, /data-radar-route="\?view=settings"/);
+});
+
+test('first-run checklist reports configured providers, a missing run and disabled snapshots', () => {
+  const markup = window.CatalystLeaderboard.firstRun({ hasAdmin: true, checked: true,
+    config: { providers: [{ name: 'polygon', configured: true }, { name: 'openai', configured: true }], snapshots: { enabled: false } },
+    overview: { ingestionFreshness: { lastSuccessAt: null } } });
+  assert.equal((markup.match(/>Done</g) || []).length, 2);
+  assert.equal((markup.match(/>To do</g) || []).length, 2);
+  assert.match(markup, /data-radar-route="\?view=pipeline"/);
+  assert.match(markup, /CATALYST_SNAPSHOTS_ENABLED/);
+});
+
+test('first-run checklist keeps unread checks unknown', () => {
+  const markup = window.CatalystLeaderboard.firstRun({ hasAdmin: true, checked: true, config: null, overview: null });
+  assert.equal((markup.match(/>Unknown</g) || []).length, 3);
+  assert.match(markup, /could not be read/);
+});
+
+test('leaderboard marks followed companies only when following is enabled', () => {
+  const markup = window.CatalystLeaderboard.render(page, { sort: 'SCORE', following: ['AAA'] });
+  assert.match(markup, /data-follow-ticker="AAA" aria-pressed="true"/);
+  assert.match(markup, /data-follow-ticker="ZZZ" aria-pressed="false"/);
+  assert.doesNotMatch(window.CatalystLeaderboard.render(page, { sort: 'SCORE' }), /data-follow-ticker/);
+  assert.equal(window.CatalystLeaderboard.query({ following: true }).get('following'), '1');
+});

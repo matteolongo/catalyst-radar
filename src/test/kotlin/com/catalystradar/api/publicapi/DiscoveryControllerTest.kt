@@ -85,5 +85,65 @@ class DiscoveryControllerTest {
             status { isBadRequest() }
         }
     }
-}
 
+    @Test
+    fun `exposes downside score and accepts downside sort and filter`() {
+        `when`(discovery.discover(any())).thenReturn(
+            DiscoveryPage(
+                results = listOf(
+                    DiscoveryRow(
+                        companyId = UUID.randomUUID(),
+                        ticker = "INTC",
+                        name = "Intel",
+                        sector = "Technology",
+                        score = 0.0,
+                        scoreVersion = "score-v1",
+                        state = CatalystState.NORMAL,
+                        velocity7d = -4.0,
+                        events7d = 3,
+                        taxonomyVersion = "taxonomy-v1",
+                        asOf = t0,
+                        downsideScore = 62.0,
+                    ),
+                ),
+                total = 1,
+            ),
+        )
+
+        mockMvc.get("/v1/discovery/catalyzed?sort=DOWNSIDE&minDownside=30") {
+            accept = MediaType.APPLICATION_JSON
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.results[0].downsideScore") { value(62.0) }
+        }
+    }
+
+    @Test
+    fun `rejects out-of-range minimum downside`() {
+        mockMvc.get("/v1/discovery/catalyzed?minDownside=101") {
+            accept = MediaType.APPLICATION_JSON
+        }.andExpect {
+            status { isBadRequest() }
+        }
+    }
+
+    @Test
+    fun `normalizes repeated tickers and bounds the list`() {
+        `when`(discovery.discover(any())).thenReturn(DiscoveryPage(emptyList(), 0))
+
+        mockMvc.get("/v1/discovery/catalyzed?ticker=dell&ticker=NVDA") {
+            accept = MediaType.APPLICATION_JSON
+        }.andExpect { status { isOk() } }
+        val query = org.mockito.kotlin.argumentCaptor<DiscoveryQuery>()
+            .also { org.mockito.kotlin.verify(discovery).discover(it.capture()) }.firstValue
+        kotlin.test.assertEquals(setOf("DELL", "NVDA"), query.tickers)
+
+        val tooMany = (1..51).joinToString("&") { "ticker=T$it" }
+        mockMvc.get("/v1/discovery/catalyzed?$tooMany") {
+            accept = MediaType.APPLICATION_JSON
+        }.andExpect { status { isBadRequest() } }
+        mockMvc.get("/v1/discovery/catalyzed?ticker=bad%20ticker") {
+            accept = MediaType.APPLICATION_JSON
+        }.andExpect { status { isBadRequest() } }
+    }
+}

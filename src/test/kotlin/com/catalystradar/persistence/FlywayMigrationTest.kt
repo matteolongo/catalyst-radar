@@ -55,6 +55,7 @@ class FlywayMigrationTest : PostgresIntegrationTest() {
                 "ingestion_runs",
                 "api_clients",
                 "score_versions",
+                "source_document_unresolved_tickers",
                 "flyway_schema_history",
             ),
             tables,

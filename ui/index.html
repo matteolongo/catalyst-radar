@@ -49,6 +49,7 @@
         <a id="navPipeline" href="?view=pipeline">Pipeline runs</a>
         <a id="navDocuments" href="?view=documents">Documents</a>
         <a id="navModels" href="?view=models">Models &amp; costs</a>
+        <a id="navUniverse" href="?view=universe">Candidates</a>
       </nav>
 
       <div id="banner" class="banner hidden" role="alert"></div>
@@ -273,6 +274,15 @@
           </section>
         </section>
 
+        <section id="universeView" class="view hidden" aria-labelledby="universeTitle">
+          <h2 id="universeTitle" tabindex="-1">Untracked tickers in the news</h2>
+          <p class="muted">Tickers named by stored articles in the last 30 days that no tracked company explains. Counts are documents, not events. Requires the admin key.</p>
+          <p id="universeStatus" role="status"></p>
+          <div id="universePromotion" role="status" aria-live="polite"></div>
+          <div id="universeResults"></div>
+          <div class="pager"><button id="universePrevious" type="button" class="ghost" disabled>Previous</button><span id="universePageSummary" aria-live="polite"></span><button id="universeNext" type="button" class="ghost" disabled>Next</button></div>
+        </section>
+
         <section id="discoverView" class="view" aria-labelledby="discoverTitle">
           <div class="radar-intro">
             <div><h2 id="discoverTitle" tabindex="-1">Company rankings</h2><p class="muted">See where catalyst scores are rising or falling across the companies CatalystRadar tracks.</p></div>
@@ -282,11 +292,20 @@
               <p id="companyLookupStatus" class="panel-error" role="alert"></p>
             </form>
           </div>
+          <section id="radarChanges" class="radar-changes" aria-labelledby="changesTitle">
+            <div class="ranking-toolbar">
+              <div><h3 id="changesTitle">What changed</h3><p id="changesStatus" class="muted small" role="status"></p></div>
+              <label class="range-control">Period <select id="changesRange"><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option></select></label>
+            </div>
+            <div id="changesResults"></div>
+            <p class="muted small">A change is a move between states. Large moves within one state appear in the 7-day change ranking.</p>
+          </section>
           <div class="radar-layout">
             <div class="radar-rankings">
               <div class="ranking-toolbar">
                 <div><p id="discoveryStatus" role="status">Loading company rankings…</p><p id="discoveryAsOf" class="muted small"></p></div>
-                <label class="range-control">Rank by <select id="discoverySort"><option value="VELOCITY">7-day change</option><option value="SCORE">Highest score</option></select></label>
+                <label class="following-control"><input id="followingOnly" type="checkbox"> Following only</label>
+                <label class="range-control">Rank by <select id="discoverySort"><option value="VELOCITY">7-day change</option><option value="SCORE">Highest score</option><option value="DOWNSIDE">Highest downside</option></select></label>
               </div>
               <details id="radarFilters" class="radar-filters">
                 <summary>Ranking filters<span id="radarFilterCount"></span></summary>
@@ -299,6 +318,7 @@
                   </label>
                   <label>Minimum score <input id="minScore" type="number" min="0" max="100" step="any" inputmode="decimal" aria-describedby="discoveryFilterError"></label>
                   <label>Minimum 7-day change <input id="minVelocity7d" type="number" step="any" inputmode="decimal" aria-describedby="discoveryFilterError"></label>
+                  <label>Minimum downside <input id="minDownside" type="number" min="0" max="100" step="any" inputmode="decimal" aria-describedby="discoveryFilterError"></label>
                   <label>Sector (exact match) <input id="sector" type="text"></label>
                   <label>Results per page <select id="pageSize"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label>
                   <div class="button-row"><button type="submit">Apply filters</button><button id="resetDiscovery" type="button" class="ghost">Reset filters</button></div>
@@ -313,7 +333,8 @@
         </section>
         <section id="companyView" class="view hidden" aria-labelledby="companyTitle">
           <button id="backToResults" type="button" class="ghost">← Return to results</button>
-          <h2 id="companyTitle" tabindex="-1">Company analysis</h2>
+          <div class="card-head"><h2 id="companyTitle" tabindex="-1">Company analysis</h2><button id="followCompany" type="button" class="ghost" aria-pressed="false">☆ Follow</button></div>
+          <p id="followStatus" class="muted small" role="status"></p>
           <nav id="companySections" class="company-sections" aria-label="Company analysis sections">
             <a href="#companySummaryTitle" data-company-section="companySummaryTitle">Current snapshot</a>
             <a href="#historyTitle" data-company-section="historyTitle">Score history</a>
@@ -496,6 +517,9 @@
   <script src="operations-model.js"></script>
   <script src="operations.js"></script>
   <script src="leaderboard.js"></script>
+  <script src="changes.js"></script>
+  <script src="following.js"></script>
+  <script src="universe.js"></script>
   <script src="notebooks.js"></script>
   <script src="app.js"></script>
 </body>

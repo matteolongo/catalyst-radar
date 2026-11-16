@@ -540,7 +540,8 @@ test('the dashboard sends requests only to the origin serving it', async () => {
     stored: { 'catalyst-admin-key': 'admin-secret' },
   });
   await waitForRequests(dashboard.requests, 2);
-  assert.ok(dashboard.requests.every(({ url }) => url.startsWith('https://ops.example/')));
+  assert.ok(dashboard.requests.concat(dashboard.changeRequests).every(({ url }) => url.startsWith('https://ops.example/')));
+  assert.equal(dashboard.changeRequests.length, 1);
 });
 
 test('each credential is sent only to the API routes that need it', async () => {
@@ -669,6 +670,19 @@ test('discovery filters serialize repeated states and zero velocity', async () =
   await dashboard.elements.get('discoveryFilters').trigger('submit', { preventDefault() {} });
   assert.equal(new URL(dashboard.requests.at(-1).url).pathname + new URL(dashboard.requests.at(-1).url).search,
     '/v1/discovery/catalyzed?state=CATALYZED&state=HIGH&minScore=65&minVelocity7d=0&sector=Technology&sort=VELOCITY&limit=20&offset=0');
+});
+
+test('discovery filters send minimum downside and the downside sort', async () => {
+  const dashboard = startDashboard();
+  await waitForRequests(dashboard.requests, 2);
+  dashboard.elements.get('minDownside').value = '40';
+  dashboard.elements.get('discoverySort').value = 'DOWNSIDE';
+  await dashboard.elements.get('discoveryFilters').trigger('submit', { preventDefault() {} });
+  const query = new URL(dashboard.requests.at(-1).url).searchParams;
+  assert.equal(query.get('minDownside'), '40');
+  assert.equal(query.get('sort'), 'DOWNSIDE');
+  assert.equal(new URLSearchParams(dashboard.window.location.search).get('minDownside'), '40');
+  assert.match(dashboard.text('radarFilterCount'), /1 applied/);
 });
 
 test('desktop companies restores applied filters and server sorting from its route', async () => {
@@ -1295,4 +1309,148 @@ test('shared API helper adds JSON content type only to explicit POST bodies', as
   assert.equal(request.body, JSON.stringify({ start: true }));
   dashboard.completePipeline();
   await post;
+});
+
+test('radar loads what changed once on entry and marks changes newer than the last visit', async () => {
+  const dashboard = startDashboard({ search: '?view=discover', localStored: { 'catalyst-radar-last-visit': '2026-10-22T08:00:00Z' } });
+  await dashboard.flush();
+  assert.equal(dashboard.changeRequests.length, 1);
+  assert.ok(new URL(dashboard.changeRequests[0].url).searchParams.get('since'));
+  assert.equal(new URL(dashboard.changeRequests[0].url).searchParams.get('limit'), '50');
+  assert.match(dashboard.html('changesResults'), /Moved up/);
+  assert.match(dashboard.html('changesResults'), /change-new/);
+  assert.match(dashboard.text('changesStatus'), /State changes since/);
+  assert.equal(dashboard.localValues.get('catalyst-radar-last-visit'), '2026-10-22T10:00:00Z');
+  dashboard.element('discoverySort').value = 'SCORE';
+  await dashboard.element('discoverySort').trigger('change');
+  await dashboard.flush();
+  assert.equal(dashboard.changeRequests.length, 1);
+});
+
+test('changing the period reloads changes and a ticker opens the company record', async () => {
+  const dashboard = startDashboard({ search: '?view=discover' });
+  await dashboard.flush();
+  dashboard.element('changesRange').value = '7d';
+  await dashboard.element('changesRange').trigger('change');
+  await dashboard.flush();
+  assert.equal(dashboard.changeRequests.length, 2);
+  dashboard.element('changesResults').trigger('click', { target: { closest: (selector) => selector === '[data-change-ticker]' ? { dataset: { changeTicker: 'DELL' } } : null } });
+  assert.equal(dashboard.window.location.search, '?view=company&ticker=DELL');
+});
+
+test('changes report denied access and survive unavailable browser storage', async () => {
+  const denied = startDashboard({ search: '?view=discover', transitions: 'forbidden' });
+  await denied.flush();
+  assert.match(denied.text('changesStatus'), /public API key/);
+  const noStorage = startDashboard({ search: '?view=discover', localStorageFailure: true });
+  await noStorage.flush();
+  assert.match(noStorage.html('changesResults'), /Moved up/);
+  assert.doesNotMatch(noStorage.html('changesResults'), /change-new/);
+});
+
+test('an empty Radar with an admin key checks setup with reads only and links to Pipeline', async () => {
+  const empty = { asOf: '2026-10-02T12:02:00Z', total: 0, limit: 20, offset: 0, results: [] };
+  const dashboard = startDashboard({ discovery: empty, stored: { 'catalyst-admin-key': 'admin-secret' },
+    config: { generatedAt: '2026-10-04T12:00:00Z', providers: [{ name: 'polygon', configured: true }, { name: 'openai', configured: true }],
+      snapshots: { enabled: false, intervalSeconds: 86400 }, ingestion: { enabled: false, intervalSeconds: 1800 } } });
+  await dashboard.flush();
+  assert.ok(dashboard.requests.every(({ method }) => method === 'GET'));
+  assert.ok(dashboard.requests.some(({ url }) => new URL(url).pathname === '/internal/operations/config'));
+  const markup = dashboard.html('discoveryResults');
+  assert.match(markup, /Get Radar started/);
+  assert.match(markup, /Run the pipeline/);
+  dashboard.element('discoveryResults').trigger('click', { target: { closest: (selector) =>
+    selector === '[data-radar-route]' ? { dataset: { radarRoute: '?view=pipeline' } } : null } });
+  assert.equal(dashboard.window.location.search, '?view=pipeline');
+});
+
+test('a filtered empty Radar shows no setup checklist', async () => {
+  const empty = { asOf: '2026-10-02T12:02:00Z', total: 0, limit: 20, offset: 0, results: [] };
+  const dashboard = startDashboard({ search: '?view=discover&minScore=90', discovery: empty });
+  await dashboard.flush();
+  assert.doesNotMatch(dashboard.html('discoveryResults'), /Get Radar started/);
+  assert.match(dashboard.text('discoveryStatus'), /No companies match these filters/);
+});
+
+test('following only sends the followed tickers to discovery and changes', async () => {
+  const dashboard = startDashboard({ search: '?view=discover&following=1', localStored: { 'catalyst-following': '["NVDA","DELL"]' } });
+  await dashboard.flush();
+  const discovery = dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').at(-1);
+  const query = new URL(discovery.url).searchParams;
+  assert.deepEqual(query.getAll('ticker'), ['DELL', 'NVDA']);
+  assert.equal(query.get('following'), null);
+  assert.deepEqual(new URL(dashboard.changeRequests.at(-1).url).searchParams.getAll('ticker'), ['DELL', 'NVDA']);
+  assert.equal(dashboard.element('followingOnly').checked, true);
+});
+
+test('following only with an empty list explains instead of reading', async () => {
+  const dashboard = startDashboard({ search: '?view=discover&following=1' });
+  await dashboard.flush();
+  assert.equal(dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').length, 0);
+  assert.equal(dashboard.changeRequests.length, 0);
+  assert.match(dashboard.text('discoveryStatus'), /not following any company yet/);
+});
+
+test('the star in a ranking row follows a company without reloading the ranking', async () => {
+  const dashboard = startDashboard({ search: '?view=discover' });
+  await dashboard.flush();
+  const reads = () => dashboard.requests.filter(({ url }) => new URL(url).pathname === '/v1/discovery/catalyzed').length;
+  const before = reads();
+  dashboard.element('discoveryResults').trigger('click', { target: { closest: (selector) =>
+    selector === '[data-follow-ticker]' ? { dataset: { followTicker: 'DELL' } } : null } });
+  assert.equal(dashboard.localValues.get('catalyst-following'), '["DELL"]');
+  assert.equal(reads(), before);
+  assert.match(dashboard.html('discoveryResults'), /data-follow-ticker="DELL" aria-pressed="true"/);
+});
+
+test('the company record follows and unfollows its ticker', async () => {
+  const dashboard = startDashboard({ search: '?view=company&ticker=DELL' });
+  await dashboard.flush();
+  assert.match(dashboard.text('followCompany'), /Follow/);
+  dashboard.click('followCompany');
+  assert.equal(dashboard.localValues.get('catalyst-following'), '["DELL"]');
+  assert.match(dashboard.text('followCompany'), /Following/);
+  dashboard.click('followCompany');
+  assert.equal(dashboard.localValues.get('catalyst-following'), '[]');
+});
+
+test('candidates need the admin key and then list untracked tickers', async () => {
+  const anonymous = startDashboard({ search: '?view=universe' });
+  await anonymous.flush();
+  assert.match(anonymous.html('universeStatus'), /admin key/);
+  assert.equal(anonymous.requests.filter(({ url }) => new URL(url).pathname === '/internal/universe/candidates').length, 0);
+  const dashboard = startDashboard({ search: '?view=universe', stored: { 'catalyst-admin-key': 'admin-secret' } });
+  await dashboard.flush();
+  const read = dashboard.requests.find(({ url }) => new URL(url).pathname === '/internal/universe/candidates');
+  assert.equal(read.headers['X-Admin-Key'], 'admin-secret');
+  assert.equal(new URL(read.url).searchParams.get('limit'), '50');
+  assert.match(dashboard.html('universeResults'), /SMCI/);
+  assert.equal(dashboard.element('navUniverse').getAttribute('aria-current'), 'page');
+  assert.equal(dashboard.text('pageTitle'), 'Candidates');
+});
+
+test('tracking a candidate asks for confirmation, posts once and reports the result', async () => {
+  const bodies = [];
+  const dashboard = startDashboard({ search: '?view=universe', stored: { 'catalyst-admin-key': 'admin-secret' },
+    promotion: (url, body) => { bodies.push(JSON.parse(body)); return undefined; } });
+  await dashboard.flush();
+  dashboard.element('universeResults').trigger('click', { target: { closest: (selector) =>
+    selector === '[data-promote-ticker]' ? { dataset: { promoteTicker: 'SMCI' } } : null } });
+  assert.match(dashboard.html('universePromotion'), /Confirm and track SMCI/);
+  assert.equal(bodies.length, 0);
+  await dashboard.element('universePromotion').trigger('click', { target: { closest: (selector) =>
+    selector === '[data-confirm-promote]' ? { dataset: { confirmPromote: 'SMCI' } } : null } });
+  await dashboard.flush();
+  assert.deepEqual(bodies, [{ ticker: 'SMCI' }]);
+  assert.match(dashboard.text('universePromotion'), /SMCI is now tracked\. 4 stored documents linked, 1 queued/);
+});
+
+test('a refused promotion explains why', async () => {
+  const dashboard = startDashboard({ search: '?view=universe', stored: { 'catalyst-admin-key': 'admin-secret' },
+    promotion: { status: 422, body: { code: 'NOT_A_US_EQUITY', detail: 'no' } } });
+  await dashboard.flush();
+  await dashboard.element('universePromotion').trigger('click', { target: { closest: (selector) =>
+    selector === '[data-confirm-promote]' ? { dataset: { confirmPromote: 'SPY' } } : null } });
+  await dashboard.flush();
+  assert.match(dashboard.text('universePromotion'), /SPY is not listed as an active US common stock/);
 });

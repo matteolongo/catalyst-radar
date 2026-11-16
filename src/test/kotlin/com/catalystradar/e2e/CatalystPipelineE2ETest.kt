@@ -157,6 +157,110 @@ class CatalystPipelineE2ETest : PostgresIntegrationTest() {
         assertEquals("BUILDING", found)
     }
 
+    @Test
+    fun `an untracked ticker in the news can be promoted and then scored`() = runTest {
+        // An active company is needed for ingestion to run; the news only names ZZE.
+        companies.save(Company(ticker = "ZZK", name = "ZZ Keeper"))
+        val published = Instant.now().minusSeconds(3600).toString()
+        wireMock.stubFor(get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson(newsPage(published))))
+        wireMock.stubFor(
+            get(urlPathEqualTo("/v3/reference/tickers")).withQueryParam("ticker", com.github.tomakehurst.wiremock.client.WireMock.equalTo("ZZE"))
+                .willReturn(okJson("""{"results": [{"ticker": "ZZE", "name": "ZZ Engine", "market": "stocks", "locale": "us", "primary_exchange": "XNAS", "type": "CS", "active": true}]}""")),
+        )
+        stubExtraction()
+
+        runPipeline().andExpect { jsonPath("$.documentsProcessed") { value(0) } }
+        mockMvc.get("/internal/universe/candidates") {
+            accept = MediaType.APPLICATION_JSON
+            header("X-Admin-Key", "e2e-admin")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.candidates[0].ticker") { value("ZZE") }
+            jsonPath("$.candidates[0].documentsNeverQueued") { value(4) }
+        }
+
+        mockMvc.post("/internal/universe/promotions") {
+            contentType = MediaType.APPLICATION_JSON
+            accept = MediaType.APPLICATION_JSON
+            header("X-Admin-Key", "e2e-admin")
+            content = """{"ticker":"zze"}"""
+        }.andExpect {
+            status { isCreated() }
+            jsonPath("$.documentsQueued") { value(4) }
+        }
+
+        runPipeline().andExpect { jsonPath("$.documentsProcessed") { value(4) } }
+        mockMvc.get("/v1/companies/ZZE/catalyst") {
+            accept = MediaType.APPLICATION_JSON
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.state") { value("BUILDING") }
+        }
+    }
+
+    private fun runPipeline() = mockMvc.post("/internal/ingestion/runs") {
+        accept = MediaType.APPLICATION_JSON
+        header("X-Admin-Key", "e2e-admin")
+    }.andExpect { status { isOk() } }
+
+    private suspend fun stubExtraction() {
+        whenever(extraction.extract(any())).thenAnswer { invocation ->
+            val request = invocation.getArgument<ExtractionRequest>(0)
+            val type = when {
+                "raise" in request.document.title -> EventType.GUIDANCE_RAISE
+                "beat" in request.document.title -> EventType.EARNINGS_BEAT
+                "takeover" in request.document.title -> EventType.TAKEOVER_TARGET
+                else -> EventType.CONTRACT_WIN
+            }
+            ExtractionResult(
+                documentRelevant = true,
+                events = listOf(
+                    ExtractedEvent(
+                        ticker = "ZZE",
+                        type = type,
+                        direction = Direction.POSITIVE,
+                        confidence = 1.0,
+                        magnitude = null,
+                        surprise = null,
+                        materiality = null,
+                        expectedHorizon = EventHorizon.WEEKS,
+                        directness = Directness.DIRECT,
+                        eventTimestamp = null,
+                        evidence = listOf(EventEvidence("quote", null)),
+                        attributes = emptyMap(),
+                    ),
+                ),
+            )
+        }
+        whenever(embeddings.embed(any<com.catalystradar.ports.EmbeddingRequest>())).thenReturn(
+            Embedding(List(1536) { if (it == 0) 1f else 0f }, "fake"),
+        )
+    }
+
+    /** Runs after [scrub]'s company-linked cleanup; removes what a failed promotion test could leave. */
+    @AfterEach
+    fun scrubPromotionFixture() {
+        val orphans = jdbc.sql("SELECT source_document_id FROM source_document_unresolved_tickers WHERE ticker = 'ZZE'")
+            .query(UUID::class.java).list()
+        orphans.forEach { doc ->
+            val ingestion = jdbc.sql("SELECT first_ingestion_run_id FROM source_documents WHERE id=:id AND first_ingestion_run_id IS NOT NULL")
+                .param("id", doc).query(UUID::class.java).list()
+            jdbc.sql("DELETE FROM document_processing_steps WHERE source_document_id=:id").param("id", doc).update()
+            jdbc.sql("DELETE FROM source_documents WHERE id = :id").param("id", doc).update()
+            ingestion.forEach { run ->
+                val operation = jdbc.sql("SELECT operation_run_id FROM ingestion_runs WHERE id=:id AND operation_run_id IS NOT NULL")
+                    .param("id", run).query(UUID::class.java).list()
+                jdbc.sql("DELETE FROM ingestion_runs WHERE id=:id").param("id", run).update()
+                operation.forEach { op ->
+                    jdbc.sql("DELETE FROM operation_run_issues WHERE operation_run_id=:id").param("id", op).update()
+                    jdbc.sql("DELETE FROM ingestion_runs WHERE operation_run_id=:id").param("id", op).update()
+                    jdbc.sql("DELETE FROM operation_runs WHERE id=:id").param("id", op).update()
+                }
+            }
+        }
+        jdbc.sql("DELETE FROM companies WHERE ticker = 'ZZK'").update()
+    }
+
     @AfterEach
     fun scrub() {
         val companyId = jdbc.sql("SELECT id FROM companies WHERE ticker = 'ZZE'")

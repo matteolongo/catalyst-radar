@@ -51,6 +51,66 @@ and a correction prompt, without enum class names or internal conversion errors.
 The Events UI offers the existing taxonomy-v1 types as a family-grouped selector;
 invalid filters remain in the form with an inline correction message.
 
+## Universe candidates (ADR 0002)
+
+`GET /internal/universe/candidates` lists provider tickers named by stored
+documents that no configured company explains, ranked by `documentsStored`
+then ticker. Parameters: `since` (default 30 days ago, at most 90), `minDocuments`
+(default 1), `limit` 1–100 (default 50) and `offset` 0–10,000. Counts are
+documents, not events: syndicated copies each count. `documentsNeverQueued` is
+the subset stored as unresolved, which tracking the ticker would queue for
+extraction. A ticker drops out once a company with that ticker exists. The
+ledger is written at registration and was backfilled from `raw_payload` by V10.
+The Operations → **Candidates** screen shows it. It requires `X-Admin-Key` and
+sends `Cache-Control: no-store`.
+
+`POST /internal/universe/promotions` with `{"ticker": "SMCI"}` tracks a
+candidate. It refuses at `catalyst.universe.max-active-companies`
+(`CATALYST_UNIVERSE_MAX_ACTIVE`, default 1000) with 409 `UNIVERSE_CAP_REACHED`,
+then asks the Polygon tickers reference for an exact, active, `CS` (common
+stock) row with locale `us`; anything else is 422 `NOT_A_US_EQUITY`, and a
+provider failure is 502 `PROVIDER_UNAVAILABLE` without the provider's payload.
+On success (201) it creates the company with `origin = PROMOTED` and
+`tracked_since`, links every stored document naming the ticker, queues only the
+documents that were never queued, and clears the candidate. Documents already
+processed for another company are linked but not re-extracted. Promoting an
+existing company answers 200 and changes nothing. The next pipeline run
+extracts the queued documents. Replay of a promoted company refuses cutoffs
+before `tracked_since`. The Candidates screen offers **Track** with an explicit
+confirmation, because every tracked company adds provider and model cost to
+each cycle.
+
+### Automatic promotion
+
+`catalyst.universe.auto-promotion.enabled` (`CATALYST_UNIVERSE_AUTO_PROMOTION`)
+is `false` by default. When enabled, each pipeline cycle, after ingestion and
+before processing, promotes candidates named by at least `min-documents`
+(default 5) stored documents within `window` (default `P7D`), at most
+`max-per-cycle` (default 3, up to 20) per cycle, through the same service as
+**Track**. Their queued documents are extracted in the same cycle. At most
+three reference lookups are made per allowed promotion; a rejected ticker stays
+a candidate and is checked again in later cycles. The cap or a provider failure
+stops the cycle's promotions. Outcomes are counted in
+`catalyst_universe_auto_promotions_total{outcome}` and promoted companies carry
+`origin = PROMOTED` and `tracked_since`. They are not recorded as pipeline
+issues, because they are not failures.
+
+### Market-wide scan
+
+`catalyst.ingestion.scan-mode` (`CATALYST_INGESTION_SCAN_MODE`) is `tickers` by
+default: the primary provider is asked for news per chunk of 20 active tickers.
+With `market`, a primary provider that supports it (Polygon) is asked once per
+cycle for all news in the lookback window, without a ticker filter, following
+pages up to `max-pages-per-chunk`; a cut-off window is reported as
+`WINDOW_TRUNCATED` as before. Articles naming tracked companies are queued as
+usual; articles naming only untracked tickers are stored and appear as
+candidates. Extraction cost therefore still follows tracked companies only,
+but provider quota follows market-wide news volume, so raise `page-size` (up
+to 1000) rather than the page bound. The fallback provider, and a primary
+without market support (Finnhub), always fetch per ticker. That Polygon
+returns market-wide news when the ticker filter is omitted is unverified
+against the live API; check one cycle's `fetched` count before relying on it.
+
 ## Filters, windows and cursors
 
 Overview/runs/ingestion/models accept `range=24h|7d`, or a complete ISO-8601 UTC

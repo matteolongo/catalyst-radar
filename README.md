@@ -64,7 +64,8 @@ The first version focuses on:
 
 Out of scope for v0.1:
 
-* UI
+* a product UI (the optional operations backoffice served at `/ops` was
+  explicitly requested and is the only exception)
 * order execution
 * portfolio management
 * technical indicators
@@ -184,6 +185,9 @@ environment variables. Never commit a real key, token, or database password.
 | Full-pipeline scheduler | `CATALYST_INGESTION_ENABLED`, `CATALYST_INGESTION_INTERVAL` |
 | Processing safety | `CATALYST_PIPELINE_BATCH_SIZE`, `CATALYST_PIPELINE_MAX_ATTEMPTS`, `CATALYST_PIPELINE_RETRY_DELAY` |
 | Daily decay snapshots | `CATALYST_SNAPSHOTS_ENABLED`, `CATALYST_SNAPSHOTS_INTERVAL` |
+| Universe cap for promotion | `CATALYST_UNIVERSE_MAX_ACTIVE` |
+| Ingestion scope (`tickers` or `market`) | `CATALYST_INGESTION_SCAN_MODE` |
+| Automatic universe promotion | `CATALYST_UNIVERSE_AUTO_PROMOTION` |
 
 The local profile uses the demo admin key `local-dev-secret`; never expose it
 remotely. For other profiles, set `CATALYST_INTERNAL_ADMIN_KEY` yourself.
@@ -198,8 +202,13 @@ Keep scheduled ingestion disabled until you intend to make provider calls.
 
 The explicitly requested optional operations backoffice is served by the API at
 `http://localhost:8080/ops/index.html`, with no separate frontend build or CORS
-configuration. It opens on **Overview**, with Companies, Events, Pipeline,
-Documents, Models & costs and Settings available directly in navigation.
+configuration. It opens on **Radar** (company rankings and what changed), with
+Events, Operations (Overview, Pipeline runs, Documents, Models & costs) and
+Access available directly in navigation. On a fresh install Radar shows a
+setup checklist: save the admin key, configure providers, run the pipeline,
+then enable daily snapshots. Enable snapshots after the first pipeline run:
+the scheduler runs at startup and saves a snapshot for every active company,
+so enabling it first fills Radar with zero scores before any news exists.
 **Process notebooks** explains the journey in six guided in-app pages, from
 company references and news collection through extraction, grouping, scoring and
 history. Each page has a labeled fictional example and links to stored records;
@@ -696,6 +705,8 @@ GET /v1/events
 
 GET /v1/discovery/catalyzed
 
+GET /v1/discovery/transitions
+
 GET /actuator/health
 ```
 
@@ -723,6 +734,7 @@ Example response:
       "velocity7d": 18.7,
       "velocity7dBaselineAvailable": true,
       "events7d": 6,
+      "downsideScore": 4.2,
       "confidence": 0.88
     }
   ]
@@ -734,7 +746,22 @@ Discovery ranks active companies only. `events7d` (in discovery and in
 counted individually, discovered in the 7 days ending at that company's
 snapshot `asOf`. `velocity7dBaselineAvailable` is `false` when no snapshot
 exists 7 days before `asOf`; `velocity7d` is then `0` because there is nothing
-to compare against, not because the score was flat. `/timeline` returns the
+to compare against, not because the score was flat. `downsideScore` (0–100)
+is the strength of negative catalysts alone: the headline `score` nets them
+against positive ones and floors at 0, so a company dominated by bad news has
+a low score and a high downside. Use `sort=DOWNSIDE` and `minDownside` to rank
+or filter by it. Snapshots saved before V6 carry `downsideScore = 0`.
+Both discovery reads accept a repeated `ticker` parameter (at most 50) to
+narrow results to a chosen list, such as the companies followed in the UI.
+
+`/v1/discovery/transitions` is the "what changed" feed: state transitions of
+active companies, newest first, each with `fromState`, `toState`, `direction`
+(`UPGRADE` or `DOWNGRADE`, from the state order), score and `transitionedAt`.
+`since` defaults to 24 hours ago and may reach back at most 30 days; filter
+with `direction` and repeated `state` (target state). Pages hold at most 100
+rows (`limit`, default 50) and continue with `cursor` from `nextCursor`. A
+transition is a band crossing: a large move inside one state does not appear
+here. `/timeline` returns the
 newest snapshots and transitions in the window (transitions in ascending
 order); `snapshotsTruncated` and `transitionsTruncated` report that older
 entries exist beyond `limit`.

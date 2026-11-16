@@ -85,6 +85,13 @@ class CatalystMetrics(private val registry: MeterRegistry) {
         ).increment()
     }
 
+    fun universePromotion(outcome: String) {
+        registry.counter(
+            "catalyst_universe_auto_promotions_total",
+            listOf(Tag.of("outcome", outcome)),
+        ).increment()
+    }
+
     fun pipelineCycle(status: String) {
         registry.counter(
             "catalyst_pipeline_cycles_total",

@@ -6,6 +6,9 @@ import com.catalystradar.application.company.CompanyNotFoundException
 import com.catalystradar.application.operations.OperationsResource
 import com.catalystradar.application.operations.OperationsResourceNotFoundException
 import com.catalystradar.common.InvalidInputException
+import com.catalystradar.application.universe.NotUsEquityException
+import com.catalystradar.application.universe.ReferenceLookupFailedException
+import com.catalystradar.application.universe.UniverseCapReachedException
 import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -70,6 +73,39 @@ class ApiExceptionHandler {
      * IllegalArgumentException is an internal invariant failure and falls
      * through to [unexpected] so it is logged and its message stays private.
      */
+    @ExceptionHandler(NotUsEquityException::class)
+    fun notUsEquity(e: NotUsEquityException, request: HttpServletRequest): ResponseEntity<ProblemResponse> =
+        problem(
+            HttpStatus.UNPROCESSABLE_CONTENT,
+            "NOT_A_US_EQUITY",
+            "Not a US equity",
+            "Ticker ${e.ticker} is not listed as an active US common stock",
+            request,
+        )
+
+    @ExceptionHandler(UniverseCapReachedException::class)
+    fun universeCap(e: UniverseCapReachedException, request: HttpServletRequest): ResponseEntity<ProblemResponse> =
+        problem(
+            HttpStatus.CONFLICT,
+            "UNIVERSE_CAP_REACHED",
+            "Universe cap reached",
+            "The active universe already holds the configured maximum of ${e.cap} companies",
+            request,
+        )
+
+    /** The reference provider failed during promotion; its payload never reaches the client. */
+    @ExceptionHandler(ReferenceLookupFailedException::class)
+    fun referenceLookupFailed(e: ReferenceLookupFailedException, request: HttpServletRequest): ResponseEntity<ProblemResponse> {
+        log.warn("reference lookup failed during promotion ticker={} cause={}", e.ticker, e.cause?.javaClass?.simpleName)
+        return problem(
+            HttpStatus.BAD_GATEWAY,
+            "PROVIDER_UNAVAILABLE",
+            "Provider unavailable",
+            "The reference provider could not confirm the ticker. Try again later.",
+            request,
+        )
+    }
+
     @ExceptionHandler(InvalidInputException::class, MethodArgumentTypeMismatchException::class)
     fun badRequest(e: Exception, request: HttpServletRequest): ResponseEntity<ProblemResponse> =
         problem(
