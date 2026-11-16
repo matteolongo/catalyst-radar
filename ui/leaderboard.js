@@ -107,5 +107,40 @@
         ' hours before this ranking. Their score and 7-day change were computed then and have not decayed since. Enable daily snapshots to keep the ranking comparable.</p>' : '');
   }
 
-  window.CatalystLeaderboard = Object.freeze({ query: query, render: render, sevenDayChange: sevenDayChange });
+  function step(done, title, detail, link) {
+    var marker = done === true ? '<span class="pill ok">Done</span>' : done === false ? '<span class="pill warn">To do</span>' : '<span class="pill info">Unknown</span>';
+    return '<li class="first-run-step">' + marker + ' <strong>' + esc(title) + '</strong><span class="cell-secondary">' + detail + '</span>' +
+      (link && done !== true ? '<a href="' + esc(link.href) + '" data-radar-route="' + esc(link.href) + '">' + esc(link.text) + '</a>' : '') + '</li>';
+  }
+
+  function configured(config, name) {
+    return !!(config && (config.providers || []).some(function (provider) { return provider.name === name && provider.configured; }));
+  }
+
+  /**
+   * Steps between a fresh install and a populated Radar. Only what a read
+   * actually reported is marked done or to do; anything unread stays Unknown.
+   */
+  function firstRun(status) {
+    status = status || {};
+    var config = status.config;
+    var overview = status.overview;
+    var checked = status.hasAdmin && config;
+    var news = checked ? configured(config, 'polygon') || configured(config, 'finnhub') : null;
+    var models = checked ? configured(config, 'openai') : null;
+    var ran = status.hasAdmin && overview ? !!(overview.ingestionFreshness && overview.ingestionFreshness.lastSuccessAt) : null;
+    var snapshots = checked ? !!(config.snapshots && config.snapshots.enabled) : null;
+    var unread = status.hasAdmin && (!config || !overview) && status.checked ?
+      '<p class="muted small">Some setup checks could not be read. Unknown steps may already be done.</p>' : '';
+    return '<section class="first-run" aria-labelledby="firstRunTitle"><h3 id="firstRunTitle">Get Radar started</h3>' +
+      '<p class="muted small">Scores appear after news has been collected, turned into events and scored.</p><ol>' +
+      step(!!status.hasAdmin, 'Save the admin key', 'Setup checks and the pipeline need it.', { href: '?view=settings', text: 'Open Access' }) +
+      step(news === null || models === null ? null : news && models, 'Configure news and model providers',
+        'A news key (Polygon or Finnhub) and an OpenAI key, set as environment variables before start-up.', { href: '?view=settings', text: 'Review configuration' }) +
+      step(ran, 'Run the pipeline', 'Collects news, extracts events and saves the first scores. Provider and model calls may cost money.', { href: '?view=pipeline', text: 'Open Pipeline runs' }) +
+      step(snapshots, 'Enable daily snapshots', 'Set <code>CATALYST_SNAPSHOTS_ENABLED=true</code> so scores decay daily and rankings stay comparable. It calls no provider or model.') +
+      '</ol>' + unread + '</section>';
+  }
+
+  window.CatalystLeaderboard = Object.freeze({ query: query, render: render, sevenDayChange: sevenDayChange, firstRun: firstRun });
 })();

@@ -1347,3 +1347,27 @@ test('changes report denied access and survive unavailable browser storage', asy
   assert.match(noStorage.html('changesResults'), /Moved up/);
   assert.doesNotMatch(noStorage.html('changesResults'), /change-new/);
 });
+
+test('an empty Radar with an admin key checks setup with reads only and links to Pipeline', async () => {
+  const empty = { asOf: '2026-10-02T12:02:00Z', total: 0, limit: 20, offset: 0, results: [] };
+  const dashboard = startDashboard({ discovery: empty, stored: { 'catalyst-admin-key': 'admin-secret' },
+    config: { generatedAt: '2026-10-04T12:00:00Z', providers: [{ name: 'polygon', configured: true }, { name: 'openai', configured: true }],
+      snapshots: { enabled: false, intervalSeconds: 86400 }, ingestion: { enabled: false, intervalSeconds: 1800 } } });
+  await dashboard.flush();
+  assert.ok(dashboard.requests.every(({ method }) => method === 'GET'));
+  assert.ok(dashboard.requests.some(({ url }) => new URL(url).pathname === '/internal/operations/config'));
+  const markup = dashboard.html('discoveryResults');
+  assert.match(markup, /Get Radar started/);
+  assert.match(markup, /Run the pipeline/);
+  dashboard.element('discoveryResults').trigger('click', { target: { closest: (selector) =>
+    selector === '[data-radar-route]' ? { dataset: { radarRoute: '?view=pipeline' } } : null } });
+  assert.equal(dashboard.window.location.search, '?view=pipeline');
+});
+
+test('a filtered empty Radar shows no setup checklist', async () => {
+  const empty = { asOf: '2026-10-02T12:02:00Z', total: 0, limit: 20, offset: 0, results: [] };
+  const dashboard = startDashboard({ search: '?view=discover&minScore=90', discovery: empty });
+  await dashboard.flush();
+  assert.doesNotMatch(dashboard.html('discoveryResults'), /Get Radar started/);
+  assert.match(dashboard.text('discoveryStatus'), /No companies match these filters/);
+});

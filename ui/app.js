@@ -830,6 +830,7 @@
       $('discoveryStatus').textContent = hasFilters || requestOffset > 0 ? 'No companies match these filters.' : 'No company scores have been saved yet.';
       $('discoveryResults').innerHTML = '';
       renderRadarPreview();
+      if (!hasFilters && requestOffset === 0) return showFirstRun(request, revision);
       return;
     }
     $('discoveryStatus').textContent = page.total + ' matching companies';
@@ -861,6 +862,19 @@
     $('changesStatus').textContent = 'State changes since ' + fmtTime(page.since) + (page.since ? ' UTC' : '');
     $('changesResults').innerHTML = window.CatalystChanges.render(page, { lastVisit: previousVisit });
     try { if (page.asOf) window.localStorage.setItem(LAST_VISIT_KEY, page.asOf); } catch (_) { /* Markers stay relative to the previous visit. */ }
+  }
+
+  /** Admin reads only, never a write: checks what is still missing before Radar can show scores. */
+  async function showFirstRun(request, revision) {
+    var status = { hasAdmin: !!window.sessionStorage.getItem(ADMIN_KEY_NAME) };
+    $('discoveryResults').innerHTML = window.CatalystLeaderboard.firstRun(status);
+    if (!status.hasAdmin) return;
+    var reads = await Promise.allSettled([api('/internal/operations/config'), api('/internal/operations/overview')]);
+    if (revision !== credentialRevision || request !== discoveryRequest || currentView !== 'discover') return;
+    status.checked = true;
+    status.config = reads[0].status === 'fulfilled' ? reads[0].value : null;
+    status.overview = reads[1].status === 'fulfilled' ? reads[1].value : null;
+    $('discoveryResults').innerHTML = window.CatalystLeaderboard.firstRun(status);
   }
 
   function routeView(route) {
@@ -1150,6 +1164,12 @@
     });
     $('discoveryResults').addEventListener('click', function (event) {
       if (!ordinaryClick(event)) return;
+      var setup = event.target.closest('[data-radar-route]');
+      if (setup && setup.dataset.radarRoute) {
+        if (event.preventDefault) event.preventDefault();
+        navigate(localSearch(setup.dataset.radarRoute), { returnSearch: window.location.search || '?view=discover' });
+        return;
+      }
       var link = event.target.closest('[data-ticker]');
       if (!link) return;
       if (event.preventDefault) event.preventDefault();

@@ -108,3 +108,26 @@ test('leaderboard shows downside next to a netted zero score', () => {
   assert.match(markup, /downside-value">62\.0</);
   assert.match(markup, /aria-sort="descending"[^>]*>Downside/);
 });
+
+test('first-run checklist without an admin key only marks the key step', () => {
+  const markup = window.CatalystLeaderboard.firstRun({ hasAdmin: false });
+  assert.equal((markup.match(/To do/g) || []).length, 1);
+  assert.equal((markup.match(/Unknown/g) || []).length, 3);
+  assert.match(markup, /data-radar-route="\?view=settings"/);
+});
+
+test('first-run checklist reports configured providers, a missing run and disabled snapshots', () => {
+  const markup = window.CatalystLeaderboard.firstRun({ hasAdmin: true, checked: true,
+    config: { providers: [{ name: 'polygon', configured: true }, { name: 'openai', configured: true }], snapshots: { enabled: false } },
+    overview: { ingestionFreshness: { lastSuccessAt: null } } });
+  assert.equal((markup.match(/>Done</g) || []).length, 2);
+  assert.equal((markup.match(/>To do</g) || []).length, 2);
+  assert.match(markup, /data-radar-route="\?view=pipeline"/);
+  assert.match(markup, /CATALYST_SNAPSHOTS_ENABLED/);
+});
+
+test('first-run checklist keeps unread checks unknown', () => {
+  const markup = window.CatalystLeaderboard.firstRun({ hasAdmin: true, checked: true, config: null, overview: null });
+  assert.equal((markup.match(/>Unknown</g) || []).length, 3);
+  assert.match(markup, /could not be read/);
+});

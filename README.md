@@ -64,7 +64,8 @@ The first version focuses on:
 
 Out of scope for v0.1:
 
-* UI
+* a product UI (the optional operations backoffice served at `/ops` was
+  explicitly requested and is the only exception)
 * order execution
 * portfolio management
 * technical indicators
@@ -198,8 +199,13 @@ Keep scheduled ingestion disabled until you intend to make provider calls.
 
 The explicitly requested optional operations backoffice is served by the API at
 `http://localhost:8080/ops/index.html`, with no separate frontend build or CORS
-configuration. It opens on **Overview**, with Companies, Events, Pipeline,
-Documents, Models & costs and Settings available directly in navigation.
+configuration. It opens on **Radar** (company rankings and what changed), with
+Events, Operations (Overview, Pipeline runs, Documents, Models & costs) and
+Access available directly in navigation. On a fresh install Radar shows a
+setup checklist: save the admin key, configure providers, run the pipeline,
+then enable daily snapshots. Enable snapshots after the first pipeline run:
+the scheduler runs at startup and saves a snapshot for every active company,
+so enabling it first fills Radar with zero scores before any news exists.
 **Process notebooks** explains the journey in six guided in-app pages, from
 company references and news collection through extraction, grouping, scoring and
 history. Each page has a labeled fictional example and links to stored records;

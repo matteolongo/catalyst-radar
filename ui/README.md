@@ -14,6 +14,12 @@ this browser are marked **New**; the visit time is kept in `localStorage` and
 nothing is stored on the server. A change is a move between states; a large
 move within one state shows in the 7-day change ranking instead. Below it,
 companies are ranked by highest 7-day score change.
+
+When no score has been saved yet and no filter is applied, Radar shows **Get
+Radar started**: save the admin key, configure news and model providers, run
+the pipeline, enable daily snapshots. With an admin key it checks the steps
+with the existing read-only configuration and overview reads; steps it could
+not read stay **Unknown**. It never starts work itself.
 Choose **Highest score** to rank by current score, or **Highest downside** to
 rank by the strength of negative catalysts alone: the headline score nets them
 against positive ones and stops at 0, so bad-news build-ups only show there.
