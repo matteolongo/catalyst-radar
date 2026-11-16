@@ -97,19 +97,46 @@ issues, because they are not failures.
 
 ### Market-wide scan
 
-`catalyst.ingestion.scan-mode` (`CATALYST_INGESTION_SCAN_MODE`) is `tickers` by
-default: the primary provider is asked for news per chunk of 20 active tickers.
-With `market`, a primary provider that supports it (Polygon) is asked once per
-cycle for all news in the lookback window, without a ticker filter, following
-pages up to `max-pages-per-chunk`; a cut-off window is reported as
-`WINDOW_TRUNCATED` as before. Articles naming tracked companies are queued as
-usual; articles naming only untracked tickers are stored and appear as
-candidates. Extraction cost therefore still follows tracked companies only,
-but provider quota follows market-wide news volume, so raise `page-size` (up
-to 1000) rather than the page bound. The fallback provider, and a primary
-without market support (Finnhub), always fetch per ticker. That Polygon
-returns market-wide news when the ticker filter is omitted is unverified
-against the live API; check one cycle's `fetched` count before relying on it.
+`catalyst.ingestion.scan-mode` (`CATALYST_INGESTION_SCAN_MODE`) is `market` by
+default: a primary provider that supports it (Polygon) is asked once per cycle
+for all news in the lookback window, without a ticker filter, following pages
+up to `max-pages-per-chunk` with `page-size` 1000; a cut-off window is reported
+as `WINDOW_TRUNCATED`. Articles naming tracked companies are queued as usual;
+articles naming only untracked tickers are stored and appear as candidates.
+Extraction cost therefore still follows tracked companies only.
+
+With `tickers`, the primary is asked once per active ticker. Polygon's `ticker`
+filter takes one symbol: a comma-separated list returns no results with status
+`OK`. At Polygon's free 5 requests per minute, 517 tickers take over 100
+minutes, longer than the 30-minute interval, so `tickers` suits paid plans
+only. The fallback provider, and a primary without market support (Finnhub),
+always fetch per ticker.
+
+### Provider rate limits
+
+`catalyst.rate-limits.providers.<name>` sets one request budget per provider
+(`polygon`, `finnhub`, `openai`), shared by every client of that provider:
+news, reference lookups, market data, extraction and embeddings.
+
+| Setting | Meaning | polygon | finnhub | openai |
+| --- | --- | --- | --- | --- |
+| `requests-per-minute` | Request starts in any rolling minute; `0` = unpaced | 5 | 60 | 0 |
+| `max-retries` | Retries of a 429 before the adapter reports `RATE_LIMITED` | 2 | 2 | 0 |
+| `max-retry-wait` | Longest single wait; a longer `Retry-After` is not retried | 65s | 65s | 65s |
+
+Environment overrides: `CATALYST_<PROVIDER>_REQUESTS_PER_MINUTE` and
+`CATALYST_<PROVIDER>_MAX_RETRIES`. Compose passes the requests-per-minute
+variables through. A 429 waits for `Retry-After`, or one minute without it.
+OpenAI 429s are not retried in the client because the processing queue already
+reschedules them. Pacing blocks the provider call, so a Finnhub fallback over
+517 tickers at 60 per minute takes about nine minutes. Waits and retries are
+counted in `catalyst_provider_requests_paced_total{provider}` and
+`catalyst_provider_requests_rate_limit_retries_total{provider}`.
+
+When a provider failure ends an ingestion run, its code (`RATE_LIMITED`,
+`TEMPORARY_UNAVAILABLE`, ...) is the run's error code, even if a document failed
+earlier in the run; per-document failures stay in the logs as
+`skipping failed document`.
 
 ## Filters, windows and cursors
 

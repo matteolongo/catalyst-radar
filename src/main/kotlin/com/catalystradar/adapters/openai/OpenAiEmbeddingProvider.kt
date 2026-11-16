@@ -1,5 +1,7 @@
 package com.catalystradar.adapters.openai
 
+import com.catalystradar.adapters.http.ProviderRateLimits
+import com.catalystradar.adapters.http.rateLimited
 import com.catalystradar.adapters.http.mapHttpClientError
 import com.catalystradar.adapters.http.mapTransportError
 import com.catalystradar.adapters.http.timeouts
@@ -39,6 +41,7 @@ class OpenAiEmbeddingProvider(
     private val modelRuns: ModelRunStore,
     private val metrics: CatalystMetrics,
     private val tracing: LlmTracing,
+    limits: ProviderRateLimits = ProviderRateLimits.none(),
 ) : EmbeddingProvider {
 
     override val model: String get() = properties.embeddingModel
@@ -47,6 +50,7 @@ class OpenAiEmbeddingProvider(
 
     private val client = builder.baseUrl(properties.baseUrl)
         .requestFactory(timeouts(properties.connectTimeout, properties.embeddingReadTimeout))
+        .rateLimited(limits, "openai")
         .build()
 
     override suspend fun embed(text: String): Embedding =

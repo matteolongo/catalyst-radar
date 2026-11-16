@@ -223,6 +223,37 @@ class IngestionServiceTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `ticker scan asks polygon for one ticker per request`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        companies.save(Company(ticker = "SMCI", name = "Super Micro"))
+        wireMock.stubFor(get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson(NEWS_PAGE)))
+
+        service(scanMode = ScanMode.TICKERS).ingestCycle()
+
+        val tickers = wireMock.findAll(getRequestedFor(urlPathEqualTo("/v2/reference/news")))
+            .map { it.queryParameter("ticker").values() }
+        assertEquals(setOf(listOf("DELL"), listOf("SMCI")), tickers.toSet())
+        assertEquals(2, tickers.size)
+    }
+
+    @Test
+    fun `mixed-case share-class tickers are neither resolved nor kept as candidates`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        wireMock.stubFor(
+            get(urlPathEqualTo("/v2/reference/news")).willReturn(
+                okJson("""{"results": [{"id": "share-class", "title": "Bank preferreds", "description": "Rates.", "published_utc": "2026-09-16T14:30:00Z", "tickers": ["DELL", "JPMpC", "smci"]}], "status": "OK"}"""),
+            ),
+        )
+
+        service(scanMode = ScanMode.MARKET).ingestCycle(Instant.parse("2026-09-16T15:00:00Z"))
+
+        val document = assertNotNull(documents.findByProviderAndProviderDocumentId("polygon", "share-class"))
+        val candidates = jdbc.sql("SELECT ticker FROM source_document_unresolved_tickers WHERE source_document_id = :id ORDER BY ticker")
+            .param("id", document.id).query { rs, _ -> rs.getString("ticker") }.list()
+        assertEquals(listOf("SMCI"), candidates)
+    }
+
+    @Test
     fun `market scan asks the primary once without tickers and keeps untracked tickers as candidates`() = runTest {
         repeat(25) { companies.save(Company(ticker = "T$it", name = "Tracked $it")) }
         companies.save(Company(ticker = "DELL", name = "Dell"))
@@ -323,7 +354,7 @@ class IngestionServiceTest : PostgresIntegrationTest() {
     }
 
     @Test
-    fun `partial provider run retains the first registration failure category`() = runTest {
+    fun `provider failure that ends the run is reported over an earlier registration failure`() = runTest {
         repeat(21) { companies.save(Company(ticker = "ZZ${('A'.code + it).toChar()}", name = "Chunk $it")) }
         var calls = 0
         val provider = object : NewsProvider {
@@ -340,7 +371,7 @@ class IngestionServiceTest : PostgresIntegrationTest() {
             CatalystMetrics(SimpleMeterRegistry())).ingestCycle()
         val run = result.runs.single()
         assertEquals(IngestionStatus.PARTIAL, run.status)
-        assertEquals("PROCESSING_FAILURE", run.errorCode)
+        assertEquals("RATE_LIMITED", run.errorCode)
         assertEquals(2, run.fetched)
         assertEquals(1, run.added)
     }

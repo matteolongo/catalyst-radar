@@ -85,7 +85,10 @@ class SourceDocumentRegistrationService(
                 outputCount = 1, finishedAt = registrationFinished)
         }
         val resolution = operationRunId?.let { steps.start(it, document.id, null, DocumentStage.COMPANY_RESOLUTION, inputCount = article.tickers.size) }
-        val providerTickers = article.tickers.mapNotNull { ticker -> runCatching { normalizeTicker(ticker) }.getOrNull() }.distinct()
+        val providerTickers = article.tickers
+            .filterNot(::isShareClassVariant)
+            .mapNotNull { ticker -> runCatching { normalizeTicker(ticker) }.getOrNull() }
+            .distinct()
         val resolved = providerTickers.associateWith { companies.findByTicker(it)?.id }
         val companyIds = resolved.values.filterNotNull().toSet()
         documentCompanies.link(document.id, companyIds)
@@ -95,6 +98,15 @@ class SourceDocumentRegistrationService(
         processing.ensurePending(document.id, now)
         return DocumentRegistration.Queued(document.id)
     }
+
+    /**
+     * Polygon writes preferred and other share-class lines with a lowercase
+     * marker (`JPMpC`). Uppercasing would turn them into plausible tickers
+     * (`JPMPC`) that match nothing and only add noise to the candidate ledger.
+     * Only mixed case marks a variant; an all-lowercase symbol is just a symbol.
+     */
+    private fun isShareClassVariant(ticker: String): Boolean =
+        ticker.any { it.isLowerCase() } && ticker.any { it.isUpperCase() }
 
     private fun existingDocument(provider: String, providerDocumentId: String?, contentHash: String) =
         providerDocumentId?.let { documents.findByProviderAndProviderDocumentId(provider, it) }

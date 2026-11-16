@@ -73,7 +73,7 @@ class IngestionService(
             properties.fallbackProvider != primary.name
         ) {
             // The fallback always asks per ticker: it may not support a market-wide scan.
-            providersByName[properties.fallbackProvider]?.let { outcomes += runProvider(it, tickers.chunked(TICKER_CHUNK_SIZE), now, operationRunId) }
+            providersByName[properties.fallbackProvider]?.let { outcomes += runProvider(it, tickerScope(it, tickers), now, operationRunId) }
         }
         return IngestionCycleResult(
             runs = outcomes.map { it.record },
@@ -83,13 +83,19 @@ class IngestionService(
 
     /**
      * Requests the primary provider makes: one ticker-less request in market
-     * mode when the provider supports it, otherwise one per ticker chunk.
+     * mode when the provider supports it, otherwise one per ticker group.
      */
     private fun primaryScope(primary: NewsProvider, tickers: List<String>): List<List<String>> {
-        if (properties.scanMode != ScanMode.MARKET) return tickers.chunked(TICKER_CHUNK_SIZE)
+        if (properties.scanMode != ScanMode.MARKET) return tickerScope(primary, tickers)
         if (primary.supportsMarketScan) return listOf(emptyList())
         log.warn("ingestion scan-mode=market unsupported by provider={}; fetching per ticker", primary.name)
-        return tickers.chunked(TICKER_CHUNK_SIZE)
+        return tickerScope(primary, tickers)
+    }
+
+    /** Groups as large as the provider can answer in one request. */
+    private fun tickerScope(provider: NewsProvider, tickers: List<String>): List<List<String>> {
+        require(provider.maxTickersPerRequest >= 1) { "provider ${provider.name} must accept at least one ticker per request" }
+        return tickers.chunked(provider.maxTickersPerRequest)
     }
 
     private data class ProviderOutcome(
@@ -193,10 +199,12 @@ class IngestionService(
         } catch (e: ProviderException.RateLimited) {
             // Preserve the window: a later cycle re-fetches it idempotently.
             reportUnresolved(runId, provider.name, unresolved)
-            return ProviderOutcome(finish(runId, IngestionStatus.PARTIAL, fetched, added, duplicates, firstErrorCode ?: OperationalErrors.code(e), unresolved), fresh)
+            // The provider failure that ended the run is reported over earlier
+            // per-document failures, which stay in the logs and metrics.
+            return ProviderOutcome(finish(runId, IngestionStatus.PARTIAL, fetched, added, duplicates, OperationalErrors.code(e), unresolved), fresh)
         } catch (e: ProviderException) {
             reportUnresolved(runId, provider.name, unresolved)
-            return ProviderOutcome(finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, firstErrorCode ?: OperationalErrors.code(e), unresolved), fresh)
+            return ProviderOutcome(finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, OperationalErrors.code(e), unresolved), fresh)
         } catch (e: RuntimeException) {
             finish(runId, IngestionStatus.FAILED, fetched, added, duplicates, firstErrorCode ?: "INGESTION_FAILURE", unresolved)
             throw e
@@ -240,8 +248,6 @@ class IngestionService(
     }
 
     companion object {
-        const val TICKER_CHUNK_SIZE = 20
-
         /** Why a stored document was kept without being queued. */
         const val NO_CONFIGURED_COMPANY = "NO_CONFIGURED_COMPANY"
 

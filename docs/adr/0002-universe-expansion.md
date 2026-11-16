@@ -50,7 +50,8 @@ Expanding the universe has costs that scale with it:
 6. **Market-wide scan is opt-in.** `catalyst.ingestion.scan-mode=market`
    asks the primary provider for all news in the window instead of news per
    ticker. Registration is unchanged, so LLM cost still scales with
-   resolved documents only. The default stays `tickers`.
+   resolved documents only. ~~The default stays `tickers`.~~ Amended: the
+   default is `market` (see below).
 
 ## Consequences
 
@@ -63,3 +64,13 @@ Expanding the universe has costs that scale with it:
   window; the existing page cap and `WINDOW_TRUNCATED` handling bound it.
 - Seeded companies have `tracked_since = NULL` and keep today's replay
   behaviour.
+
+## Amendment: `market` is the default scan mode
+
+Polygon's `ticker` filter takes a single symbol; the comma-separated list
+ingestion sent matched nothing, so per-ticker scanning had never fetched a
+Polygon article. One request per ticker does not fit the free plan's 5
+requests per minute: 517 tickers take over 100 minutes, against a 30-minute
+interval. A market scan needs one to a few requests per cycle, so it is the
+default. `tickers` remains for paid plans, now one ticker per request, and
+every provider request is paced by `catalyst.rate-limits`.

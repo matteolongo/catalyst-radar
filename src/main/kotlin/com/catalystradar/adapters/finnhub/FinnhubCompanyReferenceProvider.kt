@@ -1,5 +1,7 @@
 package com.catalystradar.adapters.finnhub
 
+import com.catalystradar.adapters.http.ProviderRateLimits
+import com.catalystradar.adapters.http.rateLimited
 import com.catalystradar.adapters.http.mapHttpClientError
 import com.catalystradar.adapters.http.mapTransportError
 import com.catalystradar.adapters.http.timeouts
@@ -28,10 +30,12 @@ import org.springframework.web.client.body
 class FinnhubCompanyReferenceProvider(
     builder: RestClient.Builder,
     private val properties: FinnhubProperties,
+    limits: ProviderRateLimits = ProviderRateLimits.none(),
 ) : CompanyReferenceProvider {
 
     private val client = builder.baseUrl(properties.baseUrl)
         .requestFactory(timeouts(properties.connectTimeout, properties.readTimeout))
+        .rateLimited(limits, "finnhub")
         .build()
 
     override suspend fun listUsEquities(cursor: String?): CompanyPage =

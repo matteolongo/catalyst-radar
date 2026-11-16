@@ -1,5 +1,7 @@
 package com.catalystradar.adapters.polygon
 
+import com.catalystradar.adapters.http.ProviderRateLimits
+import com.catalystradar.adapters.http.rateLimited
 import com.catalystradar.adapters.http.mapHttpClientError
 import com.catalystradar.adapters.http.mapTransportError
 import com.catalystradar.adapters.http.timeouts
@@ -29,10 +31,12 @@ import java.time.ZoneOffset
 class PolygonMarketDataProvider(
     builder: RestClient.Builder,
     private val properties: PolygonProperties,
+    limits: ProviderRateLimits = ProviderRateLimits.none(),
 ) : MarketDataProvider {
 
     private val client = builder.baseUrl(properties.baseUrl)
         .requestFactory(timeouts(properties.connectTimeout, properties.readTimeout))
+        .rateLimited(limits, "polygon")
         .build()
 
     override suspend fun dailyBars(ticker: String, from: LocalDate, to: LocalDate): List<DailyBar> =
