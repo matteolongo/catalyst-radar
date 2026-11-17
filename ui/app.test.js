@@ -1445,6 +1445,41 @@ test('tracking a candidate asks for confirmation, posts once and reports the res
   assert.match(dashboard.text('universePromotion'), /SMCI is now tracked\. 4 stored documents linked, 1 queued/);
 });
 
+test('fetching news for a symbol posts the ticker and window asynchronously and links the run', async () => {
+  const calls = [];
+  const dashboard = startDashboard({ search: '?view=universe', stored: { 'catalyst-admin-key': 'admin-secret' },
+    tickerRun: (url, body, headers) => { calls.push({ body: JSON.parse(body), prefer: headers.Prefer }); return undefined; } });
+  await dashboard.flush();
+  dashboard.element('tickerFetchSymbol').value = ' tsn ';
+  dashboard.element('tickerFetchWindow').value = 'P30D';
+  dashboard.element('tickerFetch').trigger('submit', { preventDefault() {} });
+  await dashboard.flush();
+  assert.deepEqual(calls, [{ body: { ticker: 'TSN', lookback: 'P30D' }, prefer: 'respond-async' }]);
+  assert.match(dashboard.html('tickerFetchStatus'), /Fetching TSN news\. <a href="\?view=pipeline&amp;runId=5d0c3c8e-2b7e-4c55-9d2f-6f1f0d1c2a3b">/);
+});
+
+test('fetching news for an untracked symbol explains that it must be tracked first', async () => {
+  const dashboard = startDashboard({ search: '?view=universe', stored: { 'catalyst-admin-key': 'admin-secret' },
+    tickerRun: { status: 404, body: { code: 'COMPANY_NOT_FOUND', detail: 'No supported company exists for ticker SLS' } } });
+  await dashboard.flush();
+  dashboard.element('tickerFetchSymbol').value = 'SLS';
+  dashboard.element('tickerFetch').trigger('submit', { preventDefault() {} });
+  await dashboard.flush();
+  assert.match(dashboard.text('tickerFetchStatus'), /SLS is not tracked\. Track it from the list below first/);
+});
+
+test('an invalid symbol is rejected without a request', async () => {
+  const calls = [];
+  const dashboard = startDashboard({ search: '?view=universe', stored: { 'catalyst-admin-key': 'admin-secret' },
+    tickerRun: () => { calls.push(1); return undefined; } });
+  await dashboard.flush();
+  dashboard.element('tickerFetchSymbol').value = 'not a ticker';
+  dashboard.element('tickerFetch').trigger('submit', { preventDefault() {} });
+  await dashboard.flush();
+  assert.equal(calls.length, 0);
+  assert.match(dashboard.text('tickerFetchStatus'), /Enter a ticker/);
+});
+
 test('a refused promotion explains why', async () => {
   const dashboard = startDashboard({ search: '?view=universe', stored: { 'catalyst-admin-key': 'admin-secret' },
     promotion: { status: 422, body: { code: 'NOT_A_US_EQUITY', detail: 'no' } } });

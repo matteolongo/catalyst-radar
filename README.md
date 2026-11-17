@@ -292,6 +292,10 @@ All `/internal/*` routes require `X-Admin-Key`. The operational endpoints are:
 ```text
 POST /internal/ingestion/runs      run the full ingest-to-snapshot pipeline
                                    (send `Prefer: respond-async` for 202 + runId)
+POST /internal/ingestion/ticker-runs
+                                   fetch one tracked symbol's news over a window
+                                   ({"ticker":"TSN","lookback":"P7D"}), then run
+                                   the same extract-to-snapshot steps
 POST /internal/replays             recompute one company at a historical cutoff
 POST /internal/api-clients         issue a public API key
 ```

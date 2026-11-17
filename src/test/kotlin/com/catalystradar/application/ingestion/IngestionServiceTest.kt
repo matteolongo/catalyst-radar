@@ -107,6 +107,41 @@ class IngestionServiceTest : PostgresIntegrationTest() {
         assertNotNull(documents.findByProviderAndProviderDocumentId("polygon", "poly-1"))
     }
 
+    @Test
+    fun `ticker fetch asks for one symbol over the requested window even in market scan mode`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        companies.save(Company(ticker = "AAPL", name = "Apple"))
+        wireMock.stubFor(get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson(NEWS_PAGE)))
+        val now = Instant.parse("2026-09-17T10:00:00Z")
+        val from = now.minus(java.time.Duration.ofDays(7))
+
+        val run = service(scanMode = ScanMode.MARKET).ingestTicker("DELL", from, now).runs.single()
+
+        assertEquals(IngestionStatus.SUCCESS, run.status)
+        assertEquals(2, run.added)
+        wireMock.verify(
+            1,
+            getRequestedFor(urlPathEqualTo("/v2/reference/news"))
+                .withQueryParam("ticker", equalTo("DELL"))
+                .withQueryParam("published_utc.gte", equalTo(from.toString()))
+                .withQueryParam("published_utc.lte", equalTo(now.toString())),
+        )
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/v2/reference/news")).withQueryParam("ticker", absent()))
+    }
+
+    @Test
+    fun `ticker fetch reuses already stored articles instead of queueing them again`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        wireMock.stubFor(get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson(NEWS_PAGE)))
+        val now = Instant.parse("2026-09-17T10:00:00Z")
+        service(scanMode = ScanMode.MARKET).ingestCycle(now)
+
+        val result = service().ingestTicker("DELL", now.minus(java.time.Duration.ofDays(7)), now)
+
+        assertEquals(2, result.runs.single().duplicates)
+        assertTrue(result.newDocuments.isEmpty())
+    }
+
     private fun pageOf(id: String, nextCursor: String?): String {
         val next = nextCursor?.let { ", \"next_url\": \"${wireMock.baseUrl()}/v2/reference/news?cursor=$it\"" } ?: ""
         return """{"results": [{"id": "$id", "title": "Dell news $id", "description": "Dell $id.", "article_url": "https://example.com/$id", "published_utc": "2026-09-16T14:30:00Z", "tickers": ["DELL"]}], "status": "OK"$next}"""

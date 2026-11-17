@@ -3,7 +3,9 @@ package com.catalystradar.api.internal
 import com.catalystradar.application.catalyst.CatalystService
 import com.catalystradar.application.catalyst.CatalystView
 import com.catalystradar.application.catalyst.CatalystViewService
+import com.catalystradar.application.company.CompanyNotFoundException
 import com.catalystradar.application.company.CompanyService
+import com.catalystradar.application.ingestion.IngestionProperties
 import com.catalystradar.application.pipeline.PipelineResult
 import com.catalystradar.application.pipeline.PipelineService
 import com.catalystradar.application.replay.ReplayResult
@@ -17,17 +19,23 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest
+import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
+import java.time.Duration
 import java.time.Instant
+import kotlin.test.assertEquals
 import java.util.UUID
 
+@Import(IngestionProperties::class)
 @WebMvcTest(
     InternalPipelineController::class,
     InternalCompanyController::class,
@@ -104,6 +112,94 @@ class InternalControllersTest {
             jsonPath("$.eventsExtracted") { value(7) }
             jsonPath("$.eventsInserted") { value(5) }
             jsonPath("$.eventsReused") { value(2) }
+        }
+    }
+
+    @Test
+    fun `ticker run fetches the normalized symbol over the requested window`() = runTest {
+        whenever(pipeline.runTickerCycle(eq("TSN"), any(), any())).thenReturn(PipelineResult("SUCCESS", 3, 2, 1))
+
+        mockMvc.post("/internal/ingestion/ticker-runs") {
+            accept = MediaType.APPLICATION_JSON
+            contentType = MediaType.APPLICATION_JSON
+            header("X-Admin-Key", "test-admin")
+            content = """{"ticker":" tsn ","lookback":"P3D"}"""
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.status") { value("SUCCESS") }
+            jsonPath("$.companiesRescored") { value(1) }
+        }
+        val from = argumentCaptor<Instant>()
+        val now = argumentCaptor<Instant>()
+        verify(pipeline).runTickerCycle(eq("TSN"), from.capture(), now.capture())
+        assertEquals(Duration.ofDays(3), Duration.between(from.firstValue, now.firstValue))
+    }
+
+    @Test
+    fun `ticker run uses the configured default window when none is given`() = runTest {
+        whenever(pipeline.runTickerCycle(eq("TSN"), any(), any())).thenReturn(PipelineResult("SUCCESS", 0, 0, 0))
+
+        mockMvc.post("/internal/ingestion/ticker-runs") {
+            contentType = MediaType.APPLICATION_JSON
+            header("X-Admin-Key", "test-admin")
+            content = """{"ticker":"TSN"}"""
+        }.andExpect { status { isOk() } }
+        val from = argumentCaptor<Instant>()
+        val now = argumentCaptor<Instant>()
+        verify(pipeline).runTickerCycle(eq("TSN"), from.capture(), now.capture())
+        assertEquals(Duration.ofDays(7), Duration.between(from.firstValue, now.firstValue))
+    }
+
+    @Test
+    fun `ticker run rejects a window beyond the configured maximum`() = runTest {
+        mockMvc.post("/internal/ingestion/ticker-runs") {
+            contentType = MediaType.APPLICATION_JSON
+            header("X-Admin-Key", "test-admin")
+            content = """{"ticker":"TSN","lookback":"P31D"}"""
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_REQUEST") }
+        }
+    }
+
+    @Test
+    fun `ticker run rejects a lookback that is not an ISO duration`() = runTest {
+        mockMvc.post("/internal/ingestion/ticker-runs") {
+            contentType = MediaType.APPLICATION_JSON
+            header("X-Admin-Key", "test-admin")
+            content = """{"ticker":"TSN","lookback":"7 days"}"""
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_REQUEST") }
+        }
+    }
+
+    @Test
+    fun `ticker run for an untracked symbol is not found`() = runTest {
+        whenever(pipeline.runTickerCycle(eq("SLS"), any(), any())).thenThrow(CompanyNotFoundException("SLS"))
+
+        mockMvc.post("/internal/ingestion/ticker-runs") {
+            contentType = MediaType.APPLICATION_JSON
+            header("X-Admin-Key", "test-admin")
+            content = """{"ticker":"SLS"}"""
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.code") { value("COMPANY_NOT_FOUND") }
+        }
+    }
+
+    @Test
+    fun `ticker run starts in the background when asked to respond async`() = runTest {
+        whenever(pipeline.startTickerCycle(eq("TSN"), any(), any())).thenReturn(PipelineResult("RUNNING", 0, 0, 0, runId = UUID.randomUUID()))
+
+        mockMvc.post("/internal/ingestion/ticker-runs") {
+            contentType = MediaType.APPLICATION_JSON
+            header("X-Admin-Key", "test-admin")
+            header("Prefer", "respond-async")
+            content = """{"ticker":"TSN"}"""
+        }.andExpect {
+            status { isAccepted() }
+            jsonPath("$.status") { value("RUNNING") }
         }
     }
 

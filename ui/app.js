@@ -1006,6 +1006,37 @@
     if (currentView === 'universe') refreshUniverse(new URLSearchParams(window.location.search));
   }
 
+  function tickerFetchMessage(ticker, err) {
+    if (err.code === 'COMPANY_NOT_FOUND') return ticker + ' is not tracked. Track it from the list below first; news about an untracked symbol is stored but never extracted.';
+    if (err.status === 403) return 'The admin key was refused. Check it in Access.';
+    if (err.status === 400) return 'The request was refused: ' + (err.message || 'invalid input') + '.';
+    return 'The fetch response was unavailable. The server may still be running; the request was not retried.';
+  }
+
+  /** Manual per-symbol fetch: provider and model cost, so it runs only on an explicit submit. */
+  async function fetchTickerNews(ticker, lookback) {
+    var revision = credentialRevision;
+    $('tickerFetchStatus').textContent = 'Starting a news fetch for ' + ticker + '…';
+    var result;
+    try {
+      result = await api('/internal/ingestion/ticker-runs', { method: 'POST', async: true, body: { ticker: ticker, lookback: lookback } });
+    } catch (err) {
+      if (revision !== credentialRevision) return;
+      $('tickerFetchStatus').textContent = tickerFetchMessage(ticker, err);
+      return;
+    }
+    if (revision !== credentialRevision) return;
+    if (result && result.alreadyRunning) {
+      $('tickerFetchStatus').textContent = 'A pipeline cycle is already running. Try again when it finishes.';
+      return;
+    }
+    if (result && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(result.runId || '')) {
+      $('tickerFetchStatus').innerHTML = 'Fetching ' + esc(ticker) + ' news. <a href="?view=pipeline&amp;runId=' + esc(result.runId) + '">Follow the run</a>.';
+      return;
+    }
+    $('tickerFetchStatus').textContent = 'Fetch for ' + ticker + ' ' + ((result && result.status) || 'completed') + '.';
+  }
+
   function universeOffsetRoute(offset) {
     navigate('?view=universe&offset=' + offset);
   }
@@ -1348,6 +1379,23 @@
       var button = event.target.closest('[data-promote-ticker]');
       if (!button || !button.dataset.promoteTicker) return;
       askToPromote(button.dataset.promoteTicker);
+    });
+    $('tickerFetch').addEventListener('submit', function (event) {
+      event.preventDefault();
+      var ticker = $('tickerFetchSymbol').value.trim().toUpperCase();
+      $('tickerFetchSymbol').value = ticker;
+      if (!validTicker(ticker)) {
+        $('tickerFetchSymbol').setAttribute('aria-invalid', 'true');
+        $('tickerFetchStatus').textContent = 'Enter a ticker such as TSN or BRK.B, up to 15 letters, numbers, dots or hyphens.';
+        return;
+      }
+      $('tickerFetchSymbol').removeAttribute('aria-invalid');
+      if (!window.sessionStorage.getItem(ADMIN_KEY_NAME)) {
+        $('tickerFetchStatus').textContent = 'Fetching news needs the admin key. Save it in Access.';
+        return;
+      }
+      var lookback = ['P1D', 'P7D', 'P30D'].includes($('tickerFetchWindow').value) ? $('tickerFetchWindow').value : 'P7D';
+      fetchTickerNews(ticker, lookback);
     });
     $('universePromotion').addEventListener('click', function (event) {
       var confirm = event.target.closest('[data-confirm-promote]');

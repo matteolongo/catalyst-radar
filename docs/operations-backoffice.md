@@ -112,6 +112,31 @@ minutes, longer than the 30-minute interval, so `tickers` suits paid plans
 only. The fallback provider, and a primary without market support (Finnhub),
 always fetch per ticker.
 
+### Manual per-symbol fetch
+
+The market scan finds symbols; fetching one symbol's news is a manual step.
+`POST /internal/ingestion/ticker-runs` with `{"ticker": "TSN", "lookback": "P7D"}`
+asks the primary provider for news naming that one ticker from `now - lookback`
+to now, whatever `scan-mode` is, falling back per ticker as a cycle does. The
+fetched articles are registered like any other (already stored ones count as
+duplicates and are not extracted again), then the run drains the processing
+queue and rescores affected companies exactly as `POST /internal/ingestion/runs`
+does. It shares that run's guard, so it never overlaps a cycle: while one runs
+it answers `alreadyRunning: true`. `Prefer: respond-async` returns 202 with the
+run id; the run appears under Pipeline runs.
+
+`lookback` is an ISO-8601 duration. Omitted, it is
+`catalyst.ingestion.ticker-fetch-default-lookback` (`P7D`); above
+`ticker-fetch-max-lookback` (`P30D`), or not a positive duration, the request is
+400 `INVALID_REQUEST`. The ticker must be an active tracked company, otherwise
+404 `COMPANY_NOT_FOUND` without a provider call: an untracked symbol's articles
+would be stored but never extracted, so track it first. Each queue drain takes
+at most `catalyst.pipeline.batch-size` documents; a long window over a heavily
+covered symbol can leave the rest for later runs. Event timestamps keep the
+articles' publication times and `discoveredAt` is the fetch time, so replay
+before the fetch does not see them. The Candidates screen has a **Fetch news**
+form (last day, 7 or 30 days).
+
 ### Provider rate limits
 
 `catalyst.rate-limits.providers.<name>` sets one request budget per provider

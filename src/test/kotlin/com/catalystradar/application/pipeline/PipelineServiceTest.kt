@@ -45,7 +45,9 @@ import com.catalystradar.ports.NewsProvider
 import com.catalystradar.ports.NewsFetchRequest
 import com.catalystradar.ports.NewsFetchResult
 import com.catalystradar.ports.ProviderException
+import com.github.tomakehurst.wiremock.client.WireMock.equalTo
 import com.github.tomakehurst.wiremock.client.WireMock.get
+import com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor
 import com.github.tomakehurst.wiremock.client.WireMock.okJson
 import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
@@ -242,6 +244,33 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         assertEquals(1, result.companiesRescored)
         val snapshot = snapshots.latestSnapshot(companies.findByTicker("DELL")!!.id)
         assertEquals(CatalystState.BUILDING, snapshot?.state)
+    }
+
+    @Test
+    fun `ticker run fetches one tracked company's news and scores it`() = runTest {
+        companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val now = Instant.now()
+        wireMock.stubFor(
+            get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson(newsPage(now.minusSeconds(3600).toString()))),
+        )
+
+        val result = pipeline().runTickerCycle("DELL", now.minus(java.time.Duration.ofDays(7)), now)
+
+        assertEquals("SUCCESS", result.status)
+        assertEquals(1, result.companiesRescored)
+        assertNotNull(snapshots.latestSnapshot(companies.findByTicker("DELL")!!.id))
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/v2/reference/news")).withQueryParam("ticker", equalTo("DELL")))
+    }
+
+    @Test
+    fun `ticker run refuses an untracked symbol without calling the provider`() = runTest {
+        val now = Instant.now()
+
+        assertFailsWith<com.catalystradar.application.company.CompanyNotFoundException> {
+            pipeline().runTickerCycle("SLS", now.minus(java.time.Duration.ofDays(7)), now)
+        }
+
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/v2/reference/news")))
     }
 
     @Test

@@ -17,6 +17,10 @@ data class IngestionProperties(
     var maxPagesPerChunk: Int = 10,
     /** How the primary provider is asked for news (ADR 0002). */
     var scanMode: ScanMode = ScanMode.MARKET,
+    /** Window of a manual per-symbol fetch when the request names none. */
+    var tickerFetchDefaultLookback: Duration = Duration.ofDays(7),
+    /** Longest window a manual per-symbol fetch may ask for; bounds provider pages and LLM calls. */
+    var tickerFetchMaxLookback: Duration = Duration.ofDays(30),
 )
 
 enum class ScanMode {

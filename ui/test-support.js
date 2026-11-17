@@ -13,7 +13,7 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
   deferDocuments = false, deferDocumentList = false, modelSummary, modelCalls, modelDetail,
   modelPageSize = 25, deferModelSummary = false, deferModelCalls = false, deferModelDetails = false,
   operationRuns, operationRunDetail, operationIssues, ingestionRuns, pipelineResult, deferPipeline = true,
-  deferPublicPaths = [], transitions, candidates, promotion, localStored = {}, localStorageFailure = false } = {}) {
+  deferPublicPaths = [], transitions, candidates, promotion, tickerRun, localStored = {}, localStorageFailure = false } = {}) {
   const requests = [];
   // The Radar "What changed" read runs beside discovery; it is recorded apart so
   // request counts in discovery tests keep describing discovery.
@@ -309,6 +309,11 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
     if (route === '/internal/universe/candidates' && method === 'GET') {
       const answer = typeof candidates === 'function' ? candidates(requestUrl) : candidates;
       return answer === 'error' ? response({ detail: 'Candidates unavailable' }, 503) : response(answer || candidatesFixture);
+    }
+    if (route === '/internal/ingestion/ticker-runs' && method === 'POST') {
+      const answer = typeof tickerRun === 'function' ? tickerRun(requestUrl, options.body, options.headers) : tickerRun;
+      if (answer && answer.status && answer.body) return response(answer.body, answer.status);
+      return response(answer || { status: 'RUNNING', runId: '5d0c3c8e-2b7e-4c55-9d2f-6f1f0d1c2a3b' }, 202);
     }
     if (route === '/internal/universe/promotions' && method === 'POST') {
       const answer = typeof promotion === 'function' ? promotion(requestUrl, options.body) : promotion;

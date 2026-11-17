@@ -276,6 +276,12 @@
 
         <section id="universeView" class="view hidden" aria-labelledby="universeTitle">
           <h2 id="universeTitle" tabindex="-1">Untracked tickers in the news</h2>
+          <form id="tickerFetch" class="filter-grid company-lookup" novalidate>
+            <label>Fetch news for a tracked symbol<input id="tickerFetchSymbol" type="search" maxlength="15" autocomplete="off" spellcheck="false" placeholder="e.g. TSN" aria-describedby="tickerFetchStatus"></label>
+            <label>Window<select id="tickerFetchWindow"><option value="P1D">Last day</option><option value="P7D" selected>Last 7 days</option><option value="P30D">Last 30 days</option></select></label>
+            <button type="submit" class="ghost">Fetch news</button>
+            <p id="tickerFetchStatus" role="status" aria-live="polite"></p>
+          </form>
           <p class="muted">Tickers named by stored articles in the last 30 days that no tracked company explains. Counts are documents, not events. Requires the admin key.</p>
           <p id="universeStatus" role="status"></p>
           <div id="universePromotion" role="status" aria-live="polite"></div>

@@ -64,7 +64,38 @@ class IngestionService(
             runs.finishRun(runId, IngestionStatus.FAILED, 0, 0, 0, OperationalErrors.message("INGESTION_FAILURE"), "INGESTION_FAILURE")
             return IngestionCycleResult(listOfNotNull(runs.findById(runId)))
         }
-        val outcomes = mutableListOf(runProvider(primary, primaryScope(primary, tickers), now, operationRunId))
+        return fetchWithFallback(primary, primaryScope(primary, tickers), tickers, now.minus(properties.lookback), now, operationRunId)
+    }
+
+    /**
+     * Manual, per-symbol fetch: news naming [ticker] from [from] to [now],
+     * whatever the scan mode. Articles are registered exactly as in a
+     * scheduled cycle, so already-stored ones are duplicates and nothing is
+     * extracted twice.
+     */
+    suspend fun ingestTicker(ticker: String, from: Instant, now: Instant = Instant.now(), operationRunId: UUID? = null): IngestionCycleResult {
+        require(properties.maxPagesPerChunk in 1..100) { "ingestion maxPagesPerChunk must be within 1..100" }
+        require(from.isBefore(now)) { "ticker fetch window must start before it ends" }
+        log.info("ticker ingestion started ticker={} primary={} from={}", ticker, properties.provider, from)
+        val primary = providersByName[properties.provider]
+        if (primary == null) {
+            val runId = runs.startRun(properties.provider, operationRunId)
+            runs.finishRun(runId, IngestionStatus.FAILED, 0, 0, 0, OperationalErrors.message("INGESTION_FAILURE"), "INGESTION_FAILURE")
+            return IngestionCycleResult(listOfNotNull(runs.findById(runId)))
+        }
+        val tickers = listOf(ticker)
+        return fetchWithFallback(primary, tickerScope(primary, tickers), tickers, from, now, operationRunId)
+    }
+
+    private suspend fun fetchWithFallback(
+        primary: NewsProvider,
+        primaryChunks: List<List<String>>,
+        tickers: List<String>,
+        from: Instant,
+        now: Instant,
+        operationRunId: UUID?,
+    ): IngestionCycleResult {
+        val outcomes = mutableListOf(runProvider(primary, primaryChunks, from, now, operationRunId))
         val last = outcomes.last()
         // A truncated window is not a provider failure, and the fallback
         // costs one call per ticker, so truncation alone does not use it.
@@ -73,7 +104,7 @@ class IngestionService(
             properties.fallbackProvider != primary.name
         ) {
             // The fallback always asks per ticker: it may not support a market-wide scan.
-            providersByName[properties.fallbackProvider]?.let { outcomes += runProvider(it, tickerScope(it, tickers), now, operationRunId) }
+            providersByName[properties.fallbackProvider]?.let { outcomes += runProvider(it, tickerScope(it, tickers), from, now, operationRunId) }
         }
         return IngestionCycleResult(
             runs = outcomes.map { it.record },
@@ -107,13 +138,14 @@ class IngestionService(
     private suspend fun runProvider(
         provider: NewsProvider,
         chunks: List<List<String>>,
+        from: Instant,
         now: Instant,
         operationRunId: UUID?,
     ): ProviderOutcome {
         val started = System.nanoTime()
         var outcome = "failed"
         try {
-            return fetchProvider(provider, chunks, now, operationRunId)
+            return fetchProvider(provider, chunks, from, now, operationRunId)
                 .also { outcome = it.record.status.name.lowercase() }
         } catch (e: CancellationException) {
             outcome = "cancelled"
@@ -126,6 +158,7 @@ class IngestionService(
     private suspend fun fetchProvider(
         provider: NewsProvider,
         chunks: List<List<String>>,
+        from: Instant,
         now: Instant,
         operationRunId: UUID?,
     ): ProviderOutcome {
@@ -146,7 +179,7 @@ class IngestionService(
                     val page = provider.fetch(
                         NewsFetchRequest(
                             tickers = chunk,
-                            from = now.minus(properties.lookback),
+                            from = from,
                             to = now,
                             pageSize = properties.pageSize,
                             cursor = cursor,

@@ -1,6 +1,7 @@
 package com.catalystradar.application.pipeline
 
 import com.catalystradar.application.catalyst.CatalystService
+import com.catalystradar.application.company.CompanyNotFoundException
 import com.catalystradar.application.extraction.ExtractionResultCache
 import com.catalystradar.application.universe.AutoPromotionService
 import com.catalystradar.application.clustering.EventClusteringService
@@ -88,18 +89,49 @@ class PipelineService(
     suspend fun runCycle(now: Instant = Instant.now(), trigger: OperationTrigger = OperationTrigger.MANUAL): PipelineResult {
         if (!running.compareAndSet(false, true)) return skipped()
         return try {
-            execute(now, trigger, startedRunId = null)
+            execute(now, trigger, startedRunId = null) { runId -> ingestion.ingestCycle(now, runId) }
         } finally {
             running.set(false)
         }
     }
 
     /**
+     * Manual per-symbol run: fetches news naming one tracked company from
+     * [from], then drains the queue and rescores exactly as a scheduled
+     * cycle does. Shares the cycle's guard, so it never overlaps one.
+     */
+    suspend fun runTickerCycle(ticker: String, from: Instant, now: Instant = Instant.now()): PipelineResult {
+        val company = trackedCompany(ticker)
+        if (!running.compareAndSet(false, true)) return skipped()
+        return try {
+            execute(now, OperationTrigger.MANUAL, startedRunId = null) { runId -> ingestion.ingestTicker(company.ticker, from, now, runId) }
+        } finally {
+            running.set(false)
+        }
+    }
+
+    /** Background form of [runTickerCycle]; see [start]. */
+    fun startTickerCycle(ticker: String, from: Instant, now: Instant = Instant.now()): PipelineResult {
+        val company = trackedCompany(ticker)
+        return launch(now, OperationTrigger.MANUAL) { runId -> ingestion.ingestTicker(company.ticker, from, now, runId) }
+    }
+
+    /**
+     * Articles about an untracked symbol are stored but never extracted, so
+     * fetching them would cost provider quota for nothing: promote it first.
+     */
+    private fun trackedCompany(ticker: String) =
+        companies.findByTicker(ticker)?.takeIf { it.active } ?: throw CompanyNotFoundException(ticker)
+
+    /**
      * Opens the run record, then drains the queue in the background so a
      * caller is not held for a whole cycle. The result carries the run id;
      * progress is read from the run itself.
      */
-    fun start(now: Instant = Instant.now(), trigger: OperationTrigger = OperationTrigger.MANUAL): PipelineResult {
+    fun start(now: Instant = Instant.now(), trigger: OperationTrigger = OperationTrigger.MANUAL): PipelineResult =
+        launch(now, trigger) { runId -> ingestion.ingestCycle(now, runId) }
+
+    private fun launch(now: Instant, trigger: OperationTrigger, ingest: suspend (UUID) -> IngestionCycleResult): PipelineResult {
         if (!running.compareAndSet(false, true)) return skipped()
         val id = try {
             recorder.begin(OperationKind.PIPELINE, trigger, now)
@@ -109,7 +141,7 @@ class PipelineService(
         }
         background.launch {
             try {
-                execute(now, trigger, startedRunId = id)
+                execute(now, trigger, startedRunId = id, ingest)
             } finally {
                 running.set(false)
             }
@@ -127,7 +159,12 @@ class PipelineService(
         return PipelineResult("SKIPPED", 0, 0, 0, alreadyRunning = true)
     }
 
-    private suspend fun execute(now: Instant, trigger: OperationTrigger, startedRunId: UUID?): PipelineResult {
+    private suspend fun execute(
+        now: Instant,
+        trigger: OperationTrigger,
+        startedRunId: UUID?,
+        ingest: suspend (UUID) -> IngestionCycleResult,
+    ): PipelineResult {
         var runId: UUID? = startedRunId
         var phase = OperationPhase.INGESTION
         var counts = OperationCounts()
@@ -146,7 +183,7 @@ class PipelineService(
             require(!properties.retryDelay.isNegative && !properties.retryDelay.isZero) { "pipeline retryDelay must be positive" }
             var firstErrorCode: String? = null
             val ingestionResult = try {
-                ingestion.ingestCycle(now, id)
+                ingest(id)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: RuntimeException) {
