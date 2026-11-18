@@ -95,6 +95,8 @@ catalyst:
     # used when the request names none, and the longest window it may ask for.
     ticker-fetch-default-lookback: P7D
     ticker-fetch-max-lookback: P30D
+    # Longest window of an operator-run market scan (POST /internal/workbench/scans).
+    market-scan-max-lookback: P3D
   rate-limits:
     # Request budget per provider, shared by every client of that provider.
     # requests-per-minute: requests started in any rolling minute; 0 = unpaced.

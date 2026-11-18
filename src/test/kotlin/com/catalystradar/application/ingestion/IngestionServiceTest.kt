@@ -130,6 +130,25 @@ class IngestionServiceTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `operator market scan asks without a ticker even when the cycle scans per ticker`() = runTest {
+        companies.save(Company(ticker = "DELL", name = "Dell"))
+        wireMock.stubFor(get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson(NEWS_PAGE)))
+        val now = Instant.parse("2026-09-17T10:00:00Z")
+        val from = now.minus(java.time.Duration.ofHours(6))
+
+        val run = service(scanMode = ScanMode.TICKERS).ingestMarket(from, now).runs.single()
+
+        assertEquals(IngestionStatus.SUCCESS, run.status)
+        assertEquals(1, run.unresolved)
+        wireMock.verify(
+            1,
+            getRequestedFor(urlPathEqualTo("/v2/reference/news"))
+                .withQueryParam("ticker", absent())
+                .withQueryParam("published_utc.gte", equalTo(from.toString())),
+        )
+    }
+
+    @Test
     fun `ticker fetch reuses already stored articles instead of queueing them again`() = runTest {
         companies.save(Company(ticker = "DELL", name = "Dell"))
         wireMock.stubFor(get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson(NEWS_PAGE)))

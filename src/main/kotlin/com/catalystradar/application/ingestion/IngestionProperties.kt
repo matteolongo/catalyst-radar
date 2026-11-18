@@ -21,6 +21,8 @@ data class IngestionProperties(
     var tickerFetchDefaultLookback: Duration = Duration.ofDays(7),
     /** Longest window a manual per-symbol fetch may ask for; bounds provider pages and LLM calls. */
     var tickerFetchMaxLookback: Duration = Duration.ofDays(30),
+    /** Longest window an operator-run market scan may ask for; Polygon pages stay bounded by maxPagesPerChunk. */
+    var marketScanMaxLookback: Duration = Duration.ofDays(3),
 )
 
 enum class ScanMode {

@@ -1480,6 +1480,130 @@ test('an invalid symbol is rejected without a request', async () => {
   assert.match(dashboard.text('tickerFetchStatus'), /Enter a ticker/);
 });
 
+function guidedBackend(calls, overrides = {}) {
+  const doc = (id, title, state) => ({ id, title, state, publishedAt: '2026-11-17T09:00:00Z' });
+  return (route, method, body, url) => {
+    if (!route.startsWith('/internal/')) return undefined;
+    calls.push({ route, method, body, search: url.search });
+    if (overrides[route]) return overrides[route](method, body, url);
+    if (route === '/internal/workbench/symbols') return { since: '2026-11-16T10:00:00Z', total: 2, limit: 100, offset: 0, symbols: [
+      { ticker: 'SLS', companyName: null, tracked: false, documents: 6, queuedDocuments: 0, latestTitle: 'SELLAS <b>jumps</b>', latestAt: '2026-11-17T09:00:00Z' },
+      { ticker: 'TSN', companyName: 'Tyson Foods', tracked: true, documents: 4, queuedDocuments: 3, latestTitle: 'Tyson beats', latestAt: '2026-11-17T08:00:00Z' },
+    ] };
+    if (route === '/internal/workbench/scans') return { from: '2026-11-16T10:00:00Z', to: '2026-11-17T10:00:00Z', newDocuments: 40, runs: [] };
+    if (route === '/internal/universe/promotions') return { ticker: body.ticker, created: true, documentsLinked: 6, documentsQueued: 6 };
+    if (route === '/internal/workbench/fetches') return { from: '2026-11-10T10:00:00Z', to: '2026-11-17T10:00:00Z',
+      tickers: body.tickers.map((ticker) => ({ ticker, newDocuments: 2, runs: [{ provider: 'polygon', status: 'SUCCESS', fetched: 3, added: 2, duplicates: 1 }] })) };
+    if (route === '/internal/operations/documents') {
+      const ticker = url.searchParams.get('ticker');
+      return { items: ticker === 'SLS' ? [doc('d-sls-1', 'SELLAS trial data', 'PENDING'), doc('d-shared', 'Movers today', 'PENDING')]
+        : [doc('d-shared', 'Movers today', 'PENDING'), doc('d-tsn-old', 'Tyson old story', 'COMPLETED')], nextCursor: null };
+    }
+    if (route === '/internal/workbench/extractions') return { runId: 'r1', status: 'SUCCESS', documents: body.documentIds.map((id) =>
+      ({ documentId: id, status: 'COMPLETED', eventsInserted: id === 'd-sls-1' ? 1 : 0, eventsReused: 0, refused: null })) };
+    if (route === '/internal/operations/documents/d-sls-1/events') return { events: [{ type: 'DEVELOPMENT_MILESTONE', direction: 'POSITIVE',
+      ticker: 'SLS', confidence: 0.9, evidence: [{ quoteOrFact: 'Phase 3 met its endpoint' }] }], nextCursor: null };
+    if (route.endsWith('/recalculate')) return { ticker: route.split('/')[3], score: 12.34, state: 'NORMAL', totalEvents: 1 };
+    return undefined;
+  };
+}
+
+function toggle(dashboard, container, attribute, value, checked) {
+  dashboard.element(container).trigger('change', { target: { checked, dataset: { [attribute]: value } } });
+}
+
+test('the guided run lists symbols in the news, tracked or not, without calling the provider', async () => {
+  const calls = [];
+  const dashboard = startDashboard({ search: '?view=guided', stored: { 'catalyst-admin-key': 'admin-secret' }, guidedApi: guidedBackend(calls) });
+  await dashboard.flush();
+  assert.deepEqual(calls.map((call) => call.route), ['/internal/workbench/symbols']);
+  assert.match(dashboard.html('guidedSymbols'), /SLS[\s\S]*Not tracked[\s\S]*TSN[\s\S]*Tracked/);
+  assert.match(dashboard.html('guidedSymbols'), /SELLAS &lt;b&gt;jumps&lt;\/b&gt;/);
+  assert.equal(dashboard.element('guidedFetch').disabled, true);
+});
+
+test('the guided run fetches market news only on request, then reloads the symbols', async () => {
+  const calls = [];
+  const dashboard = startDashboard({ search: '?view=guided', stored: { 'catalyst-admin-key': 'admin-secret' }, guidedApi: guidedBackend(calls) });
+  await dashboard.flush();
+  dashboard.element('guidedWindow').value = 'PT2H';
+  dashboard.element('guidedScan').trigger('click');
+  await dashboard.flush();
+  const scan = calls.find((call) => call.route === '/internal/workbench/scans');
+  assert.deepEqual(scan.body, { lookback: 'PT2H' });
+  assert.equal(calls.filter((call) => call.route === '/internal/workbench/symbols').length, 2);
+});
+
+test('the guided run moves only what the operator chose through tracking, extraction and scoring', async () => {
+  const calls = [];
+  const dashboard = startDashboard({ search: '?view=guided', stored: { 'catalyst-admin-key': 'admin-secret' }, guidedApi: guidedBackend(calls) });
+  await dashboard.flush();
+  toggle(dashboard, 'guidedSymbols', 'guidedSymbol', 'SLS', true);
+  toggle(dashboard, 'guidedSymbols', 'guidedSymbol', 'TSN', true);
+  assert.match(dashboard.text('guidedFetch'), /2 symbols/);
+  dashboard.element('guidedFetch').trigger('click');
+  await dashboard.flush();
+
+  assert.doesNotMatch(dashboard.html('guidedSymbols'), /Not tracked/);
+  const promotions = calls.filter((call) => call.route === '/internal/universe/promotions');
+  assert.deepEqual(promotions.map((call) => call.body), [{ ticker: 'SLS' }]);
+  const fetch = calls.find((call) => call.route === '/internal/workbench/fetches');
+  assert.deepEqual(fetch.body, { tickers: ['SLS', 'TSN'], lookback: 'P7D' });
+  assert.match(dashboard.html('guidedDocuments'), /SELLAS trial data/);
+  assert.equal((dashboard.html('guidedDocuments').match(/data-guided-document="d-shared"/g) || []).length, 1);
+  assert.match(dashboard.html('guidedDocuments'), /data-guided-document="d-tsn-old" disabled/);
+  assert.match(dashboard.text('guidedExtract'), /Extract 2 articles/);
+
+  toggle(dashboard, 'guidedDocuments', 'guidedDocument', 'd-shared', false);
+  dashboard.element('guidedExtract').trigger('click');
+  await dashboard.flush();
+  const extraction = calls.find((call) => call.route === '/internal/workbench/extractions');
+  assert.deepEqual(extraction.body, { documentIds: ['d-sls-1'] });
+  assert.match(dashboard.html('guidedExtraction'), /DEVELOPMENT_MILESTONE[\s\S]*Phase 3 met its endpoint/);
+  assert.match(dashboard.text('guidedExtract'), /Extract 0 articles/);
+
+  toggle(dashboard, 'guidedCompanies', 'guidedCompany', 'TSN', false);
+  dashboard.element('guidedScore').trigger('click');
+  await dashboard.flush();
+  const scored = calls.filter((call) => call.route.endsWith('/recalculate')).map((call) => call.route);
+  assert.deepEqual(scored, ['/internal/companies/SLS/recalculate']);
+  assert.match(dashboard.html('guidedScores'), /SLS[\s\S]*12\.3[\s\S]*NORMAL/);
+});
+
+test('a refused promotion is reported and the symbol is left out of the fetch', async () => {
+  const calls = [];
+  const dashboard = startDashboard({ search: '?view=guided', stored: { 'catalyst-admin-key': 'admin-secret' }, guidedApi: guidedBackend(calls, {
+    '/internal/universe/promotions': () => ({ httpStatus: 422, body: { code: 'NOT_A_US_EQUITY', detail: 'no' } }),
+  }) });
+  await dashboard.flush();
+  toggle(dashboard, 'guidedSymbols', 'guidedSymbol', 'SLS', true);
+  toggle(dashboard, 'guidedSymbols', 'guidedSymbol', 'TSN', true);
+  dashboard.element('guidedFetch').trigger('click');
+  await dashboard.flush();
+  assert.deepEqual(calls.find((call) => call.route === '/internal/workbench/fetches').body.tickers, ['TSN']);
+  assert.match(dashboard.html('guidedFetchResult'), /SLS<\/strong>: not fetched\. SLS is not listed as an active US common stock/);
+});
+
+test('a busy pipeline is explained and nothing is retried', async () => {
+  const calls = [];
+  const dashboard = startDashboard({ search: '?view=guided', stored: { 'catalyst-admin-key': 'admin-secret' }, guidedApi: guidedBackend(calls, {
+    '/internal/workbench/scans': () => ({ httpStatus: 409, body: { code: 'PIPELINE_BUSY', detail: 'busy' } }),
+  }) });
+  await dashboard.flush();
+  dashboard.element('guidedScan').trigger('click');
+  await dashboard.flush();
+  assert.equal(calls.filter((call) => call.route === '/internal/workbench/scans').length, 1);
+  assert.match(dashboard.text('guidedStatus'), /another step is running\. Try again when it finishes; nothing was done/);
+});
+
+test('the guided run asks for the admin key before any request', async () => {
+  const calls = [];
+  const dashboard = startDashboard({ search: '?view=guided', guidedApi: guidedBackend(calls) });
+  await dashboard.flush();
+  assert.equal(calls.length, 0);
+  assert.match(dashboard.html('guidedStatus'), /needs the admin key/);
+});
+
 test('a refused promotion explains why', async () => {
   const dashboard = startDashboard({ search: '?view=universe', stored: { 'catalyst-admin-key': 'admin-secret' },
     promotion: { status: 422, body: { code: 'NOT_A_US_EQUITY', detail: 'no' } } });

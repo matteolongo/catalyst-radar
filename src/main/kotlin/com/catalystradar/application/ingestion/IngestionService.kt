@@ -47,7 +47,19 @@ class IngestionService(
     private val log = LoggerFactory.getLogger(IngestionService::class.java)
     private val providersByName = providers.associateBy { it.name }
 
-    suspend fun ingestCycle(now: Instant = Instant.now(), operationRunId: UUID? = null): IngestionCycleResult {
+    suspend fun ingestCycle(now: Instant = Instant.now(), operationRunId: UUID? = null): IngestionCycleResult =
+        ingestWindow(now.minus(properties.lookback), now, operationRunId, properties.scanMode)
+
+    /**
+     * Operator-run market scan over [from]..[now], whatever the configured
+     * scan mode: the step that finds which symbols are in the news.
+     */
+    suspend fun ingestMarket(from: Instant, now: Instant = Instant.now(), operationRunId: UUID? = null): IngestionCycleResult {
+        require(from.isBefore(now)) { "market scan window must start before it ends" }
+        return ingestWindow(from, now, operationRunId, ScanMode.MARKET)
+    }
+
+    private suspend fun ingestWindow(from: Instant, now: Instant, operationRunId: UUID?, scanMode: ScanMode): IngestionCycleResult {
         require(properties.maxPagesPerChunk in 1..100) { "ingestion maxPagesPerChunk must be within 1..100" }
         val tickers = companies.findAllActive().map { it.ticker }
         if (tickers.isEmpty()) {
@@ -55,8 +67,8 @@ class IngestionService(
             return IngestionCycleResult(emptyList())
         }
         log.info(
-            "ingestion cycle started tickers={} primary={} lookback={} scanMode={}",
-            tickers.size, properties.provider, properties.lookback, properties.scanMode,
+            "ingestion cycle started tickers={} primary={} from={} scanMode={}",
+            tickers.size, properties.provider, from, scanMode,
         )
         val primary = providersByName[properties.provider]
         if (primary == null) {
@@ -64,7 +76,7 @@ class IngestionService(
             runs.finishRun(runId, IngestionStatus.FAILED, 0, 0, 0, OperationalErrors.message("INGESTION_FAILURE"), "INGESTION_FAILURE")
             return IngestionCycleResult(listOfNotNull(runs.findById(runId)))
         }
-        return fetchWithFallback(primary, primaryScope(primary, tickers), tickers, now.minus(properties.lookback), now, operationRunId)
+        return fetchWithFallback(primary, primaryScope(primary, tickers, scanMode), tickers, from, now, operationRunId)
     }
 
     /**
@@ -116,8 +128,8 @@ class IngestionService(
      * Requests the primary provider makes: one ticker-less request in market
      * mode when the provider supports it, otherwise one per ticker group.
      */
-    private fun primaryScope(primary: NewsProvider, tickers: List<String>): List<List<String>> {
-        if (properties.scanMode != ScanMode.MARKET) return tickerScope(primary, tickers)
+    private fun primaryScope(primary: NewsProvider, tickers: List<String>, scanMode: ScanMode): List<List<String>> {
+        if (scanMode != ScanMode.MARKET) return tickerScope(primary, tickers)
         if (primary.supportsMarketScan) return listOf(emptyList())
         log.warn("ingestion scan-mode=market unsupported by provider={}; fetching per ticker", primary.name)
         return tickerScope(primary, tickers)

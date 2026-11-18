@@ -370,6 +370,50 @@ class PipelineServiceTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `extracting chosen documents leaves the others queued and does not rescore`() = runTest {
+        val dell = companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val now = Instant.parse("2026-09-16T10:00:00Z")
+        val chosen = queuedDocument(dell, now)
+        val other = documents.save(SourceDocument(provider = "polygon", title = "Dell beat story", body = "Dell beat.", discoveredAt = now))
+            .also { documentCompanies.link(it.id, dell.id); processing.ensurePending(it.id, now) }
+
+        val result = assertNotNull(drainedPipeline().extractDocuments(listOf(chosen.id), now))
+
+        assertEquals("SUCCESS", result.status)
+        assertEquals(DocumentProcessingStatus.COMPLETED, result.documents.single().status)
+        assertEquals(1, result.documents.single().eventsInserted)
+        assertEquals(DocumentProcessingStatus.COMPLETED, processing.findBySourceDocumentId(chosen.id)?.status)
+        assertEquals(DocumentProcessingStatus.PENDING, processing.findBySourceDocumentId(other.id)?.status)
+        assertNull(snapshots.latestSnapshot(dell.id))
+    }
+
+    @Test
+    fun `extracting a finished or never-queued document refuses it without processing`() = runTest {
+        val dell = companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val now = Instant.parse("2026-09-16T10:00:00Z")
+        val finished = queuedDocument(dell, now)
+        drainedPipeline().extractDocuments(listOf(finished.id), now)
+        val unqueued = documents.save(SourceDocument(provider = "polygon", title = "Orphan", body = "No company.", discoveredAt = now))
+
+        val result = assertNotNull(drainedPipeline().extractDocuments(listOf(finished.id, unqueued.id), now))
+
+        assertEquals(listOf("ALREADY_PROCESSED", "NOT_QUEUED"), result.documents.map { it.refused })
+        assertEquals(1, events.findByCompanyId(dell.id).size)
+    }
+
+    @Test
+    fun `an operator step cannot start while another holds the pipeline guard`() = runTest {
+        val service = drainedPipeline()
+
+        val nested = service.exclusively { service.exclusively { "inner" } }
+        val cycleDuringStep = service.exclusively { service.runCycle().status }
+
+        assertNull(nested)
+        assertEquals("SKIPPED", cycleDuringStep)
+        assertEquals("free", service.exclusively { "free" })
+    }
+
+    @Test
     fun `processes a due document even when ingestion fetches nothing new`() = runTest {
         val company = companyStore.save(Company(ticker = "DELL", name = "Dell"))
         val now = Instant.parse("2026-09-16T10:00:00Z")

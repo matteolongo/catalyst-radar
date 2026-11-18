@@ -56,6 +56,18 @@ data class PipelineResult(
     val documentsConsidered: Int get() = documentsProcessed
 }
 
+/** One operator-chosen document in [ExtractionStepResult]; [refused] names why it was not extracted. */
+data class DocumentExtraction(
+    val sourceDocumentId: UUID,
+    val status: DocumentProcessingStatus?,
+    val eventsInserted: Int = 0,
+    val eventsReused: Int = 0,
+    val affectedCompanies: Set<UUID> = emptySet(),
+    val refused: String? = null,
+)
+
+data class ExtractionStepResult(val runId: UUID, val status: String, val documents: List<DocumentExtraction>)
+
 /** Drains the durable queue after ingestion; remote work precedes narrow outcome transactions. */
 @Service
 class PipelineService(
@@ -147,6 +159,69 @@ class PipelineService(
             }
         }
         return PipelineResult("RUNNING", 0, 0, 0, runId = id)
+    }
+
+    /**
+     * Runs one operator step under the cycle's guard, so it never overlaps a
+     * cycle or another step; null when one is already running.
+     */
+    suspend fun <T> exclusively(block: suspend () -> T): T? {
+        if (!running.compareAndSet(false, true)) return null
+        return try {
+            block()
+        } finally {
+            running.set(false)
+        }
+    }
+
+    /**
+     * Extracts only the queued documents an operator chose, recorded as one
+     * manual run without a scoring phase: scoring is the next, separate step.
+     * Documents never queued or already finished are reported, not touched.
+     * Null when a cycle or another step is running.
+     */
+    suspend fun extractDocuments(sourceDocumentIds: List<UUID>, now: Instant = Instant.now()): ExtractionStepResult? = exclusively {
+        val runId = recorder.begin(OperationKind.PIPELINE, OperationTrigger.MANUAL, now)
+        var counts = OperationCounts()
+        var firstErrorCode: String? = null
+        try {
+            recorder.phase(runId, OperationPhase.PROCESSING)
+            val results = sourceDocumentIds.distinct().map { id ->
+                val record = processing.findBySourceDocumentId(id)
+                when {
+                    record == null -> DocumentExtraction(id, null, refused = "NOT_QUEUED")
+                    record.status !in EXTRACTABLE -> DocumentExtraction(id, record.status, refused = "ALREADY_PROCESSED")
+                    else -> {
+                        val outcome = processor.process(id, runId, now)
+                        counts = counts.copy(
+                            documentsConsidered = counts.documentsConsidered + 1,
+                            documentsCompleted = counts.documentsCompleted + if (outcome.status == DocumentProcessingStatus.COMPLETED) 1 else 0,
+                            documentsSkipped = counts.documentsSkipped + if (outcome.status == DocumentProcessingStatus.SKIPPED) 1 else 0,
+                            documentsRetryScheduled = counts.documentsRetryScheduled + if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) 1 else 0,
+                            documentsTerminalFailures = counts.documentsTerminalFailures + if (outcome.status == DocumentProcessingStatus.TERMINAL_ERROR) 1 else 0,
+                            eventsInserted = counts.eventsInserted + outcome.eventsInserted,
+                            eventsReused = counts.eventsReused + outcome.eventsReused,
+                        )
+                        recorder.progress(runId, counts)
+                        metrics.documentProcessing(outcome.status.name.lowercase())
+                        if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) metrics.documentRetryScheduled()
+                        if (outcome.error != null && firstErrorCode == null) {
+                            firstErrorCode = processing.findBySourceDocumentId(id)?.lastErrorCode ?: "PROCESSING_FAILURE"
+                        }
+                        DocumentExtraction(id, outcome.status, outcome.eventsInserted, outcome.eventsReused, outcome.affectedCompanies)
+                    }
+                }
+            }
+            val status = if (firstErrorCode != null || counts.documentsRetryScheduled > 0 || counts.documentsTerminalFailures > 0) "PARTIAL" else "SUCCESS"
+            recorder.finish(runId, OperationStatus.valueOf(status), counts, firstErrorCode, captureComplete = true)
+            ExtractionStepResult(runId, status, results)
+        } catch (e: CancellationException) {
+            finishIncomplete(runId, OperationPhase.PROCESSING, OperationStatus.CANCELLED, "CANCELLED")
+            throw e
+        } catch (e: RuntimeException) {
+            finishIncomplete(runId, OperationPhase.PROCESSING, OperationStatus.FAILED, "PROCESSING_FAILURE")
+            throw e
+        }
     }
 
     @PreDestroy
@@ -326,6 +401,15 @@ class PipelineService(
         } finally {
             running.set(false)
         }
+    }
+
+    private companion object {
+        /** States [findDue][DocumentProcessingStore.findDue] would also pick; an operator may skip the retry delay. */
+        val EXTRACTABLE = setOf(
+            DocumentProcessingStatus.PENDING,
+            DocumentProcessingStatus.PROCESSING,
+            DocumentProcessingStatus.RETRYABLE_ERROR,
+        )
     }
 
     private fun finishIncomplete(id: UUID, phase: OperationPhase, status: OperationStatus, code: String) {
