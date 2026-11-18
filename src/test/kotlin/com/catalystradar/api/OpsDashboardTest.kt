@@ -33,4 +33,13 @@ class OpsDashboardTest : PostgresIntegrationTest() {
             content { string(org.hamcrest.Matchers.containsString("CatalystOperations")) }
         }
     }
+
+    @Test
+    fun `every script and stylesheet the dashboard references is packaged`() {
+        val html = mockMvc.get("/ops/index.html").andReturn().response.contentAsString
+        val assets = Regex("""<(?:script src|link rel="stylesheet" href)="([^"/:]+\.(?:js|css))"""").findAll(html).map { it.groupValues[1] }.toList()
+
+        kotlin.test.assertTrue("guided.js" in assets, "index.html should reference guided.js, found $assets")
+        assets.forEach { asset -> mockMvc.get("/ops/$asset").andExpect { status { isOk() } } }
+    }
 }
