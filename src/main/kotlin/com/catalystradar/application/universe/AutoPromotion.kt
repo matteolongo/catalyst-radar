@@ -19,6 +19,11 @@ data class AutoPromotionProperties(
     var window: Duration = Duration.ofDays(7),
     /** Promotions per pipeline cycle; each one adds provider and model cost to later cycles. */
     var maxPerCycle: Int = 3,
+    /**
+     * History fetched per symbol, in the cycle that promotes it, before its
+     * documents are extracted. Zero turns the deep fetch off.
+     */
+    var deepFetchLookback: Duration = Duration.ofDays(7),
 )
 
 /**
@@ -38,11 +43,18 @@ class AutoPromotionService(
 
     private val log = LoggerFactory.getLogger(AutoPromotionService::class.java)
 
+    /** Null while auto-promotion is off, so nothing is fetched for it. */
+    val deepFetchLookback: Duration?
+        get() = properties.deepFetchLookback.takeIf { properties.enabled }
+
     suspend fun promoteEligible(now: Instant): List<PromotionResult> {
         if (!properties.enabled) return emptyList()
         require(properties.minDocuments >= 1) { "auto-promotion minDocuments must be positive" }
         require(properties.maxPerCycle in 1..20) { "auto-promotion maxPerCycle must be within 1..20" }
         require(!properties.window.isNegative && !properties.window.isZero) { "auto-promotion window must be positive" }
+        require(!properties.deepFetchLookback.isNegative && properties.deepFetchLookback <= Duration.ofDays(30)) {
+            "auto-promotion deepFetchLookback must be within 0..P30D"
+        }
         val eligible = unresolved.candidates(
             CandidateQuery(
                 since = now.minus(properties.window),

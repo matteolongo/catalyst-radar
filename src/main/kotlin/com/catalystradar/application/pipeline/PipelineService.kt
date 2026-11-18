@@ -198,12 +198,35 @@ class PipelineService(
                 recorder.issue(id, phase, code, provider = providerRun.provider)
             }
             // Promoted candidates' stored documents are queued here, so this cycle extracts them.
-            try {
-                autoPromotion?.promoteEligible(now)
+            val promoted = try {
+                autoPromotion?.promoteEligible(now).orEmpty()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: RuntimeException) {
                 log.warn("pipeline auto-promotion failed for run {}", id)
+                emptyList()
+            }
+            // The market scan only stored what named the symbol inside its own
+            // window; fetch the newly tracked symbol's recent history too.
+            val deepFetchLookback = autoPromotion?.deepFetchLookback
+            if (deepFetchLookback != null && !deepFetchLookback.isZero) {
+                for (promotion in promoted) {
+                    val runs = try {
+                        ingestion.ingestTicker(promotion.company.ticker, now.minus(deepFetchLookback), now, id).runs
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: RuntimeException) {
+                        log.warn("pipeline deep fetch failed for ticker {} run {}", promotion.company.ticker, id)
+                        if (firstErrorCode == null) firstErrorCode = "INGESTION_FAILURE"
+                        recorder.issue(id, phase, "INGESTION_FAILURE", companyId = promotion.company.id)
+                        continue
+                    }
+                    runs.filter { it.status != IngestionStatus.SUCCESS }.forEach { providerRun ->
+                        val code = providerRun.errorCode ?: "UNKNOWN_FAILURE"
+                        if (firstErrorCode == null) firstErrorCode = code
+                        recorder.issue(id, phase, code, provider = providerRun.provider, companyId = promotion.company.id)
+                    }
+                }
             }
             phase = OperationPhase.PROCESSING
             recorder.phase(id, phase)

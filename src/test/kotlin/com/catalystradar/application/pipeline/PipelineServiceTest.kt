@@ -45,6 +45,7 @@ import com.catalystradar.ports.NewsProvider
 import com.catalystradar.ports.NewsFetchRequest
 import com.catalystradar.ports.NewsFetchResult
 import com.catalystradar.ports.ProviderException
+import com.github.tomakehurst.wiremock.client.WireMock.absent
 import com.github.tomakehurst.wiremock.client.WireMock.equalTo
 import com.github.tomakehurst.wiremock.client.WireMock.get
 import com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor
@@ -302,6 +303,70 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         assertEquals(2, result.documentsProcessed)
         assertNotNull(snapshots.latestSnapshot(smci.id))
         assertEquals(1.0, meterRegistry.counter("catalyst_universe_auto_promotions_total", "outcome", "promoted").count())
+    }
+
+    private fun smciAutoPromotion(deepFetchLookback: java.time.Duration) =
+        com.catalystradar.application.universe.AutoPromotionService(
+            com.catalystradar.application.universe.AutoPromotionProperties(enabled = true, minDocuments = 2, deepFetchLookback = deepFetchLookback),
+            unresolvedTickers,
+            com.catalystradar.application.universe.UniversePromotionService(
+                companyStore,
+                object : com.catalystradar.ports.CompanyLookupProvider {
+                    override suspend fun findUsEquity(ticker: String) = com.catalystradar.ports.CompanyReference(ticker = ticker, name = "Super Micro Computer")
+                },
+                promotionWriter,
+                com.catalystradar.application.universe.UniverseProperties(),
+            ),
+            metrics,
+        )
+
+    private fun storeSmciMentions(published: Instant) = repeat(2) { i ->
+        registrations.registerIfNew(
+            "polygon",
+            com.catalystradar.ports.RawArticle("polygon", "smci-$i", null, "SMCI raise story $i", "SMCI raised its outlook $i.", published, listOf("SMCI")),
+            published,
+        )
+    }
+
+    @Test
+    fun `a symbol promoted from the news gets its recent history fetched and extracted in the same cycle`() = runTest {
+        val now = Instant.now()
+        storeSmciMentions(now.minusSeconds(3600))
+        wireMock.stubFor(
+            get(urlPathEqualTo("/v2/reference/news")).withQueryParam("ticker", absent())
+                .willReturn(okJson("""{"results": [], "status": "OK"}""")),
+        )
+        val history = now.minus(java.time.Duration.ofDays(3)).toString()
+        wireMock.stubFor(
+            get(urlPathEqualTo("/v2/reference/news")).withQueryParam("ticker", equalTo("SMCI")).willReturn(okJson(
+                """{"results": [{"id": "smci-old", "title": "SMCI wins a large order", "description": "SMCI order.", "article_url": "https://example.com/smci-old", "published_utc": "$history", "tickers": ["SMCI"]}], "status": "OK"}""",
+            )),
+        )
+
+        val result = pipeline(autoPromotion = smciAutoPromotion(java.time.Duration.ofDays(7))).runCycle(now)
+
+        assertEquals("SUCCESS", result.status)
+        assertEquals(3, result.documentsProcessed)
+        assertNotNull(documents.findByProviderAndProviderDocumentId("polygon", "smci-old"))
+        wireMock.verify(
+            1,
+            getRequestedFor(urlPathEqualTo("/v2/reference/news"))
+                .withQueryParam("ticker", equalTo("SMCI"))
+                .withQueryParam("published_utc.gte", equalTo(now.minus(java.time.Duration.ofDays(7)).toString())),
+        )
+    }
+
+    @Test
+    fun `a zero deep-fetch lookback promotes without fetching the symbol's history`() = runTest {
+        val now = Instant.now()
+        storeSmciMentions(now.minusSeconds(3600))
+        wireMock.stubFor(get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson("""{"results": [], "status": "OK"}""")))
+
+        val result = pipeline(autoPromotion = smciAutoPromotion(java.time.Duration.ZERO)).runCycle(now)
+
+        assertNotNull(companies.findByTicker("SMCI"))
+        assertEquals(2, result.documentsProcessed)
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/v2/reference/news")).withQueryParam("ticker", equalTo("SMCI")))
     }
 
     @Test

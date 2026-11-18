@@ -95,6 +95,17 @@ stops the cycle's promotions. Outcomes are counted in
 `origin = PROMOTED` and `tracked_since`. They are not recorded as pipeline
 issues, because they are not failures.
 
+In the same cycle, each symbol it promotes also gets a deep fetch: one
+per-symbol request for its news over `deep-fetch-lookback` (default `P7D`, at
+most `P30D`, `PT0S` turns it off), the same fetch as
+`POST /internal/ingestion/ticker-runs`. The market scan only stored articles
+published inside its own window, so this brings in the symbol's recent history
+before its documents are extracted. A failed deep fetch is recorded as a
+pipeline issue for that company and makes the run `PARTIAL`; the promotion
+stands. Together with the market scan this is the automatic loop: scan the
+news, rank the symbols it names, track the frequent ones, fetch their history,
+extract and score.
+
 ### Market-wide scan
 
 `catalyst.ingestion.scan-mode` (`CATALYST_INGESTION_SCAN_MODE`) is `market` by
