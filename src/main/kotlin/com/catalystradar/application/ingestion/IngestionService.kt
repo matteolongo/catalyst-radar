@@ -47,7 +47,19 @@ class IngestionService(
     private val log = LoggerFactory.getLogger(IngestionService::class.java)
     private val providersByName = providers.associateBy { it.name }
 
-    suspend fun ingestCycle(now: Instant = Instant.now(), operationRunId: UUID? = null): IngestionCycleResult {
+    suspend fun ingestCycle(now: Instant = Instant.now(), operationRunId: UUID? = null): IngestionCycleResult =
+        ingestWindow(now.minus(properties.lookback), now, operationRunId, properties.scanMode)
+
+    /**
+     * Operator-run market scan over [from]..[now], whatever the configured
+     * scan mode: the step that finds which symbols are in the news.
+     */
+    suspend fun ingestMarket(from: Instant, now: Instant = Instant.now(), operationRunId: UUID? = null): IngestionCycleResult {
+        require(from.isBefore(now)) { "market scan window must start before it ends" }
+        return ingestWindow(from, now, operationRunId, ScanMode.MARKET)
+    }
+
+    private suspend fun ingestWindow(from: Instant, now: Instant, operationRunId: UUID?, scanMode: ScanMode): IngestionCycleResult {
         require(properties.maxPagesPerChunk in 1..100) { "ingestion maxPagesPerChunk must be within 1..100" }
         val tickers = companies.findAllActive().map { it.ticker }
         if (tickers.isEmpty()) {
@@ -55,8 +67,8 @@ class IngestionService(
             return IngestionCycleResult(emptyList())
         }
         log.info(
-            "ingestion cycle started tickers={} primary={} lookback={} scanMode={}",
-            tickers.size, properties.provider, properties.lookback, properties.scanMode,
+            "ingestion cycle started tickers={} primary={} from={} scanMode={}",
+            tickers.size, properties.provider, from, scanMode,
         )
         val primary = providersByName[properties.provider]
         if (primary == null) {
@@ -64,7 +76,38 @@ class IngestionService(
             runs.finishRun(runId, IngestionStatus.FAILED, 0, 0, 0, OperationalErrors.message("INGESTION_FAILURE"), "INGESTION_FAILURE")
             return IngestionCycleResult(listOfNotNull(runs.findById(runId)))
         }
-        val outcomes = mutableListOf(runProvider(primary, primaryScope(primary, tickers), now, operationRunId))
+        return fetchWithFallback(primary, primaryScope(primary, tickers, scanMode), tickers, from, now, operationRunId)
+    }
+
+    /**
+     * Manual, per-symbol fetch: news naming [ticker] from [from] to [now],
+     * whatever the scan mode. Articles are registered exactly as in a
+     * scheduled cycle, so already-stored ones are duplicates and nothing is
+     * extracted twice.
+     */
+    suspend fun ingestTicker(ticker: String, from: Instant, now: Instant = Instant.now(), operationRunId: UUID? = null): IngestionCycleResult {
+        require(properties.maxPagesPerChunk in 1..100) { "ingestion maxPagesPerChunk must be within 1..100" }
+        require(from.isBefore(now)) { "ticker fetch window must start before it ends" }
+        log.info("ticker ingestion started ticker={} primary={} from={}", ticker, properties.provider, from)
+        val primary = providersByName[properties.provider]
+        if (primary == null) {
+            val runId = runs.startRun(properties.provider, operationRunId)
+            runs.finishRun(runId, IngestionStatus.FAILED, 0, 0, 0, OperationalErrors.message("INGESTION_FAILURE"), "INGESTION_FAILURE")
+            return IngestionCycleResult(listOfNotNull(runs.findById(runId)))
+        }
+        val tickers = listOf(ticker)
+        return fetchWithFallback(primary, tickerScope(primary, tickers), tickers, from, now, operationRunId)
+    }
+
+    private suspend fun fetchWithFallback(
+        primary: NewsProvider,
+        primaryChunks: List<List<String>>,
+        tickers: List<String>,
+        from: Instant,
+        now: Instant,
+        operationRunId: UUID?,
+    ): IngestionCycleResult {
+        val outcomes = mutableListOf(runProvider(primary, primaryChunks, from, now, operationRunId))
         val last = outcomes.last()
         // A truncated window is not a provider failure, and the fallback
         // costs one call per ticker, so truncation alone does not use it.
@@ -73,7 +116,7 @@ class IngestionService(
             properties.fallbackProvider != primary.name
         ) {
             // The fallback always asks per ticker: it may not support a market-wide scan.
-            providersByName[properties.fallbackProvider]?.let { outcomes += runProvider(it, tickerScope(it, tickers), now, operationRunId) }
+            providersByName[properties.fallbackProvider]?.let { outcomes += runProvider(it, tickerScope(it, tickers), from, now, operationRunId) }
         }
         return IngestionCycleResult(
             runs = outcomes.map { it.record },
@@ -85,8 +128,8 @@ class IngestionService(
      * Requests the primary provider makes: one ticker-less request in market
      * mode when the provider supports it, otherwise one per ticker group.
      */
-    private fun primaryScope(primary: NewsProvider, tickers: List<String>): List<List<String>> {
-        if (properties.scanMode != ScanMode.MARKET) return tickerScope(primary, tickers)
+    private fun primaryScope(primary: NewsProvider, tickers: List<String>, scanMode: ScanMode): List<List<String>> {
+        if (scanMode != ScanMode.MARKET) return tickerScope(primary, tickers)
         if (primary.supportsMarketScan) return listOf(emptyList())
         log.warn("ingestion scan-mode=market unsupported by provider={}; fetching per ticker", primary.name)
         return tickerScope(primary, tickers)
@@ -107,13 +150,14 @@ class IngestionService(
     private suspend fun runProvider(
         provider: NewsProvider,
         chunks: List<List<String>>,
+        from: Instant,
         now: Instant,
         operationRunId: UUID?,
     ): ProviderOutcome {
         val started = System.nanoTime()
         var outcome = "failed"
         try {
-            return fetchProvider(provider, chunks, now, operationRunId)
+            return fetchProvider(provider, chunks, from, now, operationRunId)
                 .also { outcome = it.record.status.name.lowercase() }
         } catch (e: CancellationException) {
             outcome = "cancelled"
@@ -126,6 +170,7 @@ class IngestionService(
     private suspend fun fetchProvider(
         provider: NewsProvider,
         chunks: List<List<String>>,
+        from: Instant,
         now: Instant,
         operationRunId: UUID?,
     ): ProviderOutcome {
@@ -146,7 +191,7 @@ class IngestionService(
                     val page = provider.fetch(
                         NewsFetchRequest(
                             tickers = chunk,
-                            from = now.minus(properties.lookback),
+                            from = from,
                             to = now,
                             pageSize = properties.pageSize,
                             cursor = cursor,

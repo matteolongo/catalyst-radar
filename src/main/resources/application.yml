@@ -73,6 +73,9 @@ catalyst:
       min-documents: 5
       window: P7D
       max-per-cycle: 3
+      # Each promoted symbol's news history fetched in the cycle that promotes
+      # it (one provider request per symbol); PT0S turns it off.
+      deep-fetch-lookback: P7D
   ingestion:
     # Opt in only for one POC process; disabled avoids unconfigured provider calls.
     enabled: false
@@ -88,6 +91,12 @@ catalyst:
     # tickers: one request per active ticker, which a 5-per-minute plan cannot
     # cover within one interval.
     scan-mode: ${CATALYST_INGESTION_SCAN_MODE:market}
+    # Manual per-symbol fetch (POST /internal/ingestion/ticker-runs): window
+    # used when the request names none, and the longest window it may ask for.
+    ticker-fetch-default-lookback: P7D
+    ticker-fetch-max-lookback: P30D
+    # Longest window of an operator-run market scan (POST /internal/workbench/scans).
+    market-scan-max-lookback: P3D
   rate-limits:
     # Request budget per provider, shared by every client of that provider.
     # requests-per-minute: requests started in any rolling minute; 0 = unpaced.

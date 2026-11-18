@@ -1,6 +1,7 @@
 package com.catalystradar.application.pipeline
 
 import com.catalystradar.application.catalyst.CatalystService
+import com.catalystradar.application.company.CompanyNotFoundException
 import com.catalystradar.application.extraction.ExtractionResultCache
 import com.catalystradar.application.universe.AutoPromotionService
 import com.catalystradar.application.clustering.EventClusteringService
@@ -55,6 +56,18 @@ data class PipelineResult(
     val documentsConsidered: Int get() = documentsProcessed
 }
 
+/** One operator-chosen document in [ExtractionStepResult]; [refused] names why it was not extracted. */
+data class DocumentExtraction(
+    val sourceDocumentId: UUID,
+    val status: DocumentProcessingStatus?,
+    val eventsInserted: Int = 0,
+    val eventsReused: Int = 0,
+    val affectedCompanies: Set<UUID> = emptySet(),
+    val refused: String? = null,
+)
+
+data class ExtractionStepResult(val runId: UUID, val status: String, val documents: List<DocumentExtraction>)
+
 /** Drains the durable queue after ingestion; remote work precedes narrow outcome transactions. */
 @Service
 class PipelineService(
@@ -88,18 +101,49 @@ class PipelineService(
     suspend fun runCycle(now: Instant = Instant.now(), trigger: OperationTrigger = OperationTrigger.MANUAL): PipelineResult {
         if (!running.compareAndSet(false, true)) return skipped()
         return try {
-            execute(now, trigger, startedRunId = null)
+            execute(now, trigger, startedRunId = null) { runId -> ingestion.ingestCycle(now, runId) }
         } finally {
             running.set(false)
         }
     }
 
     /**
+     * Manual per-symbol run: fetches news naming one tracked company from
+     * [from], then drains the queue and rescores exactly as a scheduled
+     * cycle does. Shares the cycle's guard, so it never overlaps one.
+     */
+    suspend fun runTickerCycle(ticker: String, from: Instant, now: Instant = Instant.now()): PipelineResult {
+        val company = trackedCompany(ticker)
+        if (!running.compareAndSet(false, true)) return skipped()
+        return try {
+            execute(now, OperationTrigger.MANUAL, startedRunId = null) { runId -> ingestion.ingestTicker(company.ticker, from, now, runId) }
+        } finally {
+            running.set(false)
+        }
+    }
+
+    /** Background form of [runTickerCycle]; see [start]. */
+    fun startTickerCycle(ticker: String, from: Instant, now: Instant = Instant.now()): PipelineResult {
+        val company = trackedCompany(ticker)
+        return launch(now, OperationTrigger.MANUAL) { runId -> ingestion.ingestTicker(company.ticker, from, now, runId) }
+    }
+
+    /**
+     * Articles about an untracked symbol are stored but never extracted, so
+     * fetching them would cost provider quota for nothing: promote it first.
+     */
+    private fun trackedCompany(ticker: String) =
+        companies.findByTicker(ticker)?.takeIf { it.active } ?: throw CompanyNotFoundException(ticker)
+
+    /**
      * Opens the run record, then drains the queue in the background so a
      * caller is not held for a whole cycle. The result carries the run id;
      * progress is read from the run itself.
      */
-    fun start(now: Instant = Instant.now(), trigger: OperationTrigger = OperationTrigger.MANUAL): PipelineResult {
+    fun start(now: Instant = Instant.now(), trigger: OperationTrigger = OperationTrigger.MANUAL): PipelineResult =
+        launch(now, trigger) { runId -> ingestion.ingestCycle(now, runId) }
+
+    private fun launch(now: Instant, trigger: OperationTrigger, ingest: suspend (UUID) -> IngestionCycleResult): PipelineResult {
         if (!running.compareAndSet(false, true)) return skipped()
         val id = try {
             recorder.begin(OperationKind.PIPELINE, trigger, now)
@@ -109,12 +153,75 @@ class PipelineService(
         }
         background.launch {
             try {
-                execute(now, trigger, startedRunId = id)
+                execute(now, trigger, startedRunId = id, ingest)
             } finally {
                 running.set(false)
             }
         }
         return PipelineResult("RUNNING", 0, 0, 0, runId = id)
+    }
+
+    /**
+     * Runs one operator step under the cycle's guard, so it never overlaps a
+     * cycle or another step; null when one is already running.
+     */
+    suspend fun <T> exclusively(block: suspend () -> T): T? {
+        if (!running.compareAndSet(false, true)) return null
+        return try {
+            block()
+        } finally {
+            running.set(false)
+        }
+    }
+
+    /**
+     * Extracts only the queued documents an operator chose, recorded as one
+     * manual run without a scoring phase: scoring is the next, separate step.
+     * Documents never queued or already finished are reported, not touched.
+     * Null when a cycle or another step is running.
+     */
+    suspend fun extractDocuments(sourceDocumentIds: List<UUID>, now: Instant = Instant.now()): ExtractionStepResult? = exclusively {
+        val runId = recorder.begin(OperationKind.PIPELINE, OperationTrigger.MANUAL, now)
+        var counts = OperationCounts()
+        var firstErrorCode: String? = null
+        try {
+            recorder.phase(runId, OperationPhase.PROCESSING)
+            val results = sourceDocumentIds.distinct().map { id ->
+                val record = processing.findBySourceDocumentId(id)
+                when {
+                    record == null -> DocumentExtraction(id, null, refused = "NOT_QUEUED")
+                    record.status !in EXTRACTABLE -> DocumentExtraction(id, record.status, refused = "ALREADY_PROCESSED")
+                    else -> {
+                        val outcome = processor.process(id, runId, now)
+                        counts = counts.copy(
+                            documentsConsidered = counts.documentsConsidered + 1,
+                            documentsCompleted = counts.documentsCompleted + if (outcome.status == DocumentProcessingStatus.COMPLETED) 1 else 0,
+                            documentsSkipped = counts.documentsSkipped + if (outcome.status == DocumentProcessingStatus.SKIPPED) 1 else 0,
+                            documentsRetryScheduled = counts.documentsRetryScheduled + if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) 1 else 0,
+                            documentsTerminalFailures = counts.documentsTerminalFailures + if (outcome.status == DocumentProcessingStatus.TERMINAL_ERROR) 1 else 0,
+                            eventsInserted = counts.eventsInserted + outcome.eventsInserted,
+                            eventsReused = counts.eventsReused + outcome.eventsReused,
+                        )
+                        recorder.progress(runId, counts)
+                        metrics.documentProcessing(outcome.status.name.lowercase())
+                        if (outcome.status == DocumentProcessingStatus.RETRYABLE_ERROR) metrics.documentRetryScheduled()
+                        if (outcome.error != null && firstErrorCode == null) {
+                            firstErrorCode = processing.findBySourceDocumentId(id)?.lastErrorCode ?: "PROCESSING_FAILURE"
+                        }
+                        DocumentExtraction(id, outcome.status, outcome.eventsInserted, outcome.eventsReused, outcome.affectedCompanies)
+                    }
+                }
+            }
+            val status = if (firstErrorCode != null || counts.documentsRetryScheduled > 0 || counts.documentsTerminalFailures > 0) "PARTIAL" else "SUCCESS"
+            recorder.finish(runId, OperationStatus.valueOf(status), counts, firstErrorCode, captureComplete = true)
+            ExtractionStepResult(runId, status, results)
+        } catch (e: CancellationException) {
+            finishIncomplete(runId, OperationPhase.PROCESSING, OperationStatus.CANCELLED, "CANCELLED")
+            throw e
+        } catch (e: RuntimeException) {
+            finishIncomplete(runId, OperationPhase.PROCESSING, OperationStatus.FAILED, "PROCESSING_FAILURE")
+            throw e
+        }
     }
 
     @PreDestroy
@@ -127,7 +234,12 @@ class PipelineService(
         return PipelineResult("SKIPPED", 0, 0, 0, alreadyRunning = true)
     }
 
-    private suspend fun execute(now: Instant, trigger: OperationTrigger, startedRunId: UUID?): PipelineResult {
+    private suspend fun execute(
+        now: Instant,
+        trigger: OperationTrigger,
+        startedRunId: UUID?,
+        ingest: suspend (UUID) -> IngestionCycleResult,
+    ): PipelineResult {
         var runId: UUID? = startedRunId
         var phase = OperationPhase.INGESTION
         var counts = OperationCounts()
@@ -146,7 +258,7 @@ class PipelineService(
             require(!properties.retryDelay.isNegative && !properties.retryDelay.isZero) { "pipeline retryDelay must be positive" }
             var firstErrorCode: String? = null
             val ingestionResult = try {
-                ingestion.ingestCycle(now, id)
+                ingest(id)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: RuntimeException) {
@@ -161,12 +273,35 @@ class PipelineService(
                 recorder.issue(id, phase, code, provider = providerRun.provider)
             }
             // Promoted candidates' stored documents are queued here, so this cycle extracts them.
-            try {
-                autoPromotion?.promoteEligible(now)
+            val promoted = try {
+                autoPromotion?.promoteEligible(now).orEmpty()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: RuntimeException) {
                 log.warn("pipeline auto-promotion failed for run {}", id)
+                emptyList()
+            }
+            // The market scan only stored what named the symbol inside its own
+            // window; fetch the newly tracked symbol's recent history too.
+            val deepFetchLookback = autoPromotion?.deepFetchLookback
+            if (deepFetchLookback != null && !deepFetchLookback.isZero) {
+                for (promotion in promoted) {
+                    val runs = try {
+                        ingestion.ingestTicker(promotion.company.ticker, now.minus(deepFetchLookback), now, id).runs
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: RuntimeException) {
+                        log.warn("pipeline deep fetch failed for ticker {} run {}", promotion.company.ticker, id)
+                        if (firstErrorCode == null) firstErrorCode = "INGESTION_FAILURE"
+                        recorder.issue(id, phase, "INGESTION_FAILURE", companyId = promotion.company.id)
+                        continue
+                    }
+                    runs.filter { it.status != IngestionStatus.SUCCESS }.forEach { providerRun ->
+                        val code = providerRun.errorCode ?: "UNKNOWN_FAILURE"
+                        if (firstErrorCode == null) firstErrorCode = code
+                        recorder.issue(id, phase, code, provider = providerRun.provider, companyId = promotion.company.id)
+                    }
+                }
             }
             phase = OperationPhase.PROCESSING
             recorder.phase(id, phase)
@@ -266,6 +401,15 @@ class PipelineService(
         } finally {
             running.set(false)
         }
+    }
+
+    private companion object {
+        /** States [findDue][DocumentProcessingStore.findDue] would also pick; an operator may skip the retry delay. */
+        val EXTRACTABLE = setOf(
+            DocumentProcessingStatus.PENDING,
+            DocumentProcessingStatus.PROCESSING,
+            DocumentProcessingStatus.RETRYABLE_ERROR,
+        )
     }
 
     private fun finishIncomplete(id: UUID, phase: OperationPhase, status: OperationStatus, code: String) {

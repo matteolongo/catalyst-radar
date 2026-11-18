@@ -1006,6 +1006,267 @@
     if (currentView === 'universe') refreshUniverse(new URLSearchParams(window.location.search));
   }
 
+  function tickerFetchMessage(ticker, err) {
+    if (err.code === 'COMPANY_NOT_FOUND') return ticker + ' is not tracked. Track it from the list below first; news about an untracked symbol is stored but never extracted.';
+    if (err.status === 403) return 'The admin key was refused. Check it in Access.';
+    if (err.status === 400) return 'The request was refused: ' + (err.message || 'invalid input') + '.';
+    return 'The fetch response was unavailable. The server may still be running; the request was not retried.';
+  }
+
+  /** Manual per-symbol fetch: provider and model cost, so it runs only on an explicit submit. */
+  async function fetchTickerNews(ticker, lookback) {
+    var revision = credentialRevision;
+    $('tickerFetchStatus').textContent = 'Starting a news fetch for ' + ticker + '…';
+    var result;
+    try {
+      result = await api('/internal/ingestion/ticker-runs', { method: 'POST', async: true, body: { ticker: ticker, lookback: lookback } });
+    } catch (err) {
+      if (revision !== credentialRevision) return;
+      $('tickerFetchStatus').textContent = tickerFetchMessage(ticker, err);
+      return;
+    }
+    if (revision !== credentialRevision) return;
+    if (result && result.alreadyRunning) {
+      $('tickerFetchStatus').textContent = 'A pipeline cycle is already running. Try again when it finishes.';
+      return;
+    }
+    if (result && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(result.runId || '')) {
+      $('tickerFetchStatus').innerHTML = 'Fetching ' + esc(ticker) + ' news. <a href="?view=pipeline&amp;runId=' + esc(result.runId) + '">Follow the run</a>.';
+      return;
+    }
+    $('tickerFetchStatus').textContent = 'Fetch for ' + ticker + ' ' + ((result && result.status) || 'completed') + '.';
+  }
+
+  // Guided run: each pipeline stage is its own step and the operator chooses what moves on.
+  var GUIDED_WINDOWS = { PT2H: 2 * 3600e3, P1D: 86400e3, P3D: 3 * 86400e3 };
+  var guided = { symbolPage: null, symbols: new Set(), groups: [], documents: new Set(), titles: {}, tickers: [], companies: new Set(), busy: false };
+
+  function guidedFailure(err, action) {
+    if (err.status === 409) return 'A pipeline cycle or another step is running. Try again when it finishes; nothing was done.';
+    if (err.status === 403) return 'The admin key was refused. Check it in Access.';
+    if (err.status === 400) return 'The request was refused: ' + (err.message || 'invalid input') + '.';
+    return 'Unable to ' + action + '. The server may still have done part of it; the request was not retried.';
+  }
+
+  function guidedAllowed() {
+    if (window.sessionStorage.getItem(ADMIN_KEY_NAME)) return true;
+    $('guidedStatus').innerHTML = 'The guided run needs the admin key. <a href="?view=settings">Save it in Access.</a>';
+    return false;
+  }
+
+  function updateGuidedButtons() {
+    var symbols = guided.symbols.size;
+    $('guidedFetch').disabled = guided.busy || symbols === 0 || symbols > window.CatalystGuided.MAX_FETCH_TICKERS;
+    $('guidedFetch').textContent = symbols > window.CatalystGuided.MAX_FETCH_TICKERS ?
+      'Choose at most ' + window.CatalystGuided.MAX_FETCH_TICKERS + ' symbols' :
+      'Track and fetch history for ' + symbols + ' symbol' + (symbols === 1 ? '' : 's') + ' (provider)';
+    $('guidedExtract').disabled = guided.busy || guided.documents.size === 0;
+    $('guidedExtract').textContent = 'Extract ' + guided.documents.size + ' article' + (guided.documents.size === 1 ? '' : 's') + ' (model)';
+    $('guidedScore').disabled = guided.busy || guided.companies.size === 0;
+    $('guidedScore').textContent = 'Score ' + guided.companies.size + ' compan' + (guided.companies.size === 1 ? 'y' : 'ies');
+  }
+
+  function setGuidedBusy(busy) {
+    guided.busy = busy;
+    ['guidedScan', 'guidedShowStored'].forEach(function (id) { $(id).disabled = busy; });
+    updateGuidedButtons();
+  }
+
+  async function loadGuidedSymbols() {
+    if (!guidedAllowed()) return;
+    var revision = credentialRevision;
+    var window_ = Object.hasOwn(GUIDED_WINDOWS, $('guidedWindow').value) ? $('guidedWindow').value : 'P1D';
+    var since = new Date(Date.now() - GUIDED_WINDOWS[window_]).toISOString();
+    $('guidedStatus').textContent = 'Loading symbols in stored news…';
+    var page;
+    try {
+      page = await api('/internal/workbench/symbols?' + new URLSearchParams({ since: since, limit: '100' }).toString());
+    } catch (err) {
+      if (revision !== credentialRevision) return;
+      $('guidedStatus').textContent = guidedFailure(err, 'load symbols');
+      return;
+    }
+    if (revision !== credentialRevision) return;
+    guided.symbolPage = page;
+    var present = new Set((page.symbols || []).map(function (symbol) { return symbol.ticker; }));
+    guided.symbols = new Set(Array.from(guided.symbols).filter(function (ticker) { return present.has(ticker); }));
+    $('guidedSymbols').innerHTML = window.CatalystGuided.renderSymbols(page, guided.symbols);
+    $('guidedStatus').textContent = page.total + ' symbols in news published since ' + fmtTime(page.since) + ' UTC' +
+      (page.total > (page.symbols || []).length ? '; showing the ' + page.symbols.length + ' most mentioned.' : '.');
+    updateGuidedButtons();
+  }
+
+  async function guidedScan() {
+    if (guided.busy || !guidedAllowed()) return;
+    var revision = credentialRevision;
+    var lookback = Object.hasOwn(GUIDED_WINDOWS, $('guidedWindow').value) ? $('guidedWindow').value : 'P1D';
+    setGuidedBusy(true);
+    $('guidedStatus').textContent = 'Fetching market news from the provider…';
+    try {
+      var result = await api('/internal/workbench/scans', { method: 'POST', body: { lookback: lookback } });
+      if (revision !== credentialRevision) return;
+      $('guidedStatus').textContent = result.newDocuments + ' new articles stored.';
+    } catch (err) {
+      if (revision !== credentialRevision) return;
+      $('guidedStatus').textContent = guidedFailure(err, 'fetch market news');
+      return;
+    } finally {
+      setGuidedBusy(false);
+    }
+    await loadGuidedSymbols();
+  }
+
+  async function guidedTrackAndFetch() {
+    if (guided.busy || !guidedAllowed() || guided.symbols.size === 0) return;
+    var revision = credentialRevision;
+    var bySymbol = {};
+    ((guided.symbolPage && guided.symbolPage.symbols) || []).forEach(function (symbol) { bySymbol[symbol.ticker] = symbol; });
+    var chosen = Array.from(guided.symbols);
+    var refusals = [];
+    var tracked = [];
+    setGuidedBusy(true);
+    try {
+      for (var i = 0; i < chosen.length; i++) {
+        var ticker = chosen[i];
+        if (bySymbol[ticker] && bySymbol[ticker].tracked) { tracked.push(ticker); continue; }
+        $('guidedStatus').textContent = 'Tracking ' + ticker + '…';
+        try {
+          await api('/internal/universe/promotions', { method: 'POST', body: { ticker: ticker } });
+          tracked.push(ticker);
+        } catch (err) {
+          if (revision !== credentialRevision) return;
+          refusals.push({ ticker: ticker, reason: promotionMessage(ticker, err) });
+        }
+      }
+      if (revision !== credentialRevision) return;
+      if (guided.symbolPage) {
+        guided.symbolPage = Object.assign({}, guided.symbolPage, { symbols: guided.symbolPage.symbols.map(function (symbol) {
+          return tracked.indexOf(symbol.ticker) >= 0 ? Object.assign({}, symbol, { tracked: true }) : symbol;
+        }) });
+        $('guidedSymbols').innerHTML = window.CatalystGuided.renderSymbols(guided.symbolPage, guided.symbols);
+      }
+      var fetches = { tickers: [], from: null };
+      if (tracked.length) {
+        $('guidedStatus').textContent = 'Fetching news history for ' + tracked.join(', ') + '…';
+        try {
+          fetches = await api('/internal/workbench/fetches', { method: 'POST', body: { tickers: tracked, lookback: ['P1D', 'P7D', 'P30D'].includes($('guidedLookback').value) ? $('guidedLookback').value : 'P7D' } });
+        } catch (err) {
+          if (revision !== credentialRevision) return;
+          $('guidedFetchResult').innerHTML = window.CatalystGuided.renderFetch([], refusals);
+          $('guidedStatus').textContent = guidedFailure(err, 'fetch news history');
+          return;
+        }
+      }
+      if (revision !== credentialRevision) return;
+      $('guidedFetchResult').innerHTML = window.CatalystGuided.renderFetch(fetches.tickers, refusals);
+      $('guidedStatus').textContent = 'Loading the chosen symbols’ articles…';
+      var perTicker = [];
+      for (var j = 0; j < tracked.length; j++) {
+        var query = new URLSearchParams({ ticker: tracked[j], limit: '100' });
+        if (fetches.from) query.set('from', fetches.from);
+        var page = await api('/internal/operations/documents?' + query.toString());
+        if (revision !== credentialRevision) return;
+        perTicker.push({ ticker: tracked[j], documents: page.items || [] });
+      }
+      var groups = window.CatalystGuided.groupDocuments(perTicker);
+      guided.tickers = tracked;
+      guided.groups = groups;
+      guided.titles = {};
+      guided.documents = new Set();
+      groups.forEach(function (group) {
+        group.documents.forEach(function (document) {
+          guided.titles[document.id] = document.title;
+          if (window.CatalystGuided.extractable(document.state)) guided.documents.add(document.id);
+        });
+      });
+      $('guidedDocuments').innerHTML = window.CatalystGuided.renderDocuments(groups, guided.documents);
+      $('guidedStatus').textContent = guided.documents.size + ' articles are waiting for extraction. Untick the ones that do not matter.';
+    } catch (err) {
+      if (revision !== credentialRevision) return;
+      $('guidedStatus').textContent = guidedFailure(err, 'load articles');
+    } finally {
+      setGuidedBusy(false);
+    }
+  }
+
+  async function guidedExtract() {
+    if (guided.busy || !guidedAllowed() || guided.documents.size === 0) return;
+    var revision = credentialRevision;
+    var ids = Array.from(guided.documents);
+    var merged = { documents: [] };
+    setGuidedBusy(true);
+    try {
+      var batches = window.CatalystGuided.chunks(ids, window.CatalystGuided.MAX_EXTRACTION);
+      for (var i = 0; i < batches.length; i++) {
+        $('guidedStatus').textContent = 'Extracting articles with the model' + (batches.length > 1 ? ' (batch ' + (i + 1) + ' of ' + batches.length + ')' : '') + '…';
+        var result = await api('/internal/workbench/extractions', { method: 'POST', body: { documentIds: batches[i] } });
+        if (revision !== credentialRevision) return;
+        merged.documents = merged.documents.concat(result.documents || []);
+      }
+      var eventsByDocument = {};
+      var withEvents = merged.documents.filter(function (document) { return document.eventsInserted + document.eventsReused > 0; });
+      for (var j = 0; j < withEvents.length; j++) {
+        var id = withEvents[j].documentId;
+        var feed = await api('/internal/operations/documents/' + encodeURIComponent(id) + '/events?limit=25');
+        if (revision !== credentialRevision) return;
+        eventsByDocument[id] = feed.events || [];
+      }
+      $('guidedExtraction').innerHTML = window.CatalystGuided.renderExtraction(merged, guided.titles, eventsByDocument);
+      guided.companies = new Set(guided.tickers);
+      $('guidedCompanies').innerHTML = window.CatalystGuided.renderCompanies(guided.tickers, guided.companies);
+      var outcomes = {};
+      merged.documents.forEach(function (document) { if (document.status) outcomes[document.documentId] = document.status; });
+      guided.groups = guided.groups.map(function (group) {
+        return { ticker: group.ticker, documents: group.documents.map(function (document) {
+          return Object.hasOwn(outcomes, document.id) ? Object.assign({}, document, { state: outcomes[document.id] }) : document;
+        }) };
+      });
+      guided.documents = new Set();
+      $('guidedDocuments').innerHTML = window.CatalystGuided.renderDocuments(guided.groups, guided.documents);
+      $('guidedStatus').textContent = 'Extraction finished. Review the events, then choose which companies to score.';
+    } catch (err) {
+      if (revision !== credentialRevision) return;
+      $('guidedStatus').textContent = guidedFailure(err, 'extract the chosen articles');
+    } finally {
+      setGuidedBusy(false);
+    }
+  }
+
+  async function guidedScore() {
+    if (guided.busy || !guidedAllowed() || guided.companies.size === 0) return;
+    var revision = credentialRevision;
+    var scores = [];
+    setGuidedBusy(true);
+    try {
+      var tickers = Array.from(guided.companies);
+      for (var i = 0; i < tickers.length; i++) {
+        $('guidedStatus').textContent = 'Scoring ' + tickers[i] + '…';
+        try {
+          var catalyst = await api('/internal/companies/' + encodeURIComponent(tickers[i]) + '/recalculate', { method: 'POST' });
+          scores.push({ ticker: tickers[i], catalyst: catalyst });
+        } catch (err) {
+          if (revision !== credentialRevision) return;
+          scores.push({ ticker: tickers[i], error: guidedFailure(err, 'score ' + tickers[i]) });
+        }
+      }
+      if (revision !== credentialRevision) return;
+      $('guidedScores').innerHTML = window.CatalystGuided.renderScores(scores);
+      $('guidedStatus').textContent = 'Scores saved as new snapshots.';
+    } finally {
+      setGuidedBusy(false);
+    }
+  }
+
+  function onGuidedToggle(set, attribute) {
+    return function (event) {
+      var box = event.target;
+      if (!box || !box.dataset || !box.dataset[attribute]) return;
+      if (box.checked) set().add(box.dataset[attribute]);
+      else set().delete(box.dataset[attribute]);
+      updateGuidedButtons();
+    };
+  }
+
   function universeOffsetRoute(offset) {
     navigate('?view=universe&offset=' + offset);
   }
@@ -1026,7 +1287,7 @@
     if (typeof value !== 'string' || !value.startsWith('?') || value.startsWith('??') || value.indexOf('#') >= 0 || value.indexOf('\\') >= 0) return null;
     var view = new URLSearchParams(value.slice(1)).get('view') || 'discover';
     if (view === 'operations') view = 'pipeline';
-    return ['overview', 'pipeline', 'documents', 'models', 'universe', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view) ? value : null;
+    return ['overview', 'pipeline', 'documents', 'models', 'universe', 'guided', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view) ? value : null;
   }
 
   function localSearch(value) {
@@ -1108,6 +1369,7 @@
     }
     if (currentView === 'events') return showEvents(new URLSearchParams(window.location.search), true);
     if (currentView === 'universe') return refreshUniverse(new URLSearchParams(window.location.search));
+    if (currentView === 'guided') return loadGuidedSymbols();
     if (currentView === 'company') return refreshCompany(new URLSearchParams(window.location.search).get('ticker').toUpperCase());
   }
 
@@ -1119,7 +1381,7 @@
       view = 'discover';
       invalidTicker = true;
     }
-    if (!['overview', 'pipeline', 'documents', 'models', 'universe', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view)) view = 'discover';
+    if (!['overview', 'pipeline', 'documents', 'models', 'universe', 'guided', 'settings', 'discover', 'company', 'events', 'notebooks'].includes(view)) view = 'discover';
     var enteringDiscover = view === 'discover' && (currentView !== 'discover' || !changesRequest);
     if (currentView !== view) {
       abortPublicReads();
@@ -1132,14 +1394,14 @@
     }
     currentView = view;
 
-    ['overview', 'pipeline', 'documents', 'models', 'universe', 'settings', 'discover', 'company', 'events', 'notebooks'].forEach(function (name) {
+    ['overview', 'pipeline', 'documents', 'models', 'universe', 'guided', 'settings', 'discover', 'company', 'events', 'notebooks'].forEach(function (name) {
       $(name + 'View').classList.toggle('hidden', name !== view);
     });
 
     var titles = { overview: 'Operations', pipeline: 'Pipeline', documents: 'Documents', models: 'Models & costs',
-      settings: 'Access', discover: 'Radar', company: 'Company record', events: 'Events', notebooks: 'Process notebooks', universe: 'Candidates' };
+      settings: 'Access', discover: 'Radar', company: 'Company record', events: 'Events', notebooks: 'Process notebooks', universe: 'Candidates', guided: 'Guided run' };
     $('pageTitle').textContent = titles[view];
-    var operationsNav = { overview: 'navOperationsHome', pipeline: 'navPipeline', documents: 'navDocuments', models: 'navModels', universe: 'navUniverse' };
+    var operationsNav = { overview: 'navOperationsHome', pipeline: 'navPipeline', documents: 'navDocuments', models: 'navModels', universe: 'navUniverse', guided: 'navGuided' };
     var operationView = Object.hasOwn(operationsNav, view);
     $('refresh').classList.toggle('hidden', view === 'notebooks');
     $('lastRefresh').classList.toggle('hidden', !operationView);
@@ -1181,6 +1443,7 @@
     }
     if (view === 'events') showEvents(route);
     if (view === 'universe') refreshUniverse(route);
+    if (view === 'guided' && !guided.symbolPage) loadGuidedSymbols();
     if (operations) operations.show({ view: view, params: route, fromHistory: !!fromHistory });
     onboarding.show(view);
 
@@ -1349,6 +1612,31 @@
       if (!button || !button.dataset.promoteTicker) return;
       askToPromote(button.dataset.promoteTicker);
     });
+    $('tickerFetch').addEventListener('submit', function (event) {
+      event.preventDefault();
+      var ticker = $('tickerFetchSymbol').value.trim().toUpperCase();
+      $('tickerFetchSymbol').value = ticker;
+      if (!validTicker(ticker)) {
+        $('tickerFetchSymbol').setAttribute('aria-invalid', 'true');
+        $('tickerFetchStatus').textContent = 'Enter a ticker such as TSN or BRK.B, up to 15 letters, numbers, dots or hyphens.';
+        return;
+      }
+      $('tickerFetchSymbol').removeAttribute('aria-invalid');
+      if (!window.sessionStorage.getItem(ADMIN_KEY_NAME)) {
+        $('tickerFetchStatus').textContent = 'Fetching news needs the admin key. Save it in Access.';
+        return;
+      }
+      var lookback = ['P1D', 'P7D', 'P30D'].includes($('tickerFetchWindow').value) ? $('tickerFetchWindow').value : 'P7D';
+      fetchTickerNews(ticker, lookback);
+    });
+    $('guidedScan').addEventListener('click', function () { guidedScan(); });
+    $('guidedShowStored').addEventListener('click', function () { loadGuidedSymbols(); });
+    $('guidedFetch').addEventListener('click', function () { guidedTrackAndFetch(); });
+    $('guidedExtract').addEventListener('click', function () { guidedExtract(); });
+    $('guidedScore').addEventListener('click', function () { guidedScore(); });
+    $('guidedSymbols').addEventListener('change', onGuidedToggle(function () { return guided.symbols; }, 'guidedSymbol'));
+    $('guidedDocuments').addEventListener('change', onGuidedToggle(function () { return guided.documents; }, 'guidedDocument'));
+    $('guidedCompanies').addEventListener('change', onGuidedToggle(function () { return guided.companies; }, 'guidedCompany'));
     $('universePromotion').addEventListener('click', function (event) {
       var confirm = event.target.closest('[data-confirm-promote]');
       if (confirm && confirm.dataset.confirmPromote) return promote(confirm.dataset.confirmPromote);
@@ -1427,7 +1715,7 @@
     });
     [
       ['navOverview', '?view=overview'], ['navOperationsHome', '?view=overview'], ['navPipeline', '?view=pipeline'], ['navDocuments', '?view=documents'],
-      ['navModels', '?view=models'], ['navDiscover', '?view=discover'],
+      ['navModels', '?view=models'], ['navGuided', '?view=guided'], ['navDiscover', '?view=discover'],
       ['navEvents', '?view=events'], ['navSettings', '?view=settings'],
     ].forEach(function (item) {
       $(item[0]).addEventListener('click', function (event) {

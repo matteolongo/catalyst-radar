@@ -95,6 +95,17 @@ stops the cycle's promotions. Outcomes are counted in
 `origin = PROMOTED` and `tracked_since`. They are not recorded as pipeline
 issues, because they are not failures.
 
+In the same cycle, each symbol it promotes also gets a deep fetch: one
+per-symbol request for its news over `deep-fetch-lookback` (default `P7D`, at
+most `P30D`, `PT0S` turns it off), the same fetch as
+`POST /internal/ingestion/ticker-runs`. The market scan only stored articles
+published inside its own window, so this brings in the symbol's recent history
+before its documents are extracted. A failed deep fetch is recorded as a
+pipeline issue for that company and makes the run `PARTIAL`; the promotion
+stands. Together with the market scan this is the automatic loop: scan the
+news, rank the symbols it names, track the frequent ones, fetch their history,
+extract and score.
+
 ### Market-wide scan
 
 `catalyst.ingestion.scan-mode` (`CATALYST_INGESTION_SCAN_MODE`) is `market` by
@@ -111,6 +122,67 @@ filter takes one symbol: a comma-separated list returns no results with status
 minutes, longer than the 30-minute interval, so `tickers` suits paid plans
 only. The fallback provider, and a primary without market support (Finnhub),
 always fetch per ticker.
+
+### Manual per-symbol fetch
+
+The market scan finds symbols; fetching one symbol's news is a manual step.
+`POST /internal/ingestion/ticker-runs` with `{"ticker": "TSN", "lookback": "P7D"}`
+asks the primary provider for news naming that one ticker from `now - lookback`
+to now, whatever `scan-mode` is, falling back per ticker as a cycle does. The
+fetched articles are registered like any other (already stored ones count as
+duplicates and are not extracted again), then the run drains the processing
+queue and rescores affected companies exactly as `POST /internal/ingestion/runs`
+does. It shares that run's guard, so it never overlaps a cycle: while one runs
+it answers `alreadyRunning: true`. `Prefer: respond-async` returns 202 with the
+run id; the run appears under Pipeline runs.
+
+`lookback` is an ISO-8601 duration. Omitted, it is
+`catalyst.ingestion.ticker-fetch-default-lookback` (`P7D`); above
+`ticker-fetch-max-lookback` (`P30D`), or not a positive duration, the request is
+400 `INVALID_REQUEST`. The ticker must be an active tracked company, otherwise
+404 `COMPANY_NOT_FOUND` without a provider call: an untracked symbol's articles
+would be stored but never extracted, so track it first. Each queue drain takes
+at most `catalyst.pipeline.batch-size` documents; a long window over a heavily
+covered symbol can leave the rest for later runs. Event timestamps keep the
+articles' publication times and `discoveredAt` is the fetch time, so replay
+before the fetch does not see them. The Candidates screen has a **Fetch news**
+form (last day, 7 or 30 days).
+
+### Guided run
+
+Operations → **Guided run** runs the pipeline one stage at a time, and the
+operator chooses what moves to the next stage. Nothing runs until a button is
+pressed; buttons that call the news provider or the model say so.
+
+| Step | Route | Calls | Operator choice |
+| --- | --- | --- | --- |
+| 1. Symbols in the news | `POST /internal/workbench/scans` `{"lookback":"P1D"}` (optional), then `GET /internal/workbench/symbols?since=…` | news provider (scan only); the read is stored data | symbols to look at |
+| 2. Track and fetch history | `POST /internal/universe/promotions` per untracked symbol, then `POST /internal/workbench/fetches` `{"tickers":[…],"lookback":"P7D"}` | reference provider, news provider | articles to extract |
+| 3. Extract | `POST /internal/workbench/extractions` `{"documentIds":[…]}` | extraction and embedding models | companies to score |
+| 4. Score | `POST /internal/companies/{ticker}/recalculate` | none | — |
+
+- The scan is a market-wide scan over the window, whatever `scan-mode` is, up
+  to `catalyst.ingestion.market-scan-max-lookback` (`P3D`); omitted, the
+  window is `catalyst.ingestion.lookback`. It stores articles and queues those
+  naming tracked companies, as a cycle does, but extracts nothing.
+- `GET /internal/workbench/symbols` lists every symbol named by stored articles
+  published since `since` (default one day, at most 30), tracked and untracked,
+  ranked by article count, with `queuedDocuments`: articles waiting for
+  extraction for that company (always 0 for an untracked symbol). `limit`
+  1–100, `offset` 0–10,000. Counts are documents, not events.
+- The fetch takes at most 10 tracked tickers, one provider request each, over
+  the per-symbol fetch window (default `P7D`, at most `P30D`). An untracked
+  ticker is 404 `COMPANY_NOT_FOUND` before any provider call. It extracts nothing.
+- The extraction takes at most `catalyst.pipeline.batch-size` documents and
+  extracts only those still waiting (pending, interrupted or retryable, without
+  waiting for the retry delay). Others come back with `refused`: `NOT_QUEUED`
+  or `ALREADY_PROCESSED`. It is recorded as a manual pipeline run without a
+  scoring phase, so scores change only in step 4.
+- Every step shares the pipeline's overlap guard: while a cycle or another step
+  runs, it answers 409 `PIPELINE_BUSY` and does nothing.
+- Articles not chosen stay queued. With the scheduled pipeline enabled, or
+  after **Run pipeline now**, the next cycle extracts them; keep the scheduler
+  off to decide every extraction by hand.
 
 ### Provider rate limits
 

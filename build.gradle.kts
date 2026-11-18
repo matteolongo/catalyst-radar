@@ -64,7 +64,9 @@ tasks.withType<Test> {
 
 tasks.processResources {
 	from("ui") {
-		include("index.html", "app.js", "styles.css", "operations-model.js", "operations.js", "leaderboard.js", "notebooks.js")
+		// Every dashboard asset except the Node test harness, so a new module cannot be left out.
+		include("*.html", "*.js", "*.css")
+		exclude("*.test.js", "test-support.js")
 		into("static/ops")
 	}
 }

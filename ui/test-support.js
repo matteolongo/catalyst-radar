@@ -13,7 +13,7 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
   deferDocuments = false, deferDocumentList = false, modelSummary, modelCalls, modelDetail,
   modelPageSize = 25, deferModelSummary = false, deferModelCalls = false, deferModelDetails = false,
   operationRuns, operationRunDetail, operationIssues, ingestionRuns, pipelineResult, deferPipeline = true,
-  deferPublicPaths = [], transitions, candidates, promotion, localStored = {}, localStorageFailure = false } = {}) {
+  deferPublicPaths = [], transitions, candidates, promotion, tickerRun, guidedApi, localStored = {}, localStorageFailure = false } = {}) {
   const requests = [];
   // The Radar "What changed" read runs beside discovery; it is recorded apart so
   // request counts in discovery tests keep describing discovery.
@@ -167,6 +167,11 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
         ? response({ detail: 'Obsolete public failure' }, 503) : response(body)));
       publicResolvers.set(route, queued);
     });
+    // Guided-run tests answer their own routes; undefined falls through to the defaults.
+    if (guidedApi) {
+      const answer = guidedApi(route, method, options.body ? JSON.parse(options.body) : undefined, requestUrl);
+      if (answer !== undefined) return answer.httpStatus ? response(answer.body, answer.httpStatus) : response(answer);
+    }
     if (route === '/actuator/health' && method === 'GET') {
       if (health === 'error') return response({ detail: 'Health unavailable', code: 'TEMPORARY_UNAVAILABLE', status: 503, requestId: 'request-health' }, 503);
       return response(typeof health === 'function' ? health(requestUrl) : health);
@@ -310,6 +315,11 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
       const answer = typeof candidates === 'function' ? candidates(requestUrl) : candidates;
       return answer === 'error' ? response({ detail: 'Candidates unavailable' }, 503) : response(answer || candidatesFixture);
     }
+    if (route === '/internal/ingestion/ticker-runs' && method === 'POST') {
+      const answer = typeof tickerRun === 'function' ? tickerRun(requestUrl, options.body, options.headers) : tickerRun;
+      if (answer && answer.status && answer.body) return response(answer.body, answer.status);
+      return response(answer || { status: 'RUNNING', runId: '5d0c3c8e-2b7e-4c55-9d2f-6f1f0d1c2a3b' }, 202);
+    }
     if (route === '/internal/universe/promotions' && method === 'POST') {
       const answer = typeof promotion === 'function' ? promotion(requestUrl, options.body) : promotion;
       if (answer && answer.status) return response(answer.body, answer.status);
@@ -336,7 +346,7 @@ function startDashboard({ search = '?view=overview', wideRadar = false, stored =
     throw new Error('Unrecognized API request: ' + method + ' ' + route);
   }
   const context = { window, document, fetch, URLSearchParams, URL, AbortController, Promise, setImmediate };
-  for (const file of ['operations-model.js', 'operations.js', 'leaderboard.js', 'changes.js', 'following.js', 'universe.js', 'notebooks.js', 'app.js']) {
+  for (const file of ['operations-model.js', 'operations.js', 'leaderboard.js', 'changes.js', 'following.js', 'universe.js', 'guided.js', 'notebooks.js', 'app.js']) {
     const filePath = path.join(__dirname, file);
     if (fs.existsSync(filePath)) {
       let source = fs.readFileSync(filePath, 'utf8');

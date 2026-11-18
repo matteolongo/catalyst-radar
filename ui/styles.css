@@ -522,3 +522,9 @@ input[type="checkbox"] { accent-color: var(--accent); }
   .notebook-contents ol { display: flex; flex-wrap: wrap; }
   .notebook-page { padding: 20px; }
 }
+
+.guided-step { margin-block: 16px; }
+.guided-step .button-row label { display: inline-flex; align-items: center; gap: 6px; }
+.guided-step h4 { margin: 12px 0 4px; }
+.guided-list { padding-left: 20px; }
+.guided-list li { margin-block: 6px; }

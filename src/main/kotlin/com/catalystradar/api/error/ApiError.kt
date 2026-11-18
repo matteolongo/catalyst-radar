@@ -3,6 +3,7 @@ package com.catalystradar.api.error
 import com.catalystradar.api.RequestIdFilter
 import com.catalystradar.application.catalyst.CatalystNotFoundException
 import com.catalystradar.application.company.CompanyNotFoundException
+import com.catalystradar.application.workbench.PipelineBusyException
 import com.catalystradar.application.operations.OperationsResource
 import com.catalystradar.application.operations.OperationsResourceNotFoundException
 import com.catalystradar.common.InvalidInputException
@@ -55,6 +56,16 @@ class ApiExceptionHandler {
             "COMPANY_NOT_FOUND",
             "Company not found",
             e.message ?: "Company ${e.ticker} was not found",
+            request,
+        )
+
+    @ExceptionHandler(PipelineBusyException::class)
+    fun pipelineBusy(e: PipelineBusyException, request: HttpServletRequest): ResponseEntity<ProblemResponse> =
+        problem(
+            HttpStatus.CONFLICT,
+            "PIPELINE_BUSY",
+            "Pipeline busy",
+            "A pipeline cycle or another step is already running; nothing was done",
             request,
         )
 

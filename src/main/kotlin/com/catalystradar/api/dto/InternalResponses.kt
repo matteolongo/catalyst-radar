@@ -61,6 +61,15 @@ fun CreatedApiKey.toResponse() = CreatedApiClientResponse(
     rawKey = rawKey,
 )
 
+/**
+ * Manual per-symbol fetch. [lookback] is an ISO-8601 duration such as
+ * `P7D`; omitted, the configured default window applies.
+ */
+data class TickerRunRequest(
+    val ticker: String,
+    val lookback: String? = null,
+)
+
 data class InternalReplayRequest(
     val ticker: String,
     val cutoff: Instant,

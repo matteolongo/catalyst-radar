@@ -45,7 +45,10 @@ import com.catalystradar.ports.NewsProvider
 import com.catalystradar.ports.NewsFetchRequest
 import com.catalystradar.ports.NewsFetchResult
 import com.catalystradar.ports.ProviderException
+import com.github.tomakehurst.wiremock.client.WireMock.absent
+import com.github.tomakehurst.wiremock.client.WireMock.equalTo
 import com.github.tomakehurst.wiremock.client.WireMock.get
+import com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor
 import com.github.tomakehurst.wiremock.client.WireMock.okJson
 import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig
@@ -245,6 +248,33 @@ class PipelineServiceTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `ticker run fetches one tracked company's news and scores it`() = runTest {
+        companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val now = Instant.now()
+        wireMock.stubFor(
+            get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson(newsPage(now.minusSeconds(3600).toString()))),
+        )
+
+        val result = pipeline().runTickerCycle("DELL", now.minus(java.time.Duration.ofDays(7)), now)
+
+        assertEquals("SUCCESS", result.status)
+        assertEquals(1, result.companiesRescored)
+        assertNotNull(snapshots.latestSnapshot(companies.findByTicker("DELL")!!.id))
+        wireMock.verify(getRequestedFor(urlPathEqualTo("/v2/reference/news")).withQueryParam("ticker", equalTo("DELL")))
+    }
+
+    @Test
+    fun `ticker run refuses an untracked symbol without calling the provider`() = runTest {
+        val now = Instant.now()
+
+        assertFailsWith<com.catalystradar.application.company.CompanyNotFoundException> {
+            pipeline().runTickerCycle("SLS", now.minus(java.time.Duration.ofDays(7)), now)
+        }
+
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/v2/reference/news")))
+    }
+
+    @Test
     fun `an auto-promoted candidate is extracted and scored in the same cycle`() = runTest {
         companyStore.save(Company(ticker = "DELL", name = "Dell"))
         val published = Instant.now().minusSeconds(3600)
@@ -273,6 +303,114 @@ class PipelineServiceTest : PostgresIntegrationTest() {
         assertEquals(2, result.documentsProcessed)
         assertNotNull(snapshots.latestSnapshot(smci.id))
         assertEquals(1.0, meterRegistry.counter("catalyst_universe_auto_promotions_total", "outcome", "promoted").count())
+    }
+
+    private fun smciAutoPromotion(deepFetchLookback: java.time.Duration) =
+        com.catalystradar.application.universe.AutoPromotionService(
+            com.catalystradar.application.universe.AutoPromotionProperties(enabled = true, minDocuments = 2, deepFetchLookback = deepFetchLookback),
+            unresolvedTickers,
+            com.catalystradar.application.universe.UniversePromotionService(
+                companyStore,
+                object : com.catalystradar.ports.CompanyLookupProvider {
+                    override suspend fun findUsEquity(ticker: String) = com.catalystradar.ports.CompanyReference(ticker = ticker, name = "Super Micro Computer")
+                },
+                promotionWriter,
+                com.catalystradar.application.universe.UniverseProperties(),
+            ),
+            metrics,
+        )
+
+    private fun storeSmciMentions(published: Instant) = repeat(2) { i ->
+        registrations.registerIfNew(
+            "polygon",
+            com.catalystradar.ports.RawArticle("polygon", "smci-$i", null, "SMCI raise story $i", "SMCI raised its outlook $i.", published, listOf("SMCI")),
+            published,
+        )
+    }
+
+    @Test
+    fun `a symbol promoted from the news gets its recent history fetched and extracted in the same cycle`() = runTest {
+        val now = Instant.now()
+        storeSmciMentions(now.minusSeconds(3600))
+        wireMock.stubFor(
+            get(urlPathEqualTo("/v2/reference/news")).withQueryParam("ticker", absent())
+                .willReturn(okJson("""{"results": [], "status": "OK"}""")),
+        )
+        val history = now.minus(java.time.Duration.ofDays(3)).toString()
+        wireMock.stubFor(
+            get(urlPathEqualTo("/v2/reference/news")).withQueryParam("ticker", equalTo("SMCI")).willReturn(okJson(
+                """{"results": [{"id": "smci-old", "title": "SMCI wins a large order", "description": "SMCI order.", "article_url": "https://example.com/smci-old", "published_utc": "$history", "tickers": ["SMCI"]}], "status": "OK"}""",
+            )),
+        )
+
+        val result = pipeline(autoPromotion = smciAutoPromotion(java.time.Duration.ofDays(7))).runCycle(now)
+
+        assertEquals("SUCCESS", result.status)
+        assertEquals(3, result.documentsProcessed)
+        assertNotNull(documents.findByProviderAndProviderDocumentId("polygon", "smci-old"))
+        wireMock.verify(
+            1,
+            getRequestedFor(urlPathEqualTo("/v2/reference/news"))
+                .withQueryParam("ticker", equalTo("SMCI"))
+                .withQueryParam("published_utc.gte", equalTo(now.minus(java.time.Duration.ofDays(7)).toString())),
+        )
+    }
+
+    @Test
+    fun `a zero deep-fetch lookback promotes without fetching the symbol's history`() = runTest {
+        val now = Instant.now()
+        storeSmciMentions(now.minusSeconds(3600))
+        wireMock.stubFor(get(urlPathEqualTo("/v2/reference/news")).willReturn(okJson("""{"results": [], "status": "OK"}""")))
+
+        val result = pipeline(autoPromotion = smciAutoPromotion(java.time.Duration.ZERO)).runCycle(now)
+
+        assertNotNull(companies.findByTicker("SMCI"))
+        assertEquals(2, result.documentsProcessed)
+        wireMock.verify(0, getRequestedFor(urlPathEqualTo("/v2/reference/news")).withQueryParam("ticker", equalTo("SMCI")))
+    }
+
+    @Test
+    fun `extracting chosen documents leaves the others queued and does not rescore`() = runTest {
+        val dell = companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val now = Instant.parse("2026-09-16T10:00:00Z")
+        val chosen = queuedDocument(dell, now)
+        val other = documents.save(SourceDocument(provider = "polygon", title = "Dell beat story", body = "Dell beat.", discoveredAt = now))
+            .also { documentCompanies.link(it.id, dell.id); processing.ensurePending(it.id, now) }
+
+        val result = assertNotNull(drainedPipeline().extractDocuments(listOf(chosen.id), now))
+
+        assertEquals("SUCCESS", result.status)
+        assertEquals(DocumentProcessingStatus.COMPLETED, result.documents.single().status)
+        assertEquals(1, result.documents.single().eventsInserted)
+        assertEquals(DocumentProcessingStatus.COMPLETED, processing.findBySourceDocumentId(chosen.id)?.status)
+        assertEquals(DocumentProcessingStatus.PENDING, processing.findBySourceDocumentId(other.id)?.status)
+        assertNull(snapshots.latestSnapshot(dell.id))
+    }
+
+    @Test
+    fun `extracting a finished or never-queued document refuses it without processing`() = runTest {
+        val dell = companyStore.save(Company(ticker = "DELL", name = "Dell"))
+        val now = Instant.parse("2026-09-16T10:00:00Z")
+        val finished = queuedDocument(dell, now)
+        drainedPipeline().extractDocuments(listOf(finished.id), now)
+        val unqueued = documents.save(SourceDocument(provider = "polygon", title = "Orphan", body = "No company.", discoveredAt = now))
+
+        val result = assertNotNull(drainedPipeline().extractDocuments(listOf(finished.id, unqueued.id), now))
+
+        assertEquals(listOf("ALREADY_PROCESSED", "NOT_QUEUED"), result.documents.map { it.refused })
+        assertEquals(1, events.findByCompanyId(dell.id).size)
+    }
+
+    @Test
+    fun `an operator step cannot start while another holds the pipeline guard`() = runTest {
+        val service = drainedPipeline()
+
+        val nested = service.exclusively { service.exclusively { "inner" } }
+        val cycleDuringStep = service.exclusively { service.runCycle().status }
+
+        assertNull(nested)
+        assertEquals("SKIPPED", cycleDuringStep)
+        assertEquals("free", service.exclusively { "free" })
     }
 
     @Test

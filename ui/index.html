@@ -50,6 +50,7 @@
         <a id="navDocuments" href="?view=documents">Documents</a>
         <a id="navModels" href="?view=models">Models &amp; costs</a>
         <a id="navUniverse" href="?view=universe">Candidates</a>
+        <a id="navGuided" href="?view=guided">Guided run</a>
       </nav>
 
       <div id="banner" class="banner hidden" role="alert"></div>
@@ -274,8 +275,49 @@
           </section>
         </section>
 
+        <section id="guidedView" class="view hidden" aria-labelledby="guidedTitle">
+          <h2 id="guidedTitle" tabindex="-1">Guided run</h2>
+          <p class="muted">Run the pipeline one stage at a time and choose what moves on. Buttons marked provider or model make paid calls; nothing runs until you press one. Requires the admin key.</p>
+          <p id="guidedStatus" role="status" aria-live="polite"></p>
+          <section class="panel guided-step" aria-labelledby="guidedStep1">
+            <h3 id="guidedStep1">1 · Symbols in the news</h3>
+            <div class="button-row">
+              <label>Window<select id="guidedWindow"><option value="PT2H">Last 2 hours</option><option value="P1D" selected>Last 24 hours</option><option value="P3D">Last 3 days</option></select></label>
+              <button id="guidedScan" type="button">Fetch latest news (provider)</button>
+              <button id="guidedShowStored" type="button" class="ghost">Show stored news only</button>
+            </div>
+            <div id="guidedSymbols"></div>
+            <div class="button-row">
+              <label>History<select id="guidedLookback"><option value="P1D">Last day</option><option value="P7D" selected>Last 7 days</option><option value="P30D">Last 30 days</option></select></label>
+              <button id="guidedFetch" type="button" disabled>Track and fetch history (provider)</button>
+            </div>
+          </section>
+          <section class="panel guided-step" aria-labelledby="guidedStep2">
+            <h3 id="guidedStep2">2 · Articles to extract</h3>
+            <div id="guidedFetchResult"></div>
+            <div id="guidedDocuments"><p class="muted">Choose symbols in step 1 first.</p></div>
+            <button id="guidedExtract" type="button" disabled>Extract chosen articles (model)</button>
+          </section>
+          <section class="panel guided-step" aria-labelledby="guidedStep3">
+            <h3 id="guidedStep3">3 · Extracted events</h3>
+            <div id="guidedExtraction"><p class="muted">Extract articles in step 2 first.</p></div>
+            <div id="guidedCompanies"></div>
+            <button id="guidedScore" type="button" disabled>Score chosen companies</button>
+          </section>
+          <section class="panel guided-step" aria-labelledby="guidedStep4">
+            <h3 id="guidedStep4">4 · Scores</h3>
+            <div id="guidedScores"><p class="muted">Score companies in step 3 first.</p></div>
+          </section>
+        </section>
+
         <section id="universeView" class="view hidden" aria-labelledby="universeTitle">
           <h2 id="universeTitle" tabindex="-1">Untracked tickers in the news</h2>
+          <form id="tickerFetch" class="filter-grid company-lookup" novalidate>
+            <label>Fetch news for a tracked symbol<input id="tickerFetchSymbol" type="search" maxlength="15" autocomplete="off" spellcheck="false" placeholder="e.g. TSN" aria-describedby="tickerFetchStatus"></label>
+            <label>Window<select id="tickerFetchWindow"><option value="P1D">Last day</option><option value="P7D" selected>Last 7 days</option><option value="P30D">Last 30 days</option></select></label>
+            <button type="submit" class="ghost">Fetch news</button>
+            <p id="tickerFetchStatus" role="status" aria-live="polite"></p>
+          </form>
           <p class="muted">Tickers named by stored articles in the last 30 days that no tracked company explains. Counts are documents, not events. Requires the admin key.</p>
           <p id="universeStatus" role="status"></p>
           <div id="universePromotion" role="status" aria-live="polite"></div>
@@ -520,6 +562,7 @@
   <script src="changes.js"></script>
   <script src="following.js"></script>
   <script src="universe.js"></script>
+  <script src="guided.js"></script>
   <script src="notebooks.js"></script>
   <script src="app.js"></script>
 </body>
